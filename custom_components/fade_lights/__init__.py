@@ -51,6 +51,14 @@ ACTIVE_FADES: dict[str, asyncio.Task] = {}
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Fade Lights component."""
+    # Check if we already have a config entry
+    if not hass.config_entries.async_entries(DOMAIN):
+        # Create a config entry automatically
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": "import"}
+            )
+        )
     return True
 
 

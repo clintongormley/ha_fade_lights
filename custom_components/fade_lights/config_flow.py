@@ -30,3 +30,16 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         return self.async_show_form(step_id="user")
+
+    async def async_step_import(
+        self, import_config: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle import from configuration.yaml or auto-setup."""
+        # Only allow a single instance
+        if self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
+
+        return self.async_create_entry(
+            title="Fade Lights",
+            data={},
+        )
