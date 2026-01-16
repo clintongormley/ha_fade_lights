@@ -19,10 +19,14 @@ A Home Assistant custom integration that provides smooth light fading with intel
 ## Installation
 
 ### HACS (Recommended)
-1. Copy the `custom_components/fade_lights` folder to your Home Assistant `custom_components` directory
-2. Add this repository to HACS as a custom repository
-3. Install via HACS
-4. Restart Home Assistant
+1. Open HACS in your Home Assistant instance
+2. Click the 3 dots in the top right corner
+3. Select "Custom repositories"
+4. Add `https://github.com/clintongormley/ha_fade_lights` as an integration
+5. Click "Explore & Download Repositories"
+6. Search for "Fade Lights"
+7. Click "Download"
+8. Restart Home Assistant
 
 ### Manual Installation
 1. Copy the `custom_components/fade_lights` folder to your Home Assistant installation:
@@ -33,10 +37,13 @@ A Home Assistant custom integration that provides smooth light fading with intel
 
 ## Configuration
 
-1. Go to **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
-3. Search for "Fade Lights"
-4. Click to add (no configuration needed)
+The integration automatically configures itself when Home Assistant starts. Optionally, you can add it to your `configuration.yaml` to ensure it loads:
+
+```yaml
+fade_lights:
+```
+
+After restart, the `fade_lights.fade_lights` service will be available in **Developer Tools** → **Actions**.
 
 ## Usage
 
