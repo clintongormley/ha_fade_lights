@@ -22,7 +22,7 @@ OPTION_AUTO_BRIGHTNESS_TARGET = "auto_brightness_target"
 
 # Defaults (used when options are not set)
 DEFAULT_BRIGHTNESS_PCT = 40
-DEFAULT_TRANSITION = 3
+DEFAULT_TRANSITION = 3  # seconds
 DEFAULT_FORCE = False
 
 # Auto-brightness settings (used when options are not set)

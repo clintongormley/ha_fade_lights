@@ -17,14 +17,14 @@
         "description": "Customize how lights fade and adjust their brightness automatically.",
         "data": {
           "default_brightness_pct": "Fade to brightness",
-          "default_transition": "Transition time",
+          "default_transition": "Fade duration",
           "auto_brightness_threshold": "Auto-adjust when below",
           "auto_brightness_target": "Auto-adjust to brightness"
         },
         "data_description": {
-          "default_brightness_pct": "Default brightness level if not specified in the action call (0-100%).",
-          "default_transition": "Default time to transition to the new brightness level in seconds (0-3600, which is up to 1 hour).",
-          "auto_brightness_threshold": "When you manually turn on a light below this brightness level (0-100%), automatically boost it to your auto-adjust brightness target.",
+          "default_brightness_pct": "When using the fade_lights service without specifying brightness, fade lights to this brightness level (0-100%).",
+          "default_transition": "When using the fade_lights service without specifying transition time, take this many seconds to fade (0-3600 seconds).",
+          "auto_brightness_threshold": "When you turn on a light below this brightness level (0-100%), automatically boost it to your preferred brightness.",
           "auto_brightness_target": "When auto-brightness triggers, set lights to this brightness level (0-100%)."
         }
       }
@@ -41,11 +41,11 @@
         },
         "brightness_pct": {
           "name": "Brightness percentage",
-          "description": "Integer value from 0 to 100 representing the desired final brightness level as a percentage (default 40)."
+          "description": "Integer value from 0 to 100 representing the desired final brightness level as a percentage."
         },
         "transition": {
-          "name": "Transition time",
-          "description": "Transition time for fading indicated in seconds (default 3)."
+          "name": "Transition",
+          "description": "Transition time for fading indicated in HH:MM:SS, MM:SS, or SS format (e.g., 00:05:30 or 5)."
         },
         "force": {
           "name": "Force",

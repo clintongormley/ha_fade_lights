@@ -37,13 +37,11 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
-        if user_input is not None:
-            return self.async_create_entry(
-                title="Fade Lights",
-                data={},
-            )
-
-        return self.async_show_form(step_id="user")
+        # Create entry immediately without showing a form
+        return self.async_create_entry(
+            title="Fade Lights",
+            data={},
+        )
 
     async def async_step_import(
         self, import_config: dict[str, Any] | None = None
@@ -62,15 +60,11 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        return FadeLightsOptionsFlow(config_entry)
+        return FadeLightsOptionsFlow()
 
 
 class FadeLightsOptionsFlow(OptionsFlow):
     """Handle options flow for Fade Lights."""
-
-    def __init__(self, config_entry):
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
