@@ -7,7 +7,12 @@ import logging
 import math
 from typing import Any
 
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.light import (
+    ATTR_BRIGHTNESS,
+    ATTR_SUPPORTED_COLOR_MODES,
+    DOMAIN as LIGHT_DOMAIN,
+)
+from homeassistant.components.light.const import ColorMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -23,8 +28,7 @@ from homeassistant.core import (
     ServiceCall,
     callback,
 )
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -170,8 +174,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and old_state.state == STATE_OFF
             and new_state.attributes.get(ATTR_ENTITY_ID) is None  # Ignore group helpers
             and new_state.context.parent_id is None  # Ignore automations
-            and "brightness" in new_state.attributes.get("supported_color_modes", [])
-            and int(new_state.attributes.get("brightness", 0)) < threshold_brightness
+            and ColorMode.BRIGHTNESS in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, [])
+            and int(new_state.attributes.get(ATTR_BRIGHTNESS, 0)) < threshold_brightness
         ):
             _LOGGER.debug(
                 "Light %s turned on - setting brightness to %s%%",
@@ -184,7 +188,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     SERVICE_TURN_ON,
                     {
                         ATTR_ENTITY_ID: entity_id,
-                        "brightness": int(auto_brightness_target / 100 * 255),
+                        ATTR_BRIGHTNESS: int(auto_brightness_target / 100 * 255),
                     },
                 )
             )
@@ -258,10 +262,8 @@ async def _execute_fade(
     step_delay_ms: int,
 ) -> None:
     """Execute the fade operation."""
-    current_level = _get_current_level(hass, entity_id)
-    current_level = 0 if current_level is None else current_level
-    start_level = current_level
-    new_level = current_level
+    start_level = _get_current_level(hass, entity_id)
+    new_level = start_level
 
     end_level = int(brightness_pct / 100 * 255)
 
@@ -272,7 +274,7 @@ async def _execute_fade(
         return
 
     # Lights which don't support fading get turned on or off
-    if "brightness" not in state.attributes.get("supported_color_modes", []):
+    if ColorMode.BRIGHTNESS not in state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
         if brightness_pct == 0:
             light_service = SERVICE_TURN_OFF
             _LOGGER.debug("Turning off light %s", entity_id)
@@ -355,7 +357,7 @@ async def _execute_fade(
                 SERVICE_TURN_ON,
                 {
                     ATTR_ENTITY_ID: entity_id,
-                    "brightness": int(new_level),
+                    ATTR_BRIGHTNESS: int(new_level),
                 },
                 context=context,
                 blocking=True,
@@ -366,14 +368,9 @@ async def _execute_fade(
     await _store_current_level(hass, entity_id)
 
 
-def _transition_in_ms(transition: int | str) -> int:
-    """Convert transition time to milliseconds."""
-    if isinstance(transition, int):
-        return transition * 1000
-
-    t = f"00:00:{transition}"
-    parts = t.split(":")
-    return 1000 * (int(parts[-3]) * 3600 + int(parts[-2]) * 60 + int(parts[-1]))
+def _transition_in_ms(transition: int) -> int:
+    """Convert transition time in seconds to milliseconds."""
+    return transition * 1000
 
 
 def _get_current_level(hass: HomeAssistant, entity_id: str) -> int:
@@ -381,8 +378,10 @@ def _get_current_level(hass: HomeAssistant, entity_id: str) -> int:
     state = hass.states.get(entity_id)
     if not state:
         return 0
-    current_level = state.attributes.get("brightness", 0)
-    return 0 if current_level is None else current_level
+    current_level = state.attributes.get(ATTR_BRIGHTNESS)
+    if current_level is None:
+        return 0
+    return int(current_level)
 
 
 async def _expand_entity_ids(hass: HomeAssistant, entity_ids: list[str]) -> list[str]:

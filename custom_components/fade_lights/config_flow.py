@@ -6,9 +6,8 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
-import homeassistant.helpers.config_validation as cv
 
 from .const import (
     AUTO_BRIGHTNESS_TARGET,
@@ -60,7 +59,7 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: ConfigEntry) -> FadeLightsOptionsFlow:
         """Get the options flow for this handler."""
         return FadeLightsOptionsFlow()
 
