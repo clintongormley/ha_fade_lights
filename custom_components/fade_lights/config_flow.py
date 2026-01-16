@@ -4,9 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+import voluptuous as vol
 
-from .const import DOMAIN
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
+import homeassistant.helpers.config_validation as cv
+
+from .const import (
+    AUTO_BRIGHTNESS_TARGET,
+    AUTO_BRIGHTNESS_THRESHOLD,
+    DEFAULT_BRIGHTNESS_PCT,
+    DEFAULT_TRANSITION,
+    DOMAIN,
+    OPTION_AUTO_BRIGHTNESS_TARGET,
+    OPTION_AUTO_BRIGHTNESS_THRESHOLD,
+    OPTION_DEFAULT_BRIGHTNESS_PCT,
+    OPTION_DEFAULT_TRANSITION,
+)
 
 
 class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -42,4 +56,57 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title="Fade Lights",
             data={},
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return FadeLightsOptionsFlow(config_entry)
+
+
+class FadeLightsOptionsFlow(OptionsFlow):
+    """Handle options flow for Fade Lights."""
+
+    def __init__(self, config_entry):
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        options = self.config_entry.options
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        OPTION_DEFAULT_BRIGHTNESS_PCT,
+                        default=options.get(
+                            OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                    vol.Optional(
+                        OPTION_DEFAULT_TRANSITION,
+                        default=options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+                    vol.Optional(
+                        OPTION_AUTO_BRIGHTNESS_THRESHOLD,
+                        default=options.get(
+                            OPTION_AUTO_BRIGHTNESS_THRESHOLD, AUTO_BRIGHTNESS_THRESHOLD
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                    vol.Optional(
+                        OPTION_AUTO_BRIGHTNESS_TARGET,
+                        default=options.get(
+                            OPTION_AUTO_BRIGHTNESS_TARGET, AUTO_BRIGHTNESS_TARGET
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                }
+            ),
         )

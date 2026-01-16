@@ -38,6 +38,10 @@ from .const import (
     DEFAULT_FORCE,
     DEFAULT_TRANSITION,
     DOMAIN,
+    OPTION_AUTO_BRIGHTNESS_TARGET,
+    OPTION_AUTO_BRIGHTNESS_THRESHOLD,
+    OPTION_DEFAULT_BRIGHTNESS_PCT,
+    OPTION_DEFAULT_TRANSITION,
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -46,6 +50,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 # Track active fade tasks
+# A new task should first cancel the running task
 ACTIVE_FADES: dict[str, asyncio.Task] = {}
 
 
@@ -55,16 +60,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if not hass.config_entries.async_entries(DOMAIN):
         # Create a config entry automatically
         hass.async_create_task(
-            hass.config_entries.flow.async_init(
-                DOMAIN, context={"source": "import"}
-            )
+            hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"})
         )
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Fade Lights from a config entry."""
-    # Initialize storage
+    # Initialize storage to persist brightness levels across restarts
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     storage_data = await store.async_load() or {}
 
@@ -74,12 +77,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "data": storage_data,
     }
 
+    # Get configurable defaults from options
+    default_brightness = entry.options.get(
+        OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT
+    )
+    default_transition = entry.options.get(
+        OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION
+    )
+
     # Register service
     async def handle_fade_lights(call: ServiceCall) -> None:
         """Handle the fade_lights service call."""
         entity_ids = call.data.get(ATTR_ENTITY_ID)
-        brightness_pct = call.data.get(ATTR_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT)
-        transition = call.data.get(ATTR_TRANSITION, DEFAULT_TRANSITION)
+        brightness_pct = call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness)
+        transition = call.data.get(ATTR_TRANSITION, default_transition)
         force = call.data.get(ATTR_FORCE, DEFAULT_FORCE)
 
         if isinstance(entity_ids, str):
@@ -122,6 +133,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=None,  # We'll use services.yaml for schema
     )
 
+    # Get configurable auto-brightness settings from options
+    auto_brightness_threshold = entry.options.get(
+        OPTION_AUTO_BRIGHTNESS_THRESHOLD, AUTO_BRIGHTNESS_THRESHOLD
+    )
+    auto_brightness_target = entry.options.get(
+        OPTION_AUTO_BRIGHTNESS_TARGET, AUTO_BRIGHTNESS_TARGET
+    )
+
+    # Convert percentage threshold to 0-255 brightness value for comparison
+    threshold_brightness = int(auto_brightness_threshold / 100 * 255)
+
     # Register event listener for auto-brightness
     @callback
     def handle_light_on(event: Event) -> None:
@@ -145,12 +167,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and new_state.attributes.get(ATTR_ENTITY_ID) is None  # Ignore group helpers
             and new_state.context.parent_id is None  # Ignore automations
             and "brightness" in new_state.attributes.get("supported_color_modes", [])
-            and int(new_state.attributes.get("brightness", 0)) < AUTO_BRIGHTNESS_THRESHOLD
+            and int(new_state.attributes.get("brightness", 0)) < threshold_brightness
         ):
             _LOGGER.debug(
                 "Light %s turned on - setting brightness to %s%%",
                 entity_id,
-                AUTO_BRIGHTNESS_TARGET,
+                auto_brightness_target,
             )
             hass.async_create_task(
                 hass.services.async_call(
@@ -158,16 +180,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     SERVICE_TURN_ON,
                     {
                         ATTR_ENTITY_ID: entity_id,
-                        "brightness": int(AUTO_BRIGHTNESS_TARGET / 100 * 255),
+                        "brightness": int(auto_brightness_target / 100 * 255),
                     },
                 )
             )
 
-    entry.async_on_unload(
-        hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_on)
-    )
+    entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_on))
+
+    # Register options update listener
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     return True
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -262,7 +290,9 @@ async def _execute_fade(
     )
 
     if start_level == end_level:
-        _LOGGER.debug("Aborting: start level of light %s is already end level", entity_id)
+        _LOGGER.debug(
+            "Aborting: start level of light %s is already end level", entity_id
+        )
         return
 
     delay_ms = round(abs(transition_ms / (end_level - start_level)))
@@ -309,7 +339,9 @@ async def _execute_fade(
                 blocking=True,
             )
         else:
-            _LOGGER.debug("%s: setting new level %s on light '%s'", i, new_level, entity_id)
+            _LOGGER.debug(
+                "%s: setting new level %s on light '%s'", i, new_level, entity_id
+            )
             await hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,

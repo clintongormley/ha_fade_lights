@@ -10,6 +10,26 @@
       "single_instance_allowed": "Only a single instance is allowed."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Fade Lights",
+        "description": "Configure default behavior for light fading and automatic brightness adjustment.",
+        "data": {
+          "default_brightness_pct": "Default brightness percentage",
+          "default_transition": "Default transition time (seconds)",
+          "auto_brightness_threshold": "Auto-brightness threshold percentage",
+          "auto_brightness_target": "Auto-brightness target percentage"
+        },
+        "data_description": {
+          "default_brightness_pct": "Default brightness level (0-100%) used when fade_lights service is called without specifying brightness_pct.",
+          "default_transition": "Default transition time in seconds (0-3600) used when fade_lights service is called without specifying transition.",
+          "auto_brightness_threshold": "When a light is turned on with brightness below this percentage (0-100%), it will automatically be adjusted to the target brightness.",
+          "auto_brightness_target": "Target brightness percentage (0-100%) to set when auto-brightness is triggered."
+        }
+      }
+    }
+  },
   "services": {
     "fade_lights": {
       "name": "Fade lights",
