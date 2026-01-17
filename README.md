@@ -1,22 +1,25 @@
 # Fade Lights Custom Integration
 
-A Home Assistant custom integration that provides smooth light fading with intelligent manual change detection.
+A Home Assistant custom integration that provides smooth light fading with automatic brightness restoration.
 
 ## Features
 
-### 1. Smooth Light Fading Service
+### Smooth Light Fading Service
 
 - Fade lights to any brightness level (0-100%) over a specified transition period
 - Supports individual lights and light groups
 - Automatically expands light groups
-- Detects and aborts when lights are manually adjusted during fade
-- Can be forced to override manual change detection
+- Cancels fade when lights are manually adjusted
 
-### 2. Auto-Brightness Correction
+### Automatic Brightness Restoration
 
-- Automatically detects when lights are turned on very dim (default brightness < 10)
-- Boosts brightness to default 40% to prevent "nearly off" lights
-- Only triggers on manual light activation (not automation-triggered)
+When you fade a light down to off and then manually turn it back on, the integration automatically restores the light to its original brightness (before the fade started).
+
+**Example:**
+1. Light is at 80% brightness
+2. You fade it to 0% (off) over 30 minutes
+3. Later, you turn the light on manually
+4. Light automatically restores to 80%
 
 ## Installation
 
@@ -61,7 +64,6 @@ Fades one or more lights to a target brightness over a transition period.
 - **entity_id** (required): Light entity ID, light group, or list of light entities
 - **brightness_pct** (optional, default: 40): Target brightness percentage (0-100)
 - **transition** (optional, default: 3): Transition duration in seconds
-- **force** (optional, default: false): Force fade even if light was manually changed
 
 #### Examples:
 
@@ -97,17 +99,6 @@ data:
   transition: 60
 ```
 
-**Force fade (ignore manual changes):**
-
-```yaml
-service: fade_lights.fade_lights
-data:
-  entity_id: light.bedroom
-  brightness_pct: 100
-  transition: 2
-  force: true
-```
-
 ### Automation Example
 
 ```yaml
@@ -127,25 +118,21 @@ automation:
 
 ## How It Works
 
+### Brightness Tracking
+
+The integration maintains two brightness values for each light:
+- **Original brightness**: The user's intended brightness level
+- **Current brightness**: The brightness being set during fade operations
+
+When you fade a light to off, the original brightness is preserved. When the light is manually turned on again, it's automatically restored to that original brightness.
+
 ### Manual Change Detection
 
-The integration tracks the last brightness level set by automation. If a light's brightness doesn't match the stored value, it's considered "manually changed" and fading is skipped (unless `force: true`).
+The integration uses Home Assistant's context system to distinguish between:
+- Changes made by the fade service (ignored for restoration)
+- Changes made manually or by other automations (triggers brightness restoration)
 
-### Fade Algorithm
-
-- Calculates optimal step size based on transition duration
-- Minimum 100ms delay between steps to prevent overwhelming devices
-- Monitors brightness during fade and aborts if external changes detected
-- Handles edge cases (brightness = 1, non-dimmable lights)
-
-### Auto-Brightness Feature
-
-Listens for state changes and automatically corrects lights that turn on very dim:
-
-- Triggers only on manual activation (no parent context)
-- Only for dimmable lights with brightness < 10
-- Sets brightness to 40% automatically
-- Ignores light groups
+If you manually adjust a light's brightness while it's on, that becomes the new "original" brightness.
 
 ### Non-Dimmable Lights
 
