@@ -10,14 +10,10 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import callback
 
 from .const import (
-    AUTO_BRIGHTNESS_TARGET,
-    AUTO_BRIGHTNESS_THRESHOLD,
     DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
-    OPTION_AUTO_BRIGHTNESS_TARGET,
-    OPTION_AUTO_BRIGHTNESS_THRESHOLD,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
     OPTION_STEP_DELAY_MS,
@@ -90,18 +86,6 @@ class FadeLightsOptionsFlow(OptionsFlow):
                         OPTION_DEFAULT_TRANSITION,
                         default=options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
-                    vol.Optional(
-                        OPTION_AUTO_BRIGHTNESS_THRESHOLD,
-                        default=options.get(
-                            OPTION_AUTO_BRIGHTNESS_THRESHOLD, AUTO_BRIGHTNESS_THRESHOLD
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                    vol.Optional(
-                        OPTION_AUTO_BRIGHTNESS_TARGET,
-                        default=options.get(
-                            OPTION_AUTO_BRIGHTNESS_TARGET, AUTO_BRIGHTNESS_TARGET
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
                     vol.Optional(
                         OPTION_STEP_DELAY_MS,
                         default=options.get(OPTION_STEP_DELAY_MS, DEFAULT_STEP_DELAY_MS),
