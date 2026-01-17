@@ -364,11 +364,6 @@ async def _execute_fade(
             return
 
         curr = _get_curr_brightness(hass, entity_id)
-
-        # If we've already reached the target, we're done
-        if curr == end_level:
-            break
-
         new_level = curr + delta
         new_level = max(0, min(255, new_level))
 

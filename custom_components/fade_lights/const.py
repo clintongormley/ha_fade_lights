@@ -27,4 +27,4 @@ DEFAULT_TRANSITION = 3  # seconds
 DEFAULT_STEP_DELAY_MS = 50  # milliseconds
 
 # Hard minimum for step delay (service call overhead)
-MIN_STEP_DELAY_MS = 30
+MIN_STEP_DELAY_MS = 50
