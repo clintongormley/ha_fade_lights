@@ -212,6 +212,20 @@ async def test_options_flow_validates_transition_range(
             },
         )
 
+    # Start a new flow to test float value (should be valid)
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
+            OPTION_DEFAULT_TRANSITION: 0.5,  # Valid: float value for 500ms
+            OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][OPTION_DEFAULT_TRANSITION] == 0.5
+
 
 async def test_options_flow_validates_step_delay_range(
     hass: HomeAssistant,

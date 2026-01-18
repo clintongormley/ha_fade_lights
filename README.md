@@ -78,7 +78,7 @@ Fades one or more lights to a target brightness over a transition period.
   - Light groups are automatically expanded to their individual lights
   - Duplicate entities are automatically deduplicated
 - **brightness_pct** (optional, default: 40): Target brightness percentage (0-100)
-- **transition** (optional, default: 3): Transition duration in seconds
+- **transition** (optional, default: 3): Transition duration in seconds (supports decimals, e.g., `0.5` for 500ms)
 
 #### Examples:
 
