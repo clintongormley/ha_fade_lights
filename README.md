@@ -53,6 +53,16 @@ After installation and restart, add the integration via the Home Assistant UI:
 
 Once configured, the `fade_lights.fade_lights` service will be available in **Developer Tools** → **Actions**.
 
+### Configuration Options
+
+To adjust the integration settings, go to **Settings** → **Devices & Services** → **Fade Lights** → **Configure**.
+
+| Option | Description | Default | Range |
+|--------|-------------|---------|-------|
+| **Default brightness** | Target brightness percentage when not specified in service call | 40% | 0-100 |
+| **Default transition** | Transition duration in seconds when not specified in service call | 3 seconds | 0-3600 |
+| **Step delay** | Minimum delay between brightness steps in milliseconds. Lower values create smoother fades but increase system load. | 50ms | 50-1000 |
+
 ## Usage
 
 ### Service: `fade_lights.fade_lights`
@@ -61,7 +71,12 @@ Fades one or more lights to a target brightness over a transition period.
 
 #### Parameters:
 
-- **entity_id** (required): Light entity ID, light group, or list of light entities
+- **entity_id** (required): One or more light entities. Accepts:
+  - A single entity: `light.bedroom`
+  - A comma-separated string: `light.bedroom, light.kitchen`
+  - A YAML list: `[light.bedroom, light.kitchen]`
+  - Light groups are automatically expanded to their individual lights
+  - Duplicate entities are automatically deduplicated
 - **brightness_pct** (optional, default: 40): Target brightness percentage (0-100)
 - **transition** (optional, default: 3): Transition duration in seconds
 
@@ -142,7 +157,7 @@ Lights that do not support brightness will turn off when brightness is set to 0,
 
 ### Running Tests
 
-The integration includes a comprehensive test suite with 45 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
+The integration includes a comprehensive test suite with 51 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
 
 #### Prerequisites
 
