@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -359,6 +360,8 @@ async def _execute_fade(
     _LOGGER.debug("Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps)
 
     for i in range(num_steps):
+        step_start = time.monotonic()
+
         # Check for cancellation at start of each step
         if cancel_event.is_set():
             return
@@ -409,7 +412,11 @@ async def _execute_fade(
         if cancel_event.is_set():
             return
 
-        await asyncio.sleep(delay_ms / 1000)
+        # Calculate remaining sleep time, accounting for time spent in service call
+        elapsed_ms = (time.monotonic() - step_start) * 1000
+        sleep_ms = max(0, delay_ms - elapsed_ms)
+        if sleep_ms > 0:
+            await asyncio.sleep(sleep_ms / 1000)
 
     # Store orig brightness if we faded to a non-zero value
     if end_level > 0:
