@@ -9,8 +9,8 @@ import pytest
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
-    ColorMode,
 )
+from homeassistant.components.light.const import ColorMode
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import Context, HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -417,7 +417,7 @@ async def test_brightness_tolerance_allows_rounding(
 
     # Create a simple mock task that we can track (not registered with hass)
     fake_task = asyncio.get_event_loop().create_future()
-    ACTIVE_FADES[entity_id] = fake_task
+    ACTIVE_FADES[entity_id] = fake_task  # type: ignore[assignment]
     cancel_event = asyncio.Event()
     FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
@@ -564,7 +564,7 @@ async def test_our_context_changes_ignored(
 
     # Create a simple mock task that we can track (not registered with hass)
     fake_task = asyncio.get_event_loop().create_future()
-    ACTIVE_FADES[entity_id] = fake_task
+    ACTIVE_FADES[entity_id] = fake_task  # type: ignore[assignment]
     cancel_event = asyncio.Event()
     FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
