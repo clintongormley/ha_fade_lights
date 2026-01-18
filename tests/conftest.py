@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_SUPPORTED_COLOR_MODES, ColorMode
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import entity_registry as er
-
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import DOMAIN
@@ -127,11 +123,7 @@ def captured_calls(hass: HomeAssistant) -> list[ServiceCall]:
 
         entity_id = call.data.get(ATTR_ENTITY_ID)
         if entity_id:
-            if isinstance(entity_id, list):
-                entity_ids = entity_id
-            else:
-                entity_ids = [entity_id]
-
+            entity_ids = entity_id if isinstance(entity_id, list) else [entity_id]
             for eid in entity_ids:
                 current_state = hass.states.get(eid)
                 if current_state:

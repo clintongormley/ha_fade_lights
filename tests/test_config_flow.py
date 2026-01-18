@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import (
