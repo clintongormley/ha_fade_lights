@@ -197,6 +197,71 @@ async def test_manual_turn_off_cancels_fade(
         await fade_task
 
 
+async def test_manual_turn_off_preserves_orig_brightness(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that turning off during fade preserves pre-fade original brightness."""
+    entity_id = "light.test_off_preserves"
+    initial_brightness = 200
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: initial_brightness,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Start a long fade to lower brightness
+    fade_task = hass.async_create_task(
+        hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                ATTR_ENTITY_ID: entity_id,
+                ATTR_BRIGHTNESS_PCT: 10,  # Fade to 10%
+                ATTR_TRANSITION: 5,
+            },
+            blocking=True,
+        )
+    )
+
+    # Wait for the fade to start and make some progress
+    await asyncio.sleep(0.3)
+
+    # Verify fade is active and orig brightness was stored
+    assert entity_id in ACTIVE_FADES
+    storage_key = entity_id.replace(".", "_")
+    storage_data = hass.data[DOMAIN]["data"]
+    assert storage_key in storage_data
+    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == initial_brightness
+
+    # Simulate turning off the light manually (interrupting fade)
+    hass.states.async_set(
+        entity_id,
+        STATE_OFF,
+        {
+            ATTR_BRIGHTNESS: None,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+    await asyncio.sleep(0.1)
+
+    # Verify fade was cancelled
+    assert entity_id not in ACTIVE_FADES
+
+    # Original brightness should still be the pre-fade value
+    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == initial_brightness
+
+    # Clean up
+    fade_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await fade_task
+
+
 async def test_new_fade_cancels_previous(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
@@ -265,13 +330,13 @@ async def test_new_fade_cancels_previous(
         await first_fade
 
 
-async def test_manual_change_stores_new_orig(
+async def test_manual_change_during_fade_preserves_orig(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     service_calls: list[ServiceCall],
 ) -> None:
-    """Test that manual brightness change becomes the new original brightness."""
-    entity_id = "light.test_store_new_orig"
+    """Test that manual brightness change during fade preserves pre-fade original."""
+    entity_id = "light.test_preserve_orig"
     hass.states.async_set(
         entity_id,
         STATE_ON,
@@ -298,7 +363,13 @@ async def test_manual_change_stores_new_orig(
     # Wait for the fade to start
     await asyncio.sleep(0.2)
 
-    # Simulate a manual brightness change to 150
+    # Verify orig brightness was stored at fade start
+    storage_key = entity_id.replace(".", "_")
+    storage_data = hass.data[DOMAIN]["data"]
+    assert storage_key in storage_data
+    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 200
+
+    # Simulate a manual brightness change to 150 (interrupting the fade)
     hass.states.async_set(
         entity_id,
         STATE_ON,
@@ -312,16 +383,48 @@ async def test_manual_change_stores_new_orig(
     # Give a moment for the state change handler to process
     await asyncio.sleep(0.1)
 
-    # Check that the new brightness was stored as original
-    storage_key = entity_id.replace(".", "_")
-    storage_data = hass.data[DOMAIN]["data"]
-    assert storage_key in storage_data
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 150
+    # Original brightness should still be 200 (pre-fade value), not 150
+    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 200
 
     # Clean up
     fade_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await fade_task
+
+
+async def test_manual_change_without_fade_stores_new_orig(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that manual brightness change when NOT fading stores as new original."""
+    entity_id = "light.test_store_new_orig"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 200,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Simulate a manual brightness change to 150 (no active fade)
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 150,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Check that the new brightness was stored as original (since no fade was active)
+    storage_key = entity_id.replace(".", "_")
+    storage_data = hass.data[DOMAIN]["data"]
+    assert storage_key in storage_data
+    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 150
 
 
 async def test_group_changes_ignored(

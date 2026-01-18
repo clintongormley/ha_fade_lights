@@ -143,11 +143,34 @@ When you fade a light to off, the original brightness is preserved. When the lig
 
 ### Manual Change Detection
 
-The integration uses Home Assistant's context system to distinguish between:
-- Changes made by the fade service (ignored for restoration)
-- Changes made manually or by other automations (triggers brightness restoration)
+The integration detects manual changes using two methods:
 
-If you manually adjust a light's brightness while it's on, that becomes the new "original" brightness.
+1. **Context tracking**: Home Assistant's context system identifies whether a change came from the fade service or an external source.
+
+2. **Brightness comparison**: During an active fade, the integration compares the actual brightness to the expected brightness. If they differ by more than ±5 (tolerance for device rounding), the change is treated as manual intervention.
+
+#### Behavior During Fades
+
+| Action | Result |
+|--------|--------|
+| **Turn off via app** | Fade cancelled, light turns off, original brightness preserved |
+| **Turn off via physical switch** | Fade cancelled, light turns off, original brightness preserved |
+| **Change brightness via app** | Fade cancelled, original brightness preserved |
+| **Change brightness via physical switch** | Fade cancelled, original brightness preserved |
+
+#### Behavior When Light Is Off (After a Fade)
+
+| Action | Result |
+|--------|--------|
+| **Turn on via app (toggle only)** | Brightness restored to original |
+| **Turn on via physical switch** | Brightness restored to original |
+| **Turn on via app with specific brightness** | Brightness restored to original* |
+
+*\*Limitation: When turning on a light and simultaneously setting a brightness (via app or some smart switches), the integration cannot distinguish this from a simple turn-on. The original brightness will be restored, overriding the requested brightness.*
+
+#### Behavior When Light Is On (No Active Fade)
+
+If you manually adjust a light's brightness while it's on (and no fade is active), that becomes the new "original" brightness for future restoration.
 
 ### Non-Dimmable Lights
 

@@ -63,6 +63,9 @@ FADE_EXPECTED_BRIGHTNESS: dict[str, int] = {}
 # Track contexts created by this integration
 ACTIVE_CONTEXTS: set[str] = set()
 
+# Track entities that were manually turned off during a fade (skip restoration)
+MANUAL_OFF_DURING_FADE: set[str] = set()
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Fade Lights component."""
@@ -151,22 +154,50 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not entity_id.startswith("light."):
             return
 
+        # Debug logging for manual testing
+        old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS) if old_state else None
         new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
+        _LOGGER.debug(
+            "State change: %s | old: %s (brightness=%s) -> new: %s (brightness=%s) | context=%s",
+            entity_id,
+            old_state.state if old_state else None,
+            old_brightness,
+            new_state.state,
+            new_brightness,
+            event.context.id[:8] if event.context.id else None,
+        )
+
+        is_fading = entity_id in ACTIVE_FADES
 
         # Check if this is from our own fade operations
         is_our_context = event.context.id in ACTIVE_CONTEXTS
 
-        # Even if it's "our" context, check if the brightness is wildly different
-        # from what we expected - this indicates a manual change that inherited our context
-        if is_our_context and entity_id in FADE_EXPECTED_BRIGHTNESS:
+        _LOGGER.debug(
+            "  -> is_fading=%s, is_our_context=%s, in_manual_off=%s",
+            is_fading,
+            is_our_context,
+            entity_id in MANUAL_OFF_DURING_FADE,
+        )
+
+        # During active fade, check if state matches what we expect
+        # If not, this is manual intervention regardless of context (e.g., physical switch)
+        if is_fading and entity_id in FADE_EXPECTED_BRIGHTNESS:
             expected = FADE_EXPECTED_BRIGHTNESS[entity_id]
-            # Allow some tolerance for rounding (light may not hit exact value)
             tolerance = 5
-            if new_brightness is not None and abs(new_brightness - expected) > tolerance:
-                # This is actually a manual change, don't ignore it
+
+            # Unexpected OFF or brightness during fade = manual intervention
+            if (new_state.state == STATE_OFF and expected != 0) or (
+                new_brightness is not None and abs(new_brightness - expected) > tolerance
+            ):
+                _LOGGER.debug(
+                    "  -> Unexpected state during fade: expected=%s, got=%s, manual",
+                    expected,
+                    new_brightness,
+                )
                 is_our_context = False
 
         if is_our_context:
+            _LOGGER.debug("  -> Ignoring (our context)")
             return
 
         # Ignore group helpers
@@ -175,15 +206,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Light turned ON (was OFF)
         if old_state and old_state.state == STATE_OFF and new_state.state == STATE_ON:
+            _LOGGER.debug("  -> Light turned ON from OFF")
+            # Skip restoration if this entity was just manually turned off during a fade
+            if entity_id in MANUAL_OFF_DURING_FADE:
+                _LOGGER.debug("  -> Skipping restoration (was manually turned off during fade)")
+                MANUAL_OFF_DURING_FADE.discard(entity_id)
+                return
+
             # Check if light supports brightness
             if ColorMode.BRIGHTNESS not in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
                 return
 
             orig_brightness = _get_orig_brightness(hass, entity_id)
+            _LOGGER.debug(
+                "  -> orig_brightness=%s, current_brightness=%s", orig_brightness, new_brightness
+            )
             if orig_brightness > 0:
                 current_brightness = new_state.attributes.get(ATTR_BRIGHTNESS, 0)
                 if current_brightness != orig_brightness:
-                    _LOGGER.debug("Restoring %s to brightness %s", entity_id, orig_brightness)
+                    _LOGGER.debug("  -> Restoring %s to brightness %s", entity_id, orig_brightness)
                     hass.async_create_task(
                         hass.services.async_call(
                             LIGHT_DOMAIN,
@@ -200,9 +241,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if new_state.state == STATE_OFF:
             if entity_id in ACTIVE_FADES:
                 _LOGGER.debug("Cancelling fade on %s due to manual turn off", entity_id)
+                # Mark this entity to skip restoration on next turn-on
+                MANUAL_OFF_DURING_FADE.add(entity_id)
                 if entity_id in FADE_CANCEL_EVENTS:
                     FADE_CANCEL_EVENTS[entity_id].set()
                 ACTIVE_FADES[entity_id].cancel()
+                # Ensure the light is actually off (in case fade step races with cancellation)
+                hass.async_create_task(
+                    hass.services.async_call(
+                        LIGHT_DOMAIN,
+                        SERVICE_TURN_OFF,
+                        {ATTR_ENTITY_ID: entity_id},
+                    )
+                )
             return
 
         # Brightness changed while light was already ON
@@ -211,14 +262,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
             if new_brightness != old_brightness and new_brightness is not None:
                 # Cancel active fade if any
-                if entity_id in ACTIVE_FADES:
+                was_fading = entity_id in ACTIVE_FADES
+                if was_fading:
                     _LOGGER.debug("Cancelling fade on %s due to manual change", entity_id)
                     if entity_id in FADE_CANCEL_EVENTS:
                         FADE_CANCEL_EVENTS[entity_id].set()
                     ACTIVE_FADES[entity_id].cancel()
 
                 # Store new brightness as original
-                _store_orig_brightness(hass, entity_id, new_brightness)
+                # (but not if we were fading - preserve pre-fade orig)
+                if not was_fading:
+                    _store_orig_brightness(hass, entity_id, new_brightness)
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change))
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -241,6 +295,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_BRIGHTNESS.clear()
     ACTIVE_CONTEXTS.clear()
+    MANUAL_OFF_DURING_FADE.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
@@ -325,6 +380,11 @@ async def _execute_fade(
 
     if start_level == end_level:
         return
+
+    # Store starting brightness as orig if not already set (preserve across interrupted fades)
+    existing_orig = _get_orig_brightness(hass, entity_id)
+    if existing_orig == 0 and start_level > 0:
+        _store_orig_brightness(hass, entity_id, start_level)
 
     # Store starting brightness as curr
     _store_curr_brightness(hass, entity_id, start_level)
