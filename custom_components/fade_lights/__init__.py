@@ -356,6 +356,143 @@ async def _fade_light(
         FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
 
 
+# =============================================================================
+# Fade Step Helpers
+# =============================================================================
+
+
+def _calculate_fade_steps(
+    start_level: int,
+    end_level: int,
+    transition_ms: int,
+    min_step_delay_ms: int,
+) -> tuple[int, int, float]:
+    """Calculate fade step parameters.
+
+    Returns:
+        Tuple of (num_steps, delta_per_step, delay_ms_per_step)
+    """
+    level_diff = abs(end_level - start_level)
+
+    # Maximum steps we can fit in the transition time
+    max_steps_by_time = max(1, int(transition_ms / min_step_delay_ms))
+
+    # Can't have more steps than brightness levels to change
+    num_steps = min(max_steps_by_time, level_diff)
+
+    # Calculate brightness change per step (at least 1)
+    delta = (end_level - start_level) / num_steps
+    delta = math.ceil(delta) if delta > 0 else math.floor(delta)
+
+    # Recalculate steps based on rounded delta
+    actual_steps = math.ceil(level_diff / abs(delta))
+
+    # Delay between steps to spread evenly across transition
+    delay_ms = transition_ms / actual_steps
+
+    return (actual_steps, delta, delay_ms)
+
+
+def _calculate_next_brightness(
+    current_level: int,
+    end_level: int,
+    delta: int,
+    is_last_step: bool,
+) -> int:
+    """Calculate the next brightness level for a fade step.
+
+    Handles clamping, final step targeting, and the brightness=1 edge case.
+    """
+    new_level = current_level + delta
+    new_level = max(0, min(255, new_level))
+
+    # Ensure we hit target on last step or if we've overshot
+    if (
+        is_last_step
+        or (delta > 0 and new_level > end_level)
+        or (delta < 0 and new_level < end_level)
+    ):
+        new_level = end_level
+
+    # Skip brightness=1 (many lights behave oddly at this level)
+    if new_level == 1:
+        new_level = 0 if delta < 0 else 2
+
+    return new_level
+
+
+def _track_expected_brightness(entity_id: str, new_level: int, delta: int) -> None:
+    """Track expected brightness for manual intervention detection.
+
+    Maintains a set of the 2 most recent expected values. This allows
+    the state change handler to detect manual changes even when events
+    arrive delayed.
+    """
+    expected_set = FADE_EXPECTED_BRIGHTNESS[entity_id]
+    expected_set.add(new_level)
+    if len(expected_set) > 2:
+        # Remove oldest value (furthest from target based on direction)
+        if delta > 0:
+            expected_set.discard(min(expected_set))
+        else:
+            expected_set.discard(max(expected_set))
+
+
+async def _apply_brightness(hass: HomeAssistant, entity_id: str, level: int) -> None:
+    """Apply a brightness level to a light.
+
+    Handles the special case of level 0 (turn off) vs positive levels (turn on).
+    """
+    if level == 0:
+        await hass.services.async_call(
+            LIGHT_DOMAIN,
+            SERVICE_TURN_OFF,
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
+    else:
+        await hass.services.async_call(
+            LIGHT_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: level},
+            blocking=True,
+        )
+
+
+async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None:
+    """Sleep for the remaining time in a fade step.
+
+    Subtracts elapsed time from target delay to maintain consistent fade duration
+    regardless of how long the service call took.
+    """
+    elapsed_ms = (time.monotonic() - step_start) * 1000
+    sleep_ms = max(0, delay_ms - elapsed_ms)
+    if sleep_ms > 0:
+        await asyncio.sleep(sleep_ms / 1000)
+
+
+async def _finalize_fade(
+    hass: HomeAssistant,
+    entity_id: str,
+    end_level: int,
+    cancel_event: asyncio.Event,
+) -> None:
+    """Store final brightness after successful fade completion.
+
+    Only stores if we faded to a non-zero brightness and weren't cancelled.
+    If we faded to 0 (off), we keep the previous orig_brightness so that
+    turning the light back on restores to where it was before.
+    """
+    if end_level > 0 and not cancel_event.is_set():
+        _store_orig_brightness(hass, entity_id, end_level)
+        await _save_storage(hass)
+
+
+# =============================================================================
+# Fade Execution
+# =============================================================================
+
+
 async def _execute_fade(
     hass: HomeAssistant,
     entity_id: str,
@@ -364,35 +501,15 @@ async def _execute_fade(
     min_step_delay_ms: int,
     cancel_event: asyncio.Event,
 ) -> None:
-    """Execute the fade operation.
-
-    This function contains the core fade logic:
-    1. Validate entity and handle non-dimmable lights
-    2. Store original brightness for later restoration
-    3. Calculate step count and timing
-    4. Execute the fade loop with cancellation checks
-    """
+    """Execute the fade operation."""
     state = hass.states.get(entity_id)
     if not state:
         _LOGGER.warning("Entity %s not found", entity_id)
         return
 
-    # Handle non-dimmable lights (on/off only, no brightness control)
+    # Handle non-dimmable lights (on/off only)
     if ColorMode.BRIGHTNESS not in state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
-        if brightness_pct == 0:
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_OFF,
-                {ATTR_ENTITY_ID: entity_id},
-                blocking=True,
-            )
-        else:
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
-                {ATTR_ENTITY_ID: entity_id},
-                blocking=True,
-            )
+        await _apply_brightness(hass, entity_id, 255 if brightness_pct > 0 else 0)
         return
 
     brightness = state.attributes.get(ATTR_BRIGHTNESS)
@@ -402,163 +519,44 @@ async def _execute_fade(
     if start_level == end_level:
         return
 
-    # -------------------------------------------------------------------------
-    # Original Brightness Preservation
-    # -------------------------------------------------------------------------
-    # Store the starting brightness as "orig" ONLY if we don't already have one.
-    # This handles the situation where one fade is interrupted by a second fade
-    # The start_level should be the current brightness, but the original_brightness
-    # should be taken from before the first fade starts.
-    #
-    # Scenario: Light at 200, fade to 50 starts
-    #  - We store orig=200 at fade start
-    #  - Light reaches 100 then the fade is interrupted by a new fade to 255
-    #  - The new fade doesn't update orig, but leaves it at 200
-
+    # Store original brightness if not already stored (for restoration after fade)
     existing_orig = _get_orig_brightness(hass, entity_id)
     if existing_orig == 0 and start_level > 0:
         _store_orig_brightness(hass, entity_id, start_level)
 
-    # Track starting brightness for delta calculation during the fade loop.
-    # We use a set to track recent values, but also keep track of the "current"
-    # level separately for delta calculation.
+    # Initialize expected brightness tracking
     FADE_EXPECTED_BRIGHTNESS[entity_id] = {start_level}
-    current_fade_level = start_level
+    current_level = start_level
 
-    # -------------------------------------------------------------------------
-    # Step Calculation
-    # -------------------------------------------------------------------------
-    # Goal: Complete the fade in transition_ms, with smooth steps.
-    #
-    # Constraints:
-    # - Each step must take at least min_step_delay_ms (default 50ms)
-    # - Each step changes brightness by at least 1 level
-    # - We must hit the exact target at the end
-    #
-    # Example: Fade from 200 to 100 (100 levels) over 5000ms with 50ms min delay
-    # - max_steps_by_time = 5000 / 50 = 100 steps
-    # - level_diff = 100 levels
-    # - We can do 100 steps of 1 level each, 50ms apart
-    level_diff = abs(end_level - start_level)
-    if level_diff == 0:
-        return
-
-    # Maximum steps we can fit in the transition time (given minimum delay per step)
-    max_steps_by_time = max(1, int(transition_ms / min_step_delay_ms))
-
-    # We can't have more steps than brightness levels to change
-    num_steps = min(max_steps_by_time, level_diff)
-
-    # Calculate how much brightness changes per step (must be at least 1).
-    # Round up for increases, down for decreases, to ensure we don't undershoot.
-    delta = (end_level - start_level) / num_steps
-    delta = math.ceil(delta) if delta > 0 else math.floor(delta)
-
-    # Recalculate actual steps needed based on rounded delta.
-    # This ensures we don't overshoot or have extra steps at the end.
-    actual_steps = math.ceil(level_diff / abs(delta))
-
-    # Calculate delay between steps to spread them evenly across transition time
-    delay_ms = transition_ms / actual_steps
-    num_steps = actual_steps
+    # Calculate fade parameters
+    num_steps, delta, delay_ms = _calculate_fade_steps(
+        start_level, end_level, transition_ms, min_step_delay_ms
+    )
 
     _LOGGER.debug(
         "Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps
     )
 
-    # -------------------------------------------------------------------------
-    # Fade Loop
-    # -------------------------------------------------------------------------
-    # Each iteration:
-    # 1. Check for cancellation (from manual change or new fade)
-    # 2. Calculate and apply the next brightness level
-    # 3. Wait for the appropriate delay
+    # Execute fade loop
     for i in range(num_steps):
         step_start = time.monotonic()
 
-        # Check for cancellation at start of each step.
-        # This catches cancellations that happened during the previous sleep.
         if cancel_event.is_set():
             return
 
-        # Calculate next brightness level based on our tracked current level.
-        # We use current_fade_level rather than reading from entity state because:
-        # - Entity state might be stale (async update)
-        # - Manual changes would throw off our delta calculation
-        new_level = current_fade_level + delta
-        new_level = max(0, min(255, new_level))
+        current_level = _calculate_next_brightness(
+            current_level, end_level, delta, is_last_step=(i == num_steps - 1)
+        )
+        _track_expected_brightness(entity_id, current_level, delta)
 
-        # Ensure we hit the target on the last step (avoid off-by-one from rounding)
-        if (delta > 0 and new_level > end_level) or (delta < 0 and new_level < end_level):
-            new_level = end_level
+        await _apply_brightness(hass, entity_id, current_level)
 
-        if i == num_steps - 1:
-            new_level = end_level
-
-        # Handle brightness level 1 edge case.
-        # Many lights treat brightness=1 oddly (some turn off, some go to min).
-        # Skip level 1 entirely by going to 0 (off) or 2 depending on direction.
-        if new_level == 1:
-            new_level = 0 if delta < 0 else 2
-
-        # Track expected brightness for physical switch detection.
-        # The state change handler compares actual vs expected to detect
-        # manual intervention even when context ID matches ours.
-        # We keep only the current and previous expected values (max 2).
-        expected_set = FADE_EXPECTED_BRIGHTNESS[entity_id]
-        expected_set.add(new_level)
-        if len(expected_set) > 2:
-            # Remove the oldest value (furthest from target based on fade direction)
-            if delta > 0:
-                expected_set.discard(min(expected_set))
-            else:
-                expected_set.discard(max(expected_set))
-        current_fade_level = new_level
-
-        # Apply the brightness change
-        if new_level == 0:
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_OFF,
-                {ATTR_ENTITY_ID: entity_id},
-                blocking=True,
-            )
-        else:
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
-                {
-                    ATTR_ENTITY_ID: entity_id,
-                    ATTR_BRIGHTNESS: int(new_level),
-                },
-                blocking=True,
-            )
-
-        # Check for cancellation after service call completes.
-        # The service call might have triggered a state change that cancelled us.
         if cancel_event.is_set():
             return
 
-        # Sleep for remaining time in this step.
-        # We subtract elapsed time to maintain consistent fade duration
-        # regardless of how long the service call took.
-        elapsed_ms = (time.monotonic() - step_start) * 1000
-        sleep_ms = max(0, delay_ms - elapsed_ms)
-        if sleep_ms > 0:
-            await asyncio.sleep(sleep_ms / 1000)
+        await _sleep_remaining_step_time(step_start, delay_ms)
 
-    # -------------------------------------------------------------------------
-    # Fade Complete
-    # -------------------------------------------------------------------------
-    # On successful completion to a non-zero brightness, update the stored
-    # orig_brightness to the new level. This is the user's new "intended"
-    # brightness for future restoration.
-    #
-    # If we faded to 0 (off), we keep the previous orig_brightness so that
-    # turning the light back on restores to where it was before the fade.
-    if end_level > 0 and not cancel_event.is_set():
-        _store_orig_brightness(hass, entity_id, end_level)
-        await _save_storage(hass)
+    await _finalize_fade(hass, entity_id, end_level, cancel_event)
 
 
 # =============================================================================
