@@ -19,6 +19,7 @@ from custom_components.fade_lights import (
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_EXPECTED_BRIGHTNESS,
+    FADE_INTERRUPTED,
 )
 from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
@@ -503,8 +504,8 @@ async def test_brightness_tolerance_allows_rounding(
         },
     )
 
-    # Simulate that we're expecting brightness 100
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = 100
+    # Simulate that we're expecting brightness 100 (now a set of recent values)
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = {100}
 
     # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
@@ -571,8 +572,8 @@ async def test_brightness_outside_tolerance_cancels_fade(
         },
     )
 
-    # Simulate that we're expecting brightness 100
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = 100
+    # Simulate that we're expecting brightness 100 (now a set of recent values)
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = {100}
 
     # Use an event to control the fake fade task
     stop_fake_fade = asyncio.Event()
@@ -631,8 +632,8 @@ async def test_expected_brightness_changes_ignored(
         },
     )
 
-    # Simulate that we're expecting brightness 100
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = 100
+    # Simulate that we're expecting brightness 100 (now a set of recent values)
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = {100}
 
     # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
@@ -676,3 +677,62 @@ async def test_expected_brightness_changes_ignored(
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         if not fake_task.done():
             fake_task.cancel()
+
+
+async def test_stale_event_suppressed_during_fade_cleanup(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that stale events are suppressed during fade cleanup.
+
+    When a user manually turns off a light during a fade, delayed state events
+    from previous fade steps may arrive. These should be ignored to prevent
+    the light from being incorrectly restored to original brightness.
+
+    This test manually sets up the FADE_INTERRUPTED flag to simulate the race
+    condition that occurs in practice when a delayed event arrives.
+    """
+    entity_id = "light.test_stale_suppression"
+    initial_brightness = 200
+
+    # Set up the light in OFF state (as if user just turned it off during a fade)
+    hass.states.async_set(
+        entity_id,
+        STATE_OFF,
+        {
+            ATTR_BRIGHTNESS: None,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Store original brightness (as would happen during a fade)
+    hass.data[DOMAIN]["data"][entity_id] = initial_brightness
+
+    # Set the FADE_INTERRUPTED flag (as happens when manual intervention is detected)
+    FADE_INTERRUPTED[entity_id] = True
+
+    try:
+        # Now simulate a stale event arriving (brightness from previous fade step)
+        # This should be ignored because FADE_INTERRUPTED is set
+        hass.states.async_set(
+            entity_id,
+            STATE_ON,
+            {
+                ATTR_BRIGHTNESS: 133,  # Stale brightness from before the turn off
+                ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+            },
+        )
+        await hass.async_block_till_done()
+
+        # The stale event should have been ignored - no turn_on calls to restore brightness
+        turn_on_calls = [
+            c
+            for c in service_calls
+            if c.service == "turn_on" and c.data.get(ATTR_BRIGHTNESS) == initial_brightness
+        ]
+        assert len(turn_on_calls) == 0, "Stale event should not trigger brightness restoration"
+
+    finally:
+        # Clean up
+        FADE_INTERRUPTED.pop(entity_id, None)
