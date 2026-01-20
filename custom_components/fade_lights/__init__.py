@@ -182,7 +182,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # is detected, we set this flag to ignore delayed events from previous
         # fade steps that arrive before cleanup completes.
         if entity_id in FADE_INTERRUPTED:
-            _LOGGER.debug("(%s) -> Ignoring stale event during fade cleanup", entity_id)
+            _LOGGER.debug(
+                "(%s) -> Ignoring stale event during fade cleanup (%s/%s)",
+                entity_id,
+                new_state.state,
+                new_brightness,
+            )
             return
 
         _LOGGER.debug(
@@ -631,17 +636,22 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
         _LOGGER.debug("  -> Waiting for task to disappear (%s)", _)
         if entity_id not in ACTIVE_FADES:
             _LOGGER.debug("  -> Task disappeared")
+            await asyncio.sleep(0.1)
             return
+        """
+        Is this required? Surely it'll be handled by finally?
         if task.done():
             _LOGGER.debug("  -> Task done, cleaning up")
             # Task is done but cleanup hasn't happened yet - do it manually
             ACTIVE_FADES.pop(entity_id, None)
             FADE_CANCEL_EVENTS.pop(entity_id, None)
             FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+            await asyncio.sleep(0.1)
             return
+        """
         await asyncio.sleep(0.01)
 
-    if entity_id not in ACTIVE_FADES:
+    if entity_id in ACTIVE_FADES:
         _LOGGER.debug("(%s) -> Timed out waiting for fade task to be cancelled", entity_id)
     return
 
@@ -729,6 +739,7 @@ async def _restore_manual_state(
             {ATTR_ENTITY_ID: entity_id},
             blocking=True,
         )
+        await asyncio.sleep(0.1)
     elif intended > 0 and current != intended:
         _LOGGER.debug("(%s) -> setting light brightness (%s) as intended", entity_id, intended)
         await hass.services.async_call(
@@ -737,6 +748,7 @@ async def _restore_manual_state(
             {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: intended},
             blocking=True,
         )
+        await asyncio.sleep(0.1)
 
     _clear_fade_interrupted(entity_id)
 
