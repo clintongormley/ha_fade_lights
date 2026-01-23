@@ -92,6 +92,191 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
     return True
 
 
+# =============================================================================
+# Service and Event Handlers
+# =============================================================================
+
+
+async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the fade_lights service call."""
+    domain_data = hass.data.get(DOMAIN, {})
+    default_brightness = domain_data.get("default_brightness", DEFAULT_BRIGHTNESS_PCT)
+    default_transition = domain_data.get("default_transition", DEFAULT_TRANSITION)
+    min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
+
+    entity_ids_raw = call.data.get(ATTR_ENTITY_ID)
+    brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
+    transition = float(call.data.get(ATTR_TRANSITION, default_transition))
+
+    if entity_ids_raw is None:
+        return
+
+    if isinstance(entity_ids_raw, str):
+        entity_ids = [e.strip() for e in entity_ids_raw.split(",")]
+    else:
+        entity_ids = list(entity_ids_raw)
+
+    expanded_entities = await _expand_entity_ids(hass, entity_ids)
+
+    transition_ms = int(transition * 1000)
+
+    tasks = [
+        asyncio.create_task(
+            _fade_light(
+                hass,
+                entity_id,
+                brightness_pct,
+                transition_ms,
+                min_step_delay_ms,
+            )
+        )
+        for entity_id in expanded_entities
+    ]
+
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@callback
+def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
+    """Handle all light state changes.
+
+    This callback fires for EVERY state change in Home Assistant that affects
+    lights. It detects manual intervention during fades and spawns async
+    handlers when needed.
+
+    Key insight: By waiting for fade cleanup before applying state, we
+    eliminate race conditions with late-arriving fade calls.
+    """
+    new_state = event.data.get("new_state")
+
+    if not new_state:
+        return
+    if new_state.domain != LIGHT_DOMAIN:
+        return
+
+    # Ignore group helpers (lights that contain other lights).
+    # Groups have an entity_id attribute listing their member lights.
+    # We only care about individual lights, not the group aggregate.
+    if new_state.attributes.get(ATTR_ENTITY_ID) is not None:
+        return
+
+    entity_id = new_state.entity_id
+    new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
+    is_fading = entity_id in ACTIVE_FADES
+    old_state = event.data.get("old_state")
+
+    # Suppress stale events during fade cleanup. When manual intervention
+    # is detected, we set this flag to ignore delayed events from previous
+    # fade steps that arrive before cleanup completes.
+    if entity_id in FADE_INTERRUPTED:
+        _LOGGER.debug(
+            "(%s) -> Ignoring stale event during fade cleanup (%s/%s)",
+            entity_id,
+            new_state.state,
+            new_brightness,
+        )
+        return
+
+    _LOGGER.debug(
+        "(%s) -> state=%s, brightness=%s, is_fading=%s",
+        entity_id,
+        new_state.state,
+        new_brightness,
+        is_fading,
+    )
+
+    # =========================================================================
+    # Check for manual intervention during fade
+    # =========================================================================
+    # During a fade, we track what brightness we EXPECT. If actual differs,
+    # someone changed it manually. We spawn an async handler to cancel the
+    # fade and apply the correct state.
+    if is_fading and entity_id in FADE_EXPECTED_BRIGHTNESS:
+        expected_values = FADE_EXPECTED_BRIGHTNESS[entity_id]
+        tolerance = 3
+
+        # Check if state matches ANY expected value (our fade step, not manual)
+        # We check multiple values because state change events can be delayed
+        is_our_fade = False
+        if new_state.state == STATE_OFF and 0 in expected_values:
+            is_our_fade = True
+        elif new_state.state == STATE_ON and new_brightness is not None:
+            # Check if brightness matches any expected value within tolerance
+            for expected in expected_values:
+                if expected > 0 and abs(new_brightness - expected) <= tolerance:
+                    is_our_fade = True
+                    break
+
+        if is_our_fade:
+            # State matches expected - this is from our fade, ignore it
+            _LOGGER.debug(
+                "(%s) -> State matches expected during fade, ignoring",
+                entity_id,
+            )
+            return
+
+        # Manual change detected - set flag to suppress stale events and spawn handler
+        _LOGGER.debug(
+            "(%s) -> Manual intervention during fade: expected_values=%s, got=%s/%s",
+            entity_id,
+            expected_values,
+            new_state.state,
+            new_brightness,
+        )
+        FADE_INTERRUPTED[entity_id] = True
+        # Cancel and wait for any active fade to fully clean up
+
+        hass.async_create_task(_restore_manual_state(hass, entity_id, old_state, new_state))
+        return
+
+    # =========================================================================
+    # Normal state handling (no active fade)
+    # =========================================================================
+
+    # OFF -> ON: Restore to stored original brightness
+    if old_state and old_state.state == STATE_OFF and new_state.state == STATE_ON:
+        _LOGGER.debug("(%s) -> Light turned OFF->ON", entity_id)
+
+        # Non-dimmable lights can't have brightness restored
+        if ColorMode.BRIGHTNESS not in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
+            return
+
+        # Restore to the stored original brightness if we have one
+        orig_brightness = _get_orig_brightness(hass, entity_id)
+        _LOGGER.debug(
+            "(%s) -> orig_brightness=%s, current_brightness=%s",
+            entity_id,
+            orig_brightness,
+            new_brightness,
+        )
+        if orig_brightness > 0:
+            current_brightness = new_state.attributes.get(ATTR_BRIGHTNESS, 0)
+            if current_brightness != orig_brightness:
+                _LOGGER.debug("(%s) -> Restoring to brightness %s", entity_id, orig_brightness)
+                hass.async_create_task(
+                    hass.services.async_call(
+                        LIGHT_DOMAIN,
+                        SERVICE_TURN_ON,
+                        {
+                            ATTR_ENTITY_ID: entity_id,
+                            ATTR_BRIGHTNESS: orig_brightness,
+                        },
+                    )
+                )
+        return
+
+    # ON -> ON with brightness change: Store new brightness as original
+    if old_state and old_state.state == STATE_ON and new_state.state == STATE_ON:
+        old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS)
+
+        if new_brightness != old_brightness and new_brightness is not None:
+            _LOGGER.debug(
+                "(%s) -> Storing new brightness as original: %s", entity_id, new_brightness
+            )
+            _store_orig_brightness(hass, entity_id, new_brightness)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Fade Lights from a config entry."""
     store = Store(hass, 1, STORAGE_KEY)
@@ -101,45 +286,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "store": store,
         "data": storage_data,
+        "default_brightness": entry.options.get(
+            OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT
+        ),
+        "default_transition": entry.options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION),
+        "min_step_delay_ms": entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS),
     }
 
-    default_brightness = entry.options.get(OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT)
-    default_transition = entry.options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION)
-    min_step_delay_ms = entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS)
-
     async def handle_fade_lights(call: ServiceCall) -> None:
-        """Handle the fade_lights service call."""
-        entity_ids_raw = call.data.get(ATTR_ENTITY_ID)
-        brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
-        transition = float(call.data.get(ATTR_TRANSITION, default_transition))
+        """Service handler wrapper."""
+        await _handle_fade_lights(hass, call)
 
-        if entity_ids_raw is None:
-            return
-
-        if isinstance(entity_ids_raw, str):
-            entity_ids = [e.strip() for e in entity_ids_raw.split(",")]
-        else:
-            entity_ids = list(entity_ids_raw)
-
-        expanded_entities = await _expand_entity_ids(hass, entity_ids)
-
-        transition_ms = int(transition * 1000)
-
-        tasks = [
-            asyncio.create_task(
-                _fade_light(
-                    hass,
-                    entity_id,
-                    brightness_pct,
-                    transition_ms,
-                    min_step_delay_ms,
-                )
-            )
-            for entity_id in expanded_entities
-        ]
-
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+    @callback
+    def handle_light_state_change(event: Event) -> None:
+        """Event handler wrapper."""
+        _handle_light_state_change(hass, event)
 
     hass.services.async_register(
         DOMAIN,
@@ -147,146 +308,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         handle_fade_lights,
         schema=None,
     )
-
-    # =========================================================================
-    # State Change Handler
-    # =========================================================================
-    # This callback fires for EVERY state change in Home Assistant that affects
-    # lights. It detects manual intervention during fades and spawns async
-    # handlers when needed.
-    #
-    # Key insight: By waiting for fade cleanup before applying state, we
-    # eliminate race conditions with late-arriving fade calls.
-    @callback
-    def handle_light_state_change(event: Event) -> None:
-        """Handle all light state changes."""
-        new_state = event.data.get("new_state")
-
-        if not new_state:
-            return
-        if new_state.domain != LIGHT_DOMAIN:
-            return
-
-        # Ignore group helpers (lights that contain other lights).
-        # Groups have an entity_id attribute listing their member lights.
-        # We only care about individual lights, not the group aggregate.
-        if new_state.attributes.get(ATTR_ENTITY_ID) is not None:
-            return
-
-        entity_id = new_state.entity_id
-        new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
-        is_fading = entity_id in ACTIVE_FADES
-        old_state = event.data.get("old_state")
-
-        # Suppress stale events during fade cleanup. When manual intervention
-        # is detected, we set this flag to ignore delayed events from previous
-        # fade steps that arrive before cleanup completes.
-        if entity_id in FADE_INTERRUPTED:
-            _LOGGER.debug(
-                "(%s) -> Ignoring stale event during fade cleanup (%s/%s)",
-                entity_id,
-                new_state.state,
-                new_brightness,
-            )
-            return
-
-        _LOGGER.debug(
-            "(%s) -> state=%s, brightness=%s, is_fading=%s",
-            entity_id,
-            new_state.state,
-            new_brightness,
-            is_fading,
-        )
-
-        # =====================================================================
-        # Check for manual intervention during fade
-        # =====================================================================
-        # During a fade, we track what brightness we EXPECT. If actual differs,
-        # someone changed it manually. We spawn an async handler to cancel the
-        # fade and apply the correct state.
-        if is_fading and entity_id in FADE_EXPECTED_BRIGHTNESS:
-            expected_values = FADE_EXPECTED_BRIGHTNESS[entity_id]
-            tolerance = 3
-
-            # Check if state matches ANY expected value (our fade step, not manual)
-            # We check multiple values because state change events can be delayed
-            is_our_fade = False
-            if new_state.state == STATE_OFF and 0 in expected_values:
-                is_our_fade = True
-            elif new_state.state == STATE_ON and new_brightness is not None:
-                # Check if brightness matches any expected value within tolerance
-                for expected in expected_values:
-                    if expected > 0 and abs(new_brightness - expected) <= tolerance:
-                        is_our_fade = True
-                        break
-
-            if is_our_fade:
-                # State matches expected - this is from our fade, ignore it
-                _LOGGER.debug(
-                    "(%s) -> State matches expected during fade, ignoring",
-                    entity_id,
-                )
-                return
-
-            # Manual change detected - set flag to suppress stale events and spawn handler
-            _LOGGER.debug(
-                "(%s) -> Manual intervention during fade: expected_values=%s, got=%s/%s",
-                entity_id,
-                expected_values,
-                new_state.state,
-                new_brightness,
-            )
-            FADE_INTERRUPTED[entity_id] = True
-            # Cancel and wait for any active fade to fully clean up
-
-            hass.async_create_task(_restore_manual_state(hass, entity_id, old_state, new_state))
-            return
-
-        # =====================================================================
-        # Normal state handling (no active fade)
-        # =====================================================================
-
-        # OFF -> ON: Restore to stored original brightness
-        if old_state and old_state.state == STATE_OFF and new_state.state == STATE_ON:
-            _LOGGER.debug("(%s) -> Light turned OFF->ON", entity_id)
-
-            # Non-dimmable lights can't have brightness restored
-            if ColorMode.BRIGHTNESS not in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
-                return
-
-            # Restore to the stored original brightness if we have one
-            orig_brightness = _get_orig_brightness(hass, entity_id)
-            _LOGGER.debug(
-                "(%s) -> orig_brightness=%s, current_brightness=%s",
-                entity_id,
-                orig_brightness,
-                new_brightness,
-            )
-            if orig_brightness > 0:
-                current_brightness = new_state.attributes.get(ATTR_BRIGHTNESS, 0)
-                if current_brightness != orig_brightness:
-                    _LOGGER.debug("(%s) -> Restoring to brightness %s", entity_id, orig_brightness)
-                    hass.async_create_task(
-                        hass.services.async_call(
-                            LIGHT_DOMAIN,
-                            SERVICE_TURN_ON,
-                            {
-                                ATTR_ENTITY_ID: entity_id,
-                                ATTR_BRIGHTNESS: orig_brightness,
-                            },
-                        )
-                    )
-            return
-
-        # ON -> ON with brightness change: Store new brightness as original
-        if old_state and old_state.state == STATE_ON and new_state.state == STATE_ON:
-            old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS)
-
-            if new_brightness != old_brightness and new_brightness is not None:
-                _LOGGER.debug(
-                    "(%s) -> Storing new brightness as original: %s", entity_id, new_brightness
-                )
-                _store_orig_brightness(hass, entity_id, new_brightness)
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change))
     entry.async_on_unload(entry.add_update_listener(async_update_options))
