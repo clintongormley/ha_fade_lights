@@ -5,3 +5,7 @@ __pycache__/
 # Coverage
 .coverage
 htmlcov/
+
+# Local files
+Release instructions.txt
+docs/plans/
