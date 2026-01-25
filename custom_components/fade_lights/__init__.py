@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 import logging
 import math
 import time
@@ -68,16 +69,17 @@ ACTIVE_FADES: dict[str, asyncio.Task] = {}
 # check for cancellation at safe points (between service calls, not mid-call).
 FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 
-# Maps entity_id -> set of recent expected brightness values during an active fade.
-# This is critical for detecting physical switch changes: when a state change
-# event arrives, we compare actual brightness to expected. If they differ by
-# more than ±3 (tolerance for device rounding), we treat it as manual intervention
-# even if the event has our context ID (which can happen with some integrations).
-#
-# We track a SET of recent values because state change events arrive asynchronously
-# and may be delayed. By the time an event arrives, the fade may have already moved
-# to a new brightness level. We need to accept any of the recent expected values.
-FADE_EXPECTED_BRIGHTNESS: dict[str, set[int]] = {}
+@dataclass
+class ExpectedState:
+    """Track expected brightness values and provide synchronization for waiting."""
+
+    values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
+    condition: asyncio.Condition | None = None
+
+
+# Maps entity_id -> ExpectedState for tracking expected brightness during fades
+# and waiting for state change events after service calls.
+FADE_EXPECTED_BRIGHTNESS: dict[str, ExpectedState] = {}
 
 # Maps entity_id -> True when manual intervention was just detected.
 # Used to suppress stale state events from the cancelled fade. When a user
@@ -713,9 +715,7 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
                 )
                 _LOGGER.debug("  -> Task cleanup complete")
             except TimeoutError:
-                _LOGGER.debug(
-                    "(%s) -> Timed out waiting for fade task cleanup", entity_id
-                )
+                _LOGGER.debug("(%s) -> Timed out waiting for fade task cleanup", entity_id)
 
     await asyncio.sleep(FADE_CLEANUP_DELAY_S)
 
