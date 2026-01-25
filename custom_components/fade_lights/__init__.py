@@ -652,6 +652,7 @@ def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> 
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
                 {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: orig_brightness},
+                blocking=True,
             )
         )
 
