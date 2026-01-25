@@ -388,23 +388,13 @@ def _calculate_next_brightness(
     return new_level
 
 
-def _track_expected_brightness(entity_id: str, new_level: int, delta: int) -> None:
-    """Track expected brightness for manual intervention detection.
-
-    Maintains a set of the 2 most recent expected values. This allows
-    the state change handler to detect manual changes even when events
-    arrive delayed.
-    """
-    expected_set = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
-    if expected_set is None:
+def _track_expected_brightness(entity_id: str, new_level: int) -> None:
+    """Track expected brightness for manual intervention detection during fade."""
+    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    if expected_state is None:
         return
-    expected_set.add(new_level)
-    if len(expected_set) > 2:
-        # Remove oldest value (furthest from target based on direction)
-        if delta > 0:
-            expected_set.discard(min(expected_set))
-        else:
-            expected_set.discard(max(expected_set))
+
+    expected_state.values[new_level] = time.monotonic()
 
 
 async def _apply_brightness(hass: HomeAssistant, entity_id: str, level: int) -> None:
@@ -494,7 +484,7 @@ async def _execute_fade(
         _store_orig_brightness(hass, entity_id, start_level)
 
     # Initialize expected brightness tracking
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = {start_level}
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(values={start_level: time.monotonic()})
     current_level = start_level
 
     # Calculate fade parameters
@@ -516,7 +506,7 @@ async def _execute_fade(
         current_level = _calculate_next_brightness(
             current_level, end_level, delta, is_last_step=(i == num_steps - 1)
         )
-        _track_expected_brightness(entity_id, current_level, delta)
+        _track_expected_brightness(entity_id, current_level)
 
         await _apply_brightness(hass, entity_id, current_level)
 
