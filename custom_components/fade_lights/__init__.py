@@ -760,7 +760,7 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
             except TimeoutError:
                 _LOGGER.debug("(%s) -> Timed out waiting for fade task cleanup", entity_id)
 
-    await asyncio.sleep(FADE_CLEANUP_DELAY_S)
+    await _wait_until_stale_events_flushed(entity_id)
 
 
 def _get_intended_brightness(
