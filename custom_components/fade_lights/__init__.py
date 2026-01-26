@@ -38,7 +38,6 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
-    BRIGHTNESS_TOLERANCE,
     DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
@@ -69,11 +68,13 @@ ACTIVE_FADES: dict[str, asyncio.Task] = {}
 # check for cancellation at safe points (between service calls, not mid-call).
 FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 
+
 @dataclass
 class ExpectedState:
     """Track expected brightness values and provide synchronization for waiting."""
 
     STALE_THRESHOLD: ClassVar[float] = 5.0  # seconds before a value is considered stale
+    BRIGHTNESS_TOLERANCE: ClassVar[int] = 3  # tolerance for brightness matching
 
     values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
     _condition: asyncio.Condition | None = field(default=None, repr=False)
@@ -93,14 +94,12 @@ class ExpectedState:
         self,
         state: str,
         brightness: int | None,
-        tolerance: int,
     ) -> int | None:
         """Match state against expected values, remove if found, notify if empty.
 
         Args:
             state: The light state (STATE_ON or STATE_OFF)
             brightness: The brightness value from the state (None if off)
-            tolerance: Brightness tolerance for matching
 
         Returns:
             The matched brightness value, or None if no match.
@@ -113,7 +112,7 @@ class ExpectedState:
         # Check for brightness match with tolerance
         elif state == STATE_ON and brightness is not None:
             for expected in self.values:
-                if expected > 0 and abs(brightness - expected) <= tolerance:
+                if expected > 0 and abs(brightness - expected) <= self.BRIGHTNESS_TOLERANCE:
                     matched_value = expected
                     break
 
@@ -676,9 +675,7 @@ def _match_and_remove_expected(entity_id: str, new_state: State) -> bool:
         return False
 
     new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
-    matched = expected_state.match_and_remove(
-        new_state.state, new_brightness, BRIGHTNESS_TOLERANCE
-    )
+    matched = expected_state.match_and_remove(new_state.state, new_brightness)
 
     if matched is not None:
         _LOGGER.debug(
@@ -750,9 +747,7 @@ def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> 
 
     if orig_brightness > 0 and current_brightness != orig_brightness:
         _LOGGER.debug("(%s) -> Restoring to brightness %s", entity_id, orig_brightness)
-        hass.async_create_task(
-            _restore_original_brightness(hass, entity_id, orig_brightness)
-        )
+        hass.async_create_task(_restore_original_brightness(hass, entity_id, orig_brightness))
 
 
 # --- Fade Cancellation ---
