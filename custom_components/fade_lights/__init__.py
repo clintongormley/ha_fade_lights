@@ -7,7 +7,6 @@ import logging
 import math
 import time
 from dataclasses import dataclass, field
-from typing import ClassVar
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -38,6 +37,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
+    BRIGHTNESS_TOLERANCE,
     DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
@@ -47,6 +47,7 @@ from .const import (
     OPTION_DEFAULT_TRANSITION,
     OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
+    STALE_THRESHOLD,
     STORAGE_KEY,
 )
 
@@ -73,9 +74,6 @@ FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 class ExpectedState:
     """Track expected brightness values and provide synchronization for waiting."""
 
-    STALE_THRESHOLD: ClassVar[float] = 5.0  # seconds before a value is considered stale
-    BRIGHTNESS_TOLERANCE: ClassVar[int] = 3  # tolerance for brightness matching
-
     values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
     _condition: asyncio.Condition | None = field(default=None, repr=False)
 
@@ -93,7 +91,7 @@ class ExpectedState:
         stale_keys = [
             brightness
             for brightness, timestamp in self.values.items()
-            if now - timestamp > self.STALE_THRESHOLD
+            if now - timestamp > STALE_THRESHOLD
         ]
         if stale_keys:
             _LOGGER.debug("ExpectedState.get_condition() removing stale keys: %s", stale_keys)
@@ -124,7 +122,9 @@ class ExpectedState:
             The matched brightness value, or None if no match.
         """
         _LOGGER.debug(
-            "ExpectedState.match_and_remove(%s) values=%s", brightness, list(self.values.keys()),
+            "ExpectedState.match_and_remove(%s) values=%s",
+            brightness,
+            list(self.values.keys()),
         )
         matched_value: int | None = None
 
@@ -133,7 +133,7 @@ class ExpectedState:
                 matched_value = 0
         else:
             for expected in self.values:
-                if abs(brightness - expected) <= self.BRIGHTNESS_TOLERANCE:
+                if abs(brightness - expected) <= BRIGHTNESS_TOLERANCE:
                     matched_value = expected
                     break
 
@@ -145,7 +145,9 @@ class ExpectedState:
         del self.values[matched_value]
         _LOGGER.debug(
             "ExpectedState.match_and_remove(%s) matched=%s now=%s",
-            brightness, matched_value, list(self.values.keys()),
+            brightness,
+            matched_value,
+            list(self.values.keys()),
         )
 
         # Notify condition if set is now empty
@@ -201,21 +203,12 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     default_transition = domain_data.get("default_transition", DEFAULT_TRANSITION)
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 
-    entity_ids_raw = call.data.get(ATTR_ENTITY_ID)
     brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
-    transition = float(call.data.get(ATTR_TRANSITION, default_transition))
+    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
 
-    if entity_ids_raw is None:
+    expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
+    if not expanded_entities:
         return
-
-    if isinstance(entity_ids_raw, str):
-        entity_ids = [e.strip() for e in entity_ids_raw.split(",")]
-    else:
-        entity_ids = list(entity_ids_raw)
-
-    expanded_entities = await _expand_entity_ids(hass, entity_ids)
-
-    transition_ms = int(transition * 1000)
 
     tasks = [
         asyncio.create_task(
@@ -911,21 +904,35 @@ async def _wait_until_stale_events_flushed(
 # =============================================================================
 
 
-async def _expand_entity_ids(hass: HomeAssistant, entity_ids: list[str]) -> list[str]:
-    """Expand light groups recursively.
+def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | None) -> list[str]:
+    """Expand entity IDs, handling groups and various input formats.
 
-    Light groups in Home Assistant have an entity_id attribute containing
-    their member lights. This function recursively expands any groups to
-    get the individual light entities, then deduplicates the result.
+    Accepts raw input from service call and handles:
+    - None: returns empty list
+    - Comma-separated string: splits into list
+    - List of strings: uses as-is
+
+    Light groups are expanded iteratively (not recursively) to get
+    individual light entities. Results are deduplicated.
 
     Example:
-        Input: ["light.living_room_group", "light.bedroom"]
+        Input: "light.living_room_group, light.bedroom"
         If light.living_room_group contains [light.lamp, light.ceiling]
         Output: ["light.lamp", "light.ceiling", "light.bedroom"]
     """
-    result = []
+    if entity_ids_raw is None:
+        return []
 
-    for entity_id in entity_ids:
+    if isinstance(entity_ids_raw, str):
+        pending = [e.strip() for e in entity_ids_raw.split(",")]
+    else:
+        pending = list(entity_ids_raw)
+
+    result: set[str] = set()
+
+    while pending:
+        entity_id = pending.pop()
+
         if not entity_id.startswith("light."):
             raise ServiceValidationError(f"Entity '{entity_id}' is not a light")
 
@@ -939,9 +946,8 @@ async def _expand_entity_ids(hass: HomeAssistant, entity_ids: list[str]) -> list
             group_entities = state.attributes[ATTR_ENTITY_ID]
             if isinstance(group_entities, str):
                 group_entities = [group_entities]
-            # Recursively expand in case of nested groups
-            result.extend(await _expand_entity_ids(hass, group_entities))
+            pending.extend(group_entities)
         else:
-            result.append(entity_id)
+            result.add(entity_id)
 
-    return list(set(result))
+    return list(result)

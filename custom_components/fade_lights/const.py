@@ -34,3 +34,6 @@ BRIGHTNESS_TOLERANCE = 3
 
 # Timeout for waiting on fade cancellation (seconds)
 FADE_CANCEL_TIMEOUT_S = 2.0
+
+# Time before an expected brightness value is considered stale (seconds)
+STALE_THRESHOLD = 5.0
