@@ -388,8 +388,8 @@ async def _execute_fade(
         start_level, end_level, transition_ms, min_step_delay_ms
     )
 
-    _LOGGER.debug(
-        "Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps
+    _LOGGER.info(
+        "%s: Fading from %s to %s in %s steps", entity_id, start_level, end_level, num_steps
     )
 
     # Execute fade loop
@@ -412,9 +412,13 @@ async def _execute_fade(
         await _sleep_remaining_step_time(step_start, delay_ms)
 
     # Store final brightness after successful fade completion
-    if end_level > 0 and not cancel_event.is_set():
-        _store_orig_brightness(hass, entity_id, end_level)
-        await _save_storage(hass)
+    if not cancel_event.is_set():
+        if end_level > 0:
+            _store_orig_brightness(hass, entity_id, end_level)
+            await _save_storage(hass)
+            _LOGGER.info("%s: Fade complete at brightness %s", entity_id, end_level)
+        else:
+            _LOGGER.info("%s: Fade complete (turned off)", entity_id)
 
 
 def _calculate_fade_steps(
@@ -588,8 +592,8 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
     # During fade: if we get here, state didn't match expected - manual intervention
     if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_BRIGHTNESS:
         # Manual intervention detected
-        _LOGGER.debug(
-            "(%s) -> Manual intervention during fade: got=%s/%s",
+        _LOGGER.info(
+            "%s: Manual intervention detected (state=%s, brightness=%s)",
             entity_id,
             new_state.state,
             new_state.attributes.get(ATTR_BRIGHTNESS),
@@ -678,7 +682,7 @@ def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> 
     """Handle OFF -> ON transition by restoring original brightness."""
     if DOMAIN not in hass.data:
         return
-    _LOGGER.debug("(%s) -> Light turned OFF->ON", entity_id)
+    _LOGGER.info("%s: Light turned on", entity_id)
 
     # Non-dimmable lights can't have brightness restored
     if ColorMode.BRIGHTNESS not in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
@@ -695,7 +699,7 @@ def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> 
     )
 
     if orig_brightness > 0 and current_brightness != orig_brightness:
-        _LOGGER.debug("(%s) -> Restoring to brightness %s", entity_id, orig_brightness)
+        _LOGGER.info("%s: Restoring to brightness %s", entity_id, orig_brightness)
         hass.async_create_task(_restore_original_brightness(hass, entity_id, orig_brightness))
 
 
@@ -766,7 +770,7 @@ async def _restore_intended_state(
 
     # Restore if current differs from intended
     if intended == 0 and current != 0:
-        _LOGGER.debug("(%s) -> turning light off as intended", entity_id)
+        _LOGGER.info("%s: Restoring to off as intended", entity_id)
         _add_expected_brightness(entity_id, 0)
         await hass.services.async_call(
             LIGHT_DOMAIN,
@@ -776,7 +780,7 @@ async def _restore_intended_state(
         )
         await _wait_until_stale_events_flushed(entity_id)
     elif intended > 0 and current != intended:
-        _LOGGER.debug("(%s) -> setting light brightness (%s) as intended", entity_id, intended)
+        _LOGGER.info("%s: Restoring to brightness %s as intended", entity_id, intended)
         _add_expected_brightness(entity_id, intended)
         await hass.services.async_call(
             LIGHT_DOMAIN,
