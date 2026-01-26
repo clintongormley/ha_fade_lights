@@ -192,39 +192,8 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 
 
 # =============================================================================
-# Service and Event Handlers
+# State Change Handlers
 # =============================================================================
-
-
-async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Handle the fade_lights service call."""
-    domain_data = hass.data.get(DOMAIN, {})
-    default_brightness = domain_data.get("default_brightness", DEFAULT_BRIGHTNESS_PCT)
-    default_transition = domain_data.get("default_transition", DEFAULT_TRANSITION)
-    min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
-
-    brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
-    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
-
-    expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
-    if not expanded_entities:
-        return
-
-    tasks = [
-        asyncio.create_task(
-            _fade_light(
-                hass,
-                entity_id,
-                brightness_pct,
-                transition_ms,
-                min_step_delay_ms,
-            )
-        )
-        for entity_id in expanded_entities
-    ]
-
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @callback
@@ -605,6 +574,37 @@ async def _save_storage(hass: HomeAssistant) -> None:
 # =============================================================================
 # State Change Helpers
 # =============================================================================
+
+
+async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the fade_lights service call."""
+    domain_data = hass.data.get(DOMAIN, {})
+    default_brightness = domain_data.get("default_brightness", DEFAULT_BRIGHTNESS_PCT)
+    default_transition = domain_data.get("default_transition", DEFAULT_TRANSITION)
+    min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
+
+    brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
+    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
+
+    expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
+    if not expanded_entities:
+        return
+
+    tasks = [
+        asyncio.create_task(
+            _fade_light(
+                hass,
+                entity_id,
+                brightness_pct,
+                transition_ms,
+                min_step_delay_ms,
+            )
+        )
+        for entity_id in expanded_entities
+    ]
+
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # --- Event Filtering ---
