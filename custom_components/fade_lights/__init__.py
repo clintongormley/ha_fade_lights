@@ -81,6 +81,7 @@ class ExpectedState:
 
     def get_condition(self) -> asyncio.Condition:
         """Get or create the condition for waiting."""
+        self._prune()
         if self._condition is None:
             self._condition = asyncio.Condition()
         return self._condition
@@ -128,7 +129,7 @@ class ExpectedState:
 
         return matched_value
 
-    def prune(self, threshold: float = 5.0) -> None:
+    def _prune(self, threshold: float = 5.0) -> None:
         """Remove values older than threshold seconds."""
         now = time.monotonic()
         stale_keys = [
@@ -933,17 +934,6 @@ async def _wait_until_stale_events_flushed(
             entity_id,
             list(expected_state.values.keys()),
         )
-
-
-def _prune_expected_brightness(entity_id: str) -> None:
-    """Remove stale expected values when starting a new fade."""
-    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
-    if not expected_state:
-        return
-
-    expected_state.prune()
-    if expected_state.is_empty:
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
 
 
 # =============================================================================
