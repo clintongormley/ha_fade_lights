@@ -43,8 +43,6 @@ from .const import (
     DEFAULT_TRANSITION,
     DOMAIN,
     FADE_CANCEL_TIMEOUT_S,
-    OPTION_DEFAULT_BRIGHTNESS_PCT,
-    OPTION_DEFAULT_TRANSITION,
     OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
     STALE_THRESHOLD,
@@ -204,10 +202,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "store": store,
         "data": storage_data,
-        "default_brightness": entry.options.get(
-            OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT
-        ),
-        "default_transition": entry.options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION),
+        "default_brightness": DEFAULT_BRIGHTNESS_PCT,
+        "default_transition": DEFAULT_TRANSITION,
         "min_step_delay_ms": entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS),
     }
 

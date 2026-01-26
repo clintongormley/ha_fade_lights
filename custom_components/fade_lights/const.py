@@ -17,8 +17,6 @@ KEY_ORIG_BRIGHTNESS = "orig"
 KEY_CURR_BRIGHTNESS = "curr"
 
 # Option keys
-OPTION_DEFAULT_BRIGHTNESS_PCT = "default_brightness_pct"
-OPTION_DEFAULT_TRANSITION = "default_transition"
 OPTION_MIN_STEP_DELAY_MS = "min_step_delay_ms"
 
 # Defaults (used when options are not set)
