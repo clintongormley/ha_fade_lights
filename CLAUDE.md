@@ -2,7 +2,7 @@
 
 ## Git Workflow
 
-- All changes should be made via a PR (do not push directly to main)
+- All changes should be made via a PR (do not push directly to main), and never merge a PR without asking
 - Do NOT merge PRs automatically - wait for user approval before merging
 - When merging a PR (after approval), delete the branch that the PR was on
 
@@ -14,3 +14,4 @@
 ## Shortcuts
 
 - `cp to ha` - Copy the integration to `/workspaces/homeassistant-core/config/custom_components/fade_lights/` for testing
+- `pr and merge` - Commit any changes in separate commits if that makes sense, create a pr, and merge the pr
