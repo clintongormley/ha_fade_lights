@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 
-import pytest
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_SUPPORTED_COLOR_MODES
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import STATE_OFF, STATE_ON
@@ -174,10 +174,8 @@ async def test_match_and_remove_expected_notifies_condition(
     assert notified.is_set()
 
     wait_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await wait_task
-    except asyncio.CancelledError:
-        pass
 
     # Clean up
     FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
