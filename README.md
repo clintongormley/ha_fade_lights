@@ -25,8 +25,9 @@ A Home Assistant custom integration that provides smooth light fading with autom
 When you fade a light down to off and then manually turn it back on, the integration automatically restores the light to its original brightness (before the fade started).
 
 **Example:**
+
 1. Light is at 80% brightness
-2. You fade it to 0% (off) over 30 minutes
+2. You fade it to 0% (off) over 5 seconds
 3. Later, you turn the light on manually
 4. Light automatically restores to 80%
 
@@ -66,11 +67,9 @@ Once configured, the `fade_lights.fade_lights` service will be available in **De
 
 To adjust the integration settings, go to **Settings** → **Devices & Services** → **Fade Lights** → **Configure**.
 
-| Option | Description | Default | Range |
-|--------|-------------|---------|-------|
-| **Default brightness** | Target brightness percentage when not specified in service call | 40% | 0-100 |
-| **Default transition** | Transition duration in seconds when not specified in service call. Accepts decimal values (e.g., `0.5` for 500ms). | 3 seconds | 0-3600 |
-| **Step delay** | Minimum delay between brightness steps in milliseconds. Lower values create smoother fades but increase system load. | 50ms | 50-1000 |
+| Option                          | Description                                                                                                          | Default | Range   |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
+| **Minimum delay between steps** | Minimum delay between brightness steps in milliseconds. Lower values create smoother fades but increase system load. | 100ms   | 50-1000 |
 
 ## Usage
 
@@ -145,35 +144,33 @@ automation:
 ### Brightness Tracking
 
 The integration maintains two brightness values for each light:
-- **Original brightness**: The user's intended brightness level
+
+- **Original brightness**: The brightness level before the fade started or before the light was turned off
 - **Current brightness**: The brightness being set during fade operations
 
 When you fade a light to off, the original brightness is preserved. When the light is manually turned on again, it's automatically restored to that original brightness.
 
 ### Manual Change Detection
 
-The integration detects manual changes by comparing actual brightness to expected brightness during fades. If the brightness differs by more than ±3 (tolerance for device rounding), the change is treated as manual intervention and the fade is cancelled.
+The integration detects manual changes by comparing state (off vs on) and actual brightness to expected brightness during fades. If the brightness differs by more than ±3 (tolerance for device rounding), the change is treated as manual intervention and the fade is cancelled.
 
 When a fade is cancelled due to manual intervention, the integration stores the user's intended state. If a late-arriving fade service call reverts the user's change, the integration automatically restores the user's intended state.
 
 #### Behavior During Fades
 
-| Action | Result |
-|--------|--------|
-| **Turn off via app** | Fade cancelled, light turns off, original brightness preserved |
-| **Turn off via physical switch** | Fade cancelled, light turns off, original brightness preserved |
-| **Change brightness via app** | Fade cancelled, original brightness preserved |
-| **Change brightness via physical switch** | Fade cancelled, original brightness preserved |
+| Action                | Result                                                                     |
+| --------------------- | -------------------------------------------------------------------------- |
+| **Turn off**          | Fade cancelled, light turns off, original brightness before fade preserved |
+| **Change brightness** | Fade cancelled, original brightness updated to new brightness              |
 
-#### Behavior When Light Is Off (After a Fade)
+#### Behavior When Light Is Off
 
-| Action | Result |
-|--------|--------|
-| **Turn on via app (toggle only)** | Brightness restored to original |
-| **Turn on via physical switch** | Brightness restored to original |
-| **Turn on via app with specific brightness** | Brightness restored to original* |
+| Action                             | Result                            |
+| ---------------------------------- | --------------------------------- |
+| **Turn on**                        | Brightness restored to original   |
+| **Turn on and set new brightness** | Brightness restored to original\* |
 
-*\*Limitation: When turning on a light and simultaneously setting a brightness (via app or some smart switches), the integration cannot distinguish this from a simple turn-on. The original brightness will be restored, overriding the requested brightness.*
+_\*Limitation: When turning on a light and simultaneously setting a brightness (via app or some smart switches), the integration cannot distinguish this from a simple turn-on. The original brightness will be restored, overriding the requested brightness._
 
 #### Behavior When Light Is On (No Active Fade)
 
@@ -185,18 +182,70 @@ Lights that do not support brightness will turn off when brightness is set to 0,
 
 ## Troubleshooting
 
-### Enable Debug Logging
+### Logging Levels
+
+The integration provides two levels of logging:
+
+| Level | What it shows |
+|-------|---------------|
+| **INFO** | High-level overview: fade start/complete, manual intervention detected, brightness restoration |
+| **DEBUG** | Low-level details: every brightness step, expected state tracking, task cancellation internals |
+
+For most troubleshooting, **INFO** level is sufficient and easier to follow.
+
+### Enable Logging via UI
 
 1. Go to **Settings** > **Devices & Services** > **Fade Lights**
 2. Click **Enable debug logging**
 3. Reproduce the issue
 4. Click **Disable debug logging** to download the log file
 
-Alternatively, go to **Settings** > **System** > **Logs**, click the three-dot menu, and select **Load full logs** to see detailed output.
+This enables DEBUG level logging temporarily.
+
+### Enable Logging via configuration.yaml
+
+Add to your `configuration.yaml`:
+
+```yaml
+# INFO level - recommended for general troubleshooting
+logger:
+  logs:
+    custom_components.fade_lights: info
+```
+
+```yaml
+# DEBUG level - for detailed investigation
+logger:
+  logs:
+    custom_components.fade_lights: debug
+```
+
+After editing, restart Home Assistant or call the `logger.set_level` action.
+
+### Enable Logging via Action Call
+
+You can also enable logging temporarily via **Developer Tools** > **Actions**:
+
+```yaml
+action: logger.set_level
+data:
+  custom_components.fade_lights: info
+```
+
+Or for debug level:
+
+```yaml
+action: logger.set_level
+data:
+  custom_components.fade_lights: debug
+```
+
+To view logs, go to **Settings** > **System** > **Logs**, click the three-dot menu, and select **Load full logs**.
 
 ### Reporting Issues
 
 If you encounter a bug, please [open an issue](https://github.com/clintongormley/ha_fade_lights/issues/new/choose) with:
+
 - Your Home Assistant version
 - The integration version
 - Debug logs showing the problem
@@ -206,7 +255,7 @@ If you encounter a bug, please [open an issue](https://github.com/clintongormley
 
 ### Running Tests
 
-The integration includes a comprehensive test suite with 70 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
+The integration includes a comprehensive test suite with 85 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
 
 #### Prerequisites
 
@@ -240,7 +289,7 @@ pytest tests/test_fade_execution.py -v
 
 #### Test Coverage
 
-The test suite targets 90%+ code coverage and includes tests for:
+The test suite achieves 100% code coverage and includes tests for:
 
 - **Config flow** (`test_config_flow.py`): User setup, import flow, options validation
 - **Integration setup** (`test_init.py`): Service registration, storage loading, unload cleanup
@@ -248,6 +297,7 @@ The test suite targets 90%+ code coverage and includes tests for:
 - **Fade execution** (`test_fade_execution.py`): Fade up/down, turn off at 0%, non-dimmable lights
 - **Manual interruption** (`test_manual_interruption.py`): Brightness change detection, fade cancellation
 - **Brightness restoration** (`test_brightness_restoration.py`): Restore on turn-on, storage persistence
+- **Event waiting** (`test_event_waiting.py`): Condition-based event waiting, stale value pruning
 
 ### Continuous Integration
 
