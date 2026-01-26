@@ -6,6 +6,8 @@ import asyncio
 import logging
 import math
 import time
+from dataclasses import dataclass, field
+from typing import ClassVar
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -36,13 +38,11 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
-    BRIGHTNESS_TOLERANCE,
     DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
     FADE_CANCEL_TIMEOUT_S,
-    FADE_CLEANUP_DELAY_S,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
     OPTION_MIN_STEP_DELAY_MS,
@@ -68,24 +68,113 @@ ACTIVE_FADES: dict[str, asyncio.Task] = {}
 # check for cancellation at safe points (between service calls, not mid-call).
 FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 
-# Maps entity_id -> set of recent expected brightness values during an active fade.
-# This is critical for detecting physical switch changes: when a state change
-# event arrives, we compare actual brightness to expected. If they differ by
-# more than ±3 (tolerance for device rounding), we treat it as manual intervention
-# even if the event has our context ID (which can happen with some integrations).
-#
-# We track a SET of recent values because state change events arrive asynchronously
-# and may be delayed. By the time an event arrives, the fade may have already moved
-# to a new brightness level. We need to accept any of the recent expected values.
-FADE_EXPECTED_BRIGHTNESS: dict[str, set[int]] = {}
+
+@dataclass
+class ExpectedState:
+    """Track expected brightness values and provide synchronization for waiting."""
+
+    STALE_THRESHOLD: ClassVar[float] = 5.0  # seconds before a value is considered stale
+    BRIGHTNESS_TOLERANCE: ClassVar[int] = 3  # tolerance for brightness matching
+
+    values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
+    _condition: asyncio.Condition | None = field(default=None, repr=False)
+
+    def add(self, brightness: int) -> None:
+        """Add an expected brightness value with current timestamp."""
+        self.values[brightness] = time.monotonic()
+        _LOGGER.debug("ExpectedState.add(%s) -> values=%s", brightness, list(self.values.keys()))
+
+    def get_condition(self) -> asyncio.Condition:
+        """Get or create the condition for waiting, pruning stale values first."""
+        _LOGGER.debug("ExpectedState.get_condition() values=%s", list(self.values.keys()))
+
+        # Prune stale values
+        now = time.monotonic()
+        stale_keys = [
+            brightness
+            for brightness, timestamp in self.values.items()
+            if now - timestamp > self.STALE_THRESHOLD
+        ]
+        if stale_keys:
+            _LOGGER.debug("ExpectedState.get_condition() removing stale keys: %s", stale_keys)
+        for key in stale_keys:
+            del self.values[key]
+
+        _LOGGER.debug("ExpectedState.get_condition() after prune=%s", list(self.values.keys()))
+
+        if self._condition is None:
+            self._condition = asyncio.Condition()
+
+        # Notify if all values were pruned
+        if not self.values:
+            _LOGGER.debug("ExpectedState.get_condition -> values empty, notifying condition")
+            asyncio.get_event_loop().call_soon(
+                lambda c=self._condition: asyncio.create_task(self._notify(c))
+            )
+
+        return self._condition
+
+    def match_and_remove(self, brightness: int) -> int | None:
+        """Match brightness against expected values, remove if found, notify if empty.
+
+        Args:
+            brightness: The brightness value to match (0 for off)
+
+        Returns:
+            The matched brightness value, or None if no match.
+        """
+        _LOGGER.debug(
+            "ExpectedState.match_and_remove(%s) values=%s", brightness, list(self.values.keys()),
+        )
+        matched_value: int | None = None
+
+        if brightness == 0:
+            if 0 in self.values:
+                matched_value = 0
+        else:
+            for expected in self.values:
+                if abs(brightness - expected) <= self.BRIGHTNESS_TOLERANCE:
+                    matched_value = expected
+                    break
+
+        if matched_value is None:
+            _LOGGER.debug("ExpectedState.match_and_remove(%s) -> no match found", brightness)
+            return None
+
+        # Remove matched value
+        del self.values[matched_value]
+        _LOGGER.debug(
+            "ExpectedState.match_and_remove(%s) matched=%s now=%s",
+            brightness, matched_value, list(self.values.keys()),
+        )
+
+        # Notify condition if set is now empty
+        if not self.values and self._condition is not None:
+            _LOGGER.debug("ExpectedState.match_and_remove -> values empty, notifying condition")
+            # Schedule notification (can't await in callback context)
+            asyncio.get_event_loop().call_soon(
+                lambda c=self._condition: asyncio.create_task(self._notify(c))
+            )
+
+        return matched_value
+
+    @property
+    def is_empty(self) -> bool:
+        """Check if there are no expected values."""
+        return not self.values
+
+    @staticmethod
+    async def _notify(condition: asyncio.Condition) -> None:
+        """Notify all waiters on the condition."""
+        async with condition:
+            condition.notify_all()
+
+
+# Maps entity_id -> ExpectedState for tracking expected brightness during fades
+# and waiting for state change events after service calls.
+FADE_EXPECTED_BRIGHTNESS: dict[str, ExpectedState] = {}
 
 # Maps entity_id -> True when manual intervention was just detected.
-# Used to suppress stale state events from the cancelled fade. When a user
-# manually changes a light during a fade, delayed state events from previous
-# fade steps may still arrive. Without this flag, those events could trigger
-# unintended brightness restoration. Cleared after _cancel_and_wait_for_fade.
-FADE_INTERRUPTED: dict[str, bool] = {}
-
 # Maps entity_id -> asyncio.Condition to signal when fade cleanup completes.
 # Waiters use this instead of polling to know when a cancelled fade has finished.
 FADE_COMPLETE_CONDITIONS: dict[str, asyncio.Condition] = {}
@@ -159,17 +248,15 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
 
     entity_id = new_state.entity_id
 
-    if _is_stale_event(entity_id, new_state):
-        return
-
     _log_state_change(entity_id, new_state)
 
-    # During fade: check if this is our fade or manual intervention
-    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_BRIGHTNESS:
-        if _is_expected_fade_state(entity_id, new_state):
-            _LOGGER.debug("(%s) -> State matches expected during fade, ignoring", entity_id)
-            return
+    # Check if this is an expected state change (from our service calls)
+    if _match_and_remove_expected(entity_id, new_state):
+        _LOGGER.debug("(%s) -> State matches expected, removed from tracking", entity_id)
+        return
 
+    # During fade: if we get here, state didn't match expected - manual intervention
+    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_BRIGHTNESS:
         # Manual intervention detected
         _LOGGER.debug(
             "(%s) -> Manual intervention during fade: got=%s/%s",
@@ -177,8 +264,7 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
             new_state.state,
             new_state.attributes.get(ATTR_BRIGHTNESS),
         )
-        FADE_INTERRUPTED[entity_id] = True
-        hass.async_create_task(_restore_manual_state(hass, entity_id, old_state, new_state))
+        hass.async_create_task(_restore_intended_state(hass, entity_id, old_state, new_state))
         return
 
     # Normal state handling (no active fade)
@@ -250,7 +336,6 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     ACTIVE_FADES.clear()
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_BRIGHTNESS.clear()
-    FADE_INTERRUPTED.clear()
     FADE_COMPLETE_CONDITIONS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
@@ -307,7 +392,8 @@ async def _fade_light(
         # Clean up tracking state regardless of how the fade ended
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+        # Note: FADE_EXPECTED_BRIGHTNESS is NOT cleared here - values persist
+        # for event matching and are pruned when next fade starts
 
         # Notify any waiters that cleanup is complete
         condition = FADE_COMPLETE_CONDITIONS.pop(entity_id, None)
@@ -381,25 +467,6 @@ def _calculate_next_brightness(
     return new_level
 
 
-def _track_expected_brightness(entity_id: str, new_level: int, delta: int) -> None:
-    """Track expected brightness for manual intervention detection.
-
-    Maintains a set of the 2 most recent expected values. This allows
-    the state change handler to detect manual changes even when events
-    arrive delayed.
-    """
-    expected_set = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
-    if expected_set is None:
-        return
-    expected_set.add(new_level)
-    if len(expected_set) > 2:
-        # Remove oldest value (furthest from target based on direction)
-        if delta > 0:
-            expected_set.discard(min(expected_set))
-        else:
-            expected_set.discard(max(expected_set))
-
-
 async def _apply_brightness(hass: HomeAssistant, entity_id: str, level: int) -> None:
     """Apply a brightness level to a light.
 
@@ -431,23 +498,6 @@ async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None
     sleep_ms = max(0, delay_ms - elapsed_ms)
     if sleep_ms > 0:
         await asyncio.sleep(sleep_ms / 1000)
-
-
-async def _finalize_fade(
-    hass: HomeAssistant,
-    entity_id: str,
-    end_level: int,
-    cancel_event: asyncio.Event,
-) -> None:
-    """Store final brightness after successful fade completion.
-
-    Only stores if we faded to a non-zero brightness and weren't cancelled.
-    If we faded to 0 (off), we keep the previous orig_brightness so that
-    turning the light back on restores to where it was before.
-    """
-    if end_level > 0 and not cancel_event.is_set():
-        _store_orig_brightness(hass, entity_id, end_level)
-        await _save_storage(hass)
 
 
 # =============================================================================
@@ -486,8 +536,6 @@ async def _execute_fade(
     if existing_orig == 0 and start_level > 0:
         _store_orig_brightness(hass, entity_id, start_level)
 
-    # Initialize expected brightness tracking
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = {start_level}
     current_level = start_level
 
     # Calculate fade parameters
@@ -509,7 +557,7 @@ async def _execute_fade(
         current_level = _calculate_next_brightness(
             current_level, end_level, delta, is_last_step=(i == num_steps - 1)
         )
-        _track_expected_brightness(entity_id, current_level, delta)
+        _add_expected_brightness(entity_id, current_level)
 
         await _apply_brightness(hass, entity_id, current_level)
 
@@ -518,7 +566,10 @@ async def _execute_fade(
 
         await _sleep_remaining_step_time(step_start, delay_ms)
 
-    await _finalize_fade(hass, entity_id, end_level, cancel_event)
+    # Store final brightness after successful fade completion
+    if end_level > 0 and not cancel_event.is_set():
+        _store_orig_brightness(hass, entity_id, end_level)
+        await _save_storage(hass)
 
 
 # =============================================================================
@@ -576,19 +627,6 @@ def _should_process_state_change(new_state: State | None) -> bool:
     return new_state.attributes.get(ATTR_ENTITY_ID) is None
 
 
-def _is_stale_event(entity_id: str, new_state: State) -> bool:
-    """Check if event should be suppressed during fade cleanup."""
-    if entity_id not in FADE_INTERRUPTED:
-        return False
-    _LOGGER.debug(
-        "(%s) -> Ignoring stale event during fade cleanup (%s/%s)",
-        entity_id,
-        new_state.state,
-        new_state.attributes.get(ATTR_BRIGHTNESS),
-    )
-    return True
-
-
 def _log_state_change(entity_id: str, new_state: State) -> None:
     """Log state change details."""
     _LOGGER.debug(
@@ -600,23 +638,36 @@ def _log_state_change(entity_id: str, new_state: State) -> None:
     )
 
 
-# --- Fade State Detection ---
+# --- Expected State Matching ---
 
 
-def _is_expected_fade_state(entity_id: str, new_state: State) -> bool:
-    """Check if state matches expected fade values (within tolerance)."""
-    expected_values = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
-    if expected_values is None:
+def _match_and_remove_expected(entity_id: str, new_state: State) -> bool:
+    """Check if state matches expected, remove if found, notify if empty.
+
+    Returns True if this was an expected state change (caller should ignore it).
+    """
+    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    if not expected_state or expected_state.is_empty:
         return False
-    new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
 
-    if new_state.state == STATE_OFF and 0 in expected_values:
+    # Normalize state to brightness: OFF -> 0, ON -> actual brightness
+    if new_state.state == STATE_OFF:
+        brightness = 0
+    else:
+        brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
+        if brightness is None:
+            return False
+
+    matched = expected_state.match_and_remove(brightness)
+
+    if matched is not None:
+        _LOGGER.debug(
+            "(%s) -> Matched expected brightness %s, remaining: %s",
+            entity_id,
+            matched,
+            list(expected_state.values.keys()),
+        )
         return True
-
-    if new_state.state == STATE_ON and new_brightness is not None:
-        for expected in expected_values:
-            if expected > 0 and abs(new_brightness - expected) <= BRIGHTNESS_TOLERANCE:
-                return True
 
     return False
 
@@ -641,6 +692,22 @@ def _is_brightness_change(old_state: State | None, new_state: State) -> bool:
 # --- State Transition Handlers ---
 
 
+async def _restore_original_brightness(
+    hass: HomeAssistant,
+    entity_id: str,
+    brightness: int,
+) -> None:
+    """Restore original brightness and wait for confirmation."""
+    _add_expected_brightness(entity_id, brightness)
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: brightness},
+        blocking=True,
+    )
+    await _wait_until_stale_events_flushed(entity_id)
+
+
 def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> None:
     """Handle OFF -> ON transition by restoring original brightness."""
     if DOMAIN not in hass.data:
@@ -663,14 +730,7 @@ def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> 
 
     if orig_brightness > 0 and current_brightness != orig_brightness:
         _LOGGER.debug("(%s) -> Restoring to brightness %s", entity_id, orig_brightness)
-        hass.async_create_task(
-            hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
-                {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: orig_brightness},
-                blocking=True,
-            )
-        )
+        hass.async_create_task(_restore_original_brightness(hass, entity_id, orig_brightness))
 
 
 # --- Fade Cancellation ---
@@ -713,11 +773,9 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
                 )
                 _LOGGER.debug("  -> Task cleanup complete")
             except TimeoutError:
-                _LOGGER.debug(
-                    "(%s) -> Timed out waiting for fade task cleanup", entity_id
-                )
+                _LOGGER.debug("(%s) -> Timed out waiting for fade task cleanup", entity_id)
 
-    await asyncio.sleep(FADE_CLEANUP_DELAY_S)
+    await _wait_until_stale_events_flushed(entity_id)
 
 
 def _get_intended_brightness(
@@ -750,7 +808,7 @@ def _get_intended_brightness(
     return new_brightness
 
 
-async def _restore_manual_state(
+async def _restore_intended_state(
     hass: HomeAssistant,
     entity_id: str,
     old_state,
@@ -769,15 +827,13 @@ async def _restore_manual_state(
     - >0 means ON at that brightness
     """
     if DOMAIN not in hass.data:
-        _clear_fade_interrupted(entity_id)
         return
-    _LOGGER.debug("(%s) -> in _restore_manual_state", entity_id)
+    _LOGGER.debug("(%s) -> in _restore_intended_state", entity_id)
     await _cancel_and_wait_for_fade(entity_id)
 
     intended = _get_intended_brightness(hass, entity_id, old_state, new_state)
     _LOGGER.debug("(%s) -> got intended brightness (%s)", entity_id, intended)
     if intended is None:
-        _clear_fade_interrupted(entity_id)
         return
 
     # Store as new original brightness (for future OFF->ON restore)
@@ -789,7 +845,6 @@ async def _restore_manual_state(
     current_state = hass.states.get(entity_id)
     if not current_state:
         _LOGGER.debug("(%s) -> no current state found, exiting", entity_id)
-        _clear_fade_interrupted(entity_id)
         return
 
     current = current_state.attributes.get(ATTR_BRIGHTNESS) or 0
@@ -800,30 +855,55 @@ async def _restore_manual_state(
     # Restore if current differs from intended
     if intended == 0 and current != 0:
         _LOGGER.debug("(%s) -> turning light off as intended", entity_id)
+        _add_expected_brightness(entity_id, 0)
         await hass.services.async_call(
             LIGHT_DOMAIN,
             SERVICE_TURN_OFF,
             {ATTR_ENTITY_ID: entity_id},
             blocking=True,
         )
-        await asyncio.sleep(FADE_CLEANUP_DELAY_S)
+        await _wait_until_stale_events_flushed(entity_id)
     elif intended > 0 and current != intended:
         _LOGGER.debug("(%s) -> setting light brightness (%s) as intended", entity_id, intended)
+        _add_expected_brightness(entity_id, intended)
         await hass.services.async_call(
             LIGHT_DOMAIN,
             SERVICE_TURN_ON,
             {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: intended},
             blocking=True,
         )
-        await asyncio.sleep(FADE_CLEANUP_DELAY_S)
-
-    _clear_fade_interrupted(entity_id)
+        await _wait_until_stale_events_flushed(entity_id)
 
 
-def _clear_fade_interrupted(entity_id: str) -> None:
-    """Clear the interrupted flag after fade cleanup is complete."""
-    _LOGGER.debug("(%s) -> Clearing FADE_INTERRUPTED", entity_id)
-    FADE_INTERRUPTED.pop(entity_id, None)
+def _add_expected_brightness(entity_id: str, brightness: int) -> None:
+    """Register an expected brightness value before making a service call."""
+    if entity_id not in FADE_EXPECTED_BRIGHTNESS:
+        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState()
+    FADE_EXPECTED_BRIGHTNESS[entity_id].add(brightness)
+
+
+async def _wait_until_stale_events_flushed(
+    entity_id: str,
+    timeout: float = 5.0,
+) -> None:
+    """Wait until all expected brightness values have been confirmed via state changes."""
+    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    if not expected_state or expected_state.is_empty:
+        return
+
+    condition = expected_state.get_condition()
+    try:
+        async with condition:
+            await asyncio.wait_for(
+                condition.wait_for(lambda: expected_state.is_empty),
+                timeout=timeout,
+            )
+    except TimeoutError:
+        _LOGGER.warning(
+            "(%s) Timed out waiting for state events to flush (remaining: %s)",
+            entity_id,
+            list(expected_state.values.keys()),
+        )
 
 
 # =============================================================================
