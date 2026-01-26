@@ -7,6 +7,7 @@ import logging
 import math
 import time
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -72,6 +73,8 @@ FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 class ExpectedState:
     """Track expected brightness values and provide synchronization for waiting."""
 
+    STALE_THRESHOLD: ClassVar[float] = 5.0  # seconds before a value is considered stale
+
     values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
     _condition: asyncio.Condition | None = field(default=None, repr=False)
 
@@ -129,13 +132,13 @@ class ExpectedState:
 
         return matched_value
 
-    def _prune(self, threshold: float = 5.0) -> None:
-        """Remove values older than threshold seconds."""
+    def _prune(self) -> None:
+        """Remove values older than stale_threshold seconds."""
         now = time.monotonic()
         stale_keys = [
             brightness
             for brightness, timestamp in self.values.items()
-            if now - timestamp > threshold
+            if now - timestamp > self.STALE_THRESHOLD
         ]
         for key in stale_keys:
             del self.values[key]
