@@ -73,7 +73,82 @@ class ExpectedState:
     """Track expected brightness values and provide synchronization for waiting."""
 
     values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
-    condition: asyncio.Condition | None = None
+    _condition: asyncio.Condition | None = field(default=None, repr=False)
+
+    def add(self, brightness: int) -> None:
+        """Add an expected brightness value with current timestamp."""
+        self.values[brightness] = time.monotonic()
+
+    def get_condition(self) -> asyncio.Condition:
+        """Get or create the condition for waiting."""
+        if self._condition is None:
+            self._condition = asyncio.Condition()
+        return self._condition
+
+    def match_and_remove(
+        self,
+        state: str,
+        brightness: int | None,
+        tolerance: int,
+    ) -> int | None:
+        """Match state against expected values, remove if found, notify if empty.
+
+        Args:
+            state: The light state (STATE_ON or STATE_OFF)
+            brightness: The brightness value from the state (None if off)
+            tolerance: Brightness tolerance for matching
+
+        Returns:
+            The matched brightness value, or None if no match.
+        """
+        matched_value: int | None = None
+
+        # Check for OFF match
+        if state == STATE_OFF and 0 in self.values:
+            matched_value = 0
+        # Check for brightness match with tolerance
+        elif state == STATE_ON and brightness is not None:
+            for expected in self.values:
+                if expected > 0 and abs(brightness - expected) <= tolerance:
+                    matched_value = expected
+                    break
+
+        if matched_value is None:
+            return None
+
+        # Remove matched value
+        del self.values[matched_value]
+
+        # Notify condition if set is now empty
+        if not self.values and self._condition is not None:
+            # Schedule notification (can't await in callback context)
+            asyncio.get_event_loop().call_soon(
+                lambda c=self._condition: asyncio.create_task(self._notify(c))
+            )
+
+        return matched_value
+
+    def prune(self, threshold: float = 5.0) -> None:
+        """Remove values older than threshold seconds."""
+        now = time.monotonic()
+        stale_keys = [
+            brightness
+            for brightness, timestamp in self.values.items()
+            if now - timestamp > threshold
+        ]
+        for key in stale_keys:
+            del self.values[key]
+
+    @property
+    def is_empty(self) -> bool:
+        """Check if there are no expected values."""
+        return not self.values
+
+    @staticmethod
+    async def _notify(condition: asyncio.Condition) -> None:
+        """Notify all waiters on the condition."""
+        async with condition:
+            condition.notify_all()
 
 
 # Maps entity_id -> ExpectedState for tracking expected brightness during fades
@@ -605,42 +680,24 @@ def _match_and_remove_expected(entity_id: str, new_state: State) -> bool:
     Returns True if this was an expected state change (caller should ignore it).
     """
     expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
-    if not expected_state or not expected_state.values:
+    if not expected_state or expected_state.is_empty:
         return False
 
     new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
-    matched_value: int | None = None
-
-    # Check for OFF match
-    if new_state.state == STATE_OFF and 0 in expected_state.values:
-        matched_value = 0
-    # Check for brightness match with tolerance
-    elif new_state.state == STATE_ON and new_brightness is not None:
-        for expected in expected_state.values:
-            if expected > 0 and abs(new_brightness - expected) <= BRIGHTNESS_TOLERANCE:
-                matched_value = expected
-                break
-
-    if matched_value is None:
-        return False
-
-    # Remove matched value
-    del expected_state.values[matched_value]
-    _LOGGER.debug(
-        "(%s) -> Matched expected brightness %s, remaining: %s",
-        entity_id,
-        matched_value,
-        list(expected_state.values.keys()),
+    matched = expected_state.match_and_remove(
+        new_state.state, new_brightness, BRIGHTNESS_TOLERANCE
     )
 
-    # Notify condition if set is now empty
-    if not expected_state.values and expected_state.condition is not None:
-        # Schedule notification (can't await in callback)
-        asyncio.get_event_loop().call_soon(
-            lambda c=expected_state.condition: asyncio.create_task(_notify_condition(c))
+    if matched is not None:
+        _LOGGER.debug(
+            "(%s) -> Matched expected brightness %s, remaining: %s",
+            entity_id,
+            matched,
+            list(expected_state.values.keys()),
         )
+        return True
 
-    return True
+    return False
 
 
 # --- State Transition Predicates ---
@@ -860,43 +917,26 @@ def _clear_fade_interrupted(entity_id: str) -> None:
 
 
 def _add_expected_brightness(entity_id: str, brightness: int) -> None:
-    """Register an expected brightness value before making a service call.
-
-    Args:
-        entity_id: The light entity
-        brightness: Expected brightness (0 = OFF, >0 = ON at that level)
-    """
+    """Register an expected brightness value before making a service call."""
     if entity_id not in FADE_EXPECTED_BRIGHTNESS:
         FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState()
-
-    FADE_EXPECTED_BRIGHTNESS[entity_id].values[brightness] = time.monotonic()
-
-
-async def _notify_condition(condition: asyncio.Condition) -> None:
-    """Notify a condition that expected values have been cleared."""
-    async with condition:
-        condition.notify_all()
+    FADE_EXPECTED_BRIGHTNESS[entity_id].add(brightness)
 
 
 async def _wait_until_stale_events_flushed(
     entity_id: str,
     timeout: float = 5.0,
 ) -> None:
-    """Wait until all expected brightness values have been confirmed via state changes.
-
-    Creates condition lazily if needed. Logs warning if timeout reached.
-    """
+    """Wait until all expected brightness values have been confirmed via state changes."""
     expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
-    if not expected_state or not expected_state.values:
-        return  # Nothing to wait for
+    if not expected_state or expected_state.is_empty:
+        return
 
-    if expected_state.condition is None:
-        expected_state.condition = asyncio.Condition()
-
+    condition = expected_state.get_condition()
     try:
-        async with expected_state.condition:
+        async with condition:
             await asyncio.wait_for(
-                expected_state.condition.wait_for(lambda: not expected_state.values),
+                condition.wait_for(lambda: expected_state.is_empty),
                 timeout=timeout,
             )
     except TimeoutError:
@@ -908,29 +948,13 @@ async def _wait_until_stale_events_flushed(
 
 
 def _prune_expected_brightness(entity_id: str) -> None:
-    """Remove stale expected values when starting a new fade.
-
-    Values older than 5 seconds are considered stale. Clears the entire
-    entry if no values remain.
-    """
+    """Remove stale expected values when starting a new fade."""
     expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
     if not expected_state:
         return
 
-    now = time.monotonic()
-    stale_threshold = 5.0
-
-    # Remove values older than threshold
-    stale_keys = [
-        brightness
-        for brightness, timestamp in expected_state.values.items()
-        if now - timestamp > stale_threshold
-    ]
-    for key in stale_keys:
-        del expected_state.values[key]
-
-    # Clean up entire entry if empty
-    if not expected_state.values:
+    expected_state.prune()
+    if expected_state.is_empty:
         FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
 
 

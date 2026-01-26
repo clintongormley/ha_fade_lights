@@ -36,7 +36,7 @@ async def test_add_expected_brightness_creates_entry(
 
     assert entity_id in FADE_EXPECTED_BRIGHTNESS
     assert 100 in FADE_EXPECTED_BRIGHTNESS[entity_id].values
-    assert FADE_EXPECTED_BRIGHTNESS[entity_id].condition is None
+    assert FADE_EXPECTED_BRIGHTNESS[entity_id]._condition is None
 
     # Clean up
     FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
@@ -153,11 +153,9 @@ async def test_match_and_remove_expected_notifies_condition(
         {ATTR_BRIGHTNESS: 100, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    condition = asyncio.Condition()
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        values={100: time.monotonic()},
-        condition=condition,
-    )
+    expected_state = ExpectedState(values={100: time.monotonic()})
+    condition = expected_state.get_condition()  # Create condition via method
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = expected_state
 
     notified = asyncio.Event()
 
@@ -268,15 +266,13 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
     """Test _wait_until_stale_events_flushed returns early when condition is notified."""
     entity_id = "light.test_early_return"
 
-    condition = asyncio.Condition()
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        values={100: time.monotonic()},
-        condition=condition,
-    )
+    expected_state = ExpectedState(values={100: time.monotonic()})
+    condition = expected_state.get_condition()  # Create condition via method
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = expected_state
 
     async def clear_and_notify() -> None:
         await asyncio.sleep(0.1)
-        FADE_EXPECTED_BRIGHTNESS[entity_id].values.clear()
+        expected_state.values.clear()
         async with condition:
             condition.notify_all()
 
