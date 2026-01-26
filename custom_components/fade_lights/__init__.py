@@ -489,23 +489,6 @@ async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None
         await asyncio.sleep(sleep_ms / 1000)
 
 
-async def _finalize_fade(
-    hass: HomeAssistant,
-    entity_id: str,
-    end_level: int,
-    cancel_event: asyncio.Event,
-) -> None:
-    """Store final brightness after successful fade completion.
-
-    Only stores if we faded to a non-zero brightness and weren't cancelled.
-    If we faded to 0 (off), we keep the previous orig_brightness so that
-    turning the light back on restores to where it was before.
-    """
-    if end_level > 0 and not cancel_event.is_set():
-        _store_orig_brightness(hass, entity_id, end_level)
-        await _save_storage(hass)
-
-
 # =============================================================================
 # Fade Loop
 # =============================================================================
@@ -574,7 +557,10 @@ async def _execute_fade(
 
         await _sleep_remaining_step_time(step_start, delay_ms)
 
-    await _finalize_fade(hass, entity_id, end_level, cancel_event)
+    # Store final brightness after successful fade completion
+    if end_level > 0 and not cancel_event.is_set():
+        _store_orig_brightness(hass, entity_id, end_level)
+        await _save_storage(hass)
 
 
 # =============================================================================
