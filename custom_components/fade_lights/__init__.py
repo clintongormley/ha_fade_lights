@@ -545,11 +545,8 @@ async def _execute_fade(
     if existing_orig == 0 and start_level > 0:
         _store_orig_brightness(hass, entity_id, start_level)
 
-    # Prune any stale expected values from previous operations
-    _prune_expected_brightness(entity_id)
-
     # Initialize expected brightness tracking
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(values={start_level: time.monotonic()})
+    _add_expected_brightness(entity_id, start_level)
     current_level = start_level
 
     # Calculate fade parameters
