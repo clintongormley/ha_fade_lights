@@ -61,15 +61,13 @@ class TestExecuteFadeWithColors:
             hs_color=(120.0, 80.0),  # Target green
         )
 
-        with patch(
-            "custom_components.fade_lights._save_storage", new_callable=AsyncMock
-        ):
+        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
                 params,
                 1000,  # transition_ms
-                100,   # min_step_delay_ms
+                100,  # min_step_delay_ms
                 cancel_event,
             )
 
@@ -93,15 +91,13 @@ class TestExecuteFadeWithColors:
             color_temp_mireds=400,  # Target warm white
         )
 
-        with patch(
-            "custom_components.fade_lights._save_storage", new_callable=AsyncMock
-        ):
+        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
                 params,
                 1000,  # transition_ms
-                100,   # min_step_delay_ms
+                100,  # min_step_delay_ms
                 cancel_event,
             )
 
@@ -126,15 +122,13 @@ class TestExecuteFadeWithColors:
             hs_color=(240.0, 100.0),  # Target blue
         )
 
-        with patch(
-            "custom_components.fade_lights._save_storage", new_callable=AsyncMock
-        ):
+        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
                 params,
                 1000,  # transition_ms
-                100,   # min_step_delay_ms
+                100,  # min_step_delay_ms
                 cancel_event,
             )
 
@@ -159,9 +153,7 @@ class TestExecuteFadeWithColors:
             brightness_pct=100,  # No color params
         )
 
-        with patch(
-            "custom_components.fade_lights._save_storage", new_callable=AsyncMock
-        ):
+        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
@@ -175,6 +167,8 @@ class TestExecuteFadeWithColors:
         assert len(calls) > 0
         # Should have brightness in calls
         has_brightness = any(
-            "brightness" in call[0][2] for call in calls if len(call[0]) > 2 and call[0][1] == "turn_on"
+            "brightness" in call[0][2]
+            for call in calls
+            if len(call[0]) > 2 and call[0][1] == "turn_on"
         )
         assert has_brightness

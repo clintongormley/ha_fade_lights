@@ -203,7 +203,8 @@ async def test_service_uses_default_brightness(
         # Verify _fade_light was called with default brightness
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        assert call_args[0][2].brightness_pct == DEFAULT_BRIGHTNESS_PCT  # fade_params.brightness_pct
+        # fade_params.brightness_pct
+        assert call_args[0][2].brightness_pct == DEFAULT_BRIGHTNESS_PCT
 
 
 async def test_service_uses_default_transition(
