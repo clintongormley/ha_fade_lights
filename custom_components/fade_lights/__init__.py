@@ -777,6 +777,31 @@ async def _apply_step(hass: HomeAssistant, entity_id: str, step: FadeStep) -> No
         )
 
 
+def _get_current_color_state(state: State) -> tuple[tuple[float, float] | None, int | None]:
+    """Extract current HS color and color temp from light state.
+
+    Args:
+        state: Home Assistant State object for a light entity
+
+    Returns:
+        Tuple of (hs_color, color_temp_mireds) - either or both may be None
+    """
+    hs_color = None
+    color_temp_mireds = None
+
+    # Get HS color (may be tuple or list)
+    hs_raw = state.attributes.get(HA_ATTR_HS_COLOR)
+    if hs_raw is not None:
+        hs_color = (float(hs_raw[0]), float(hs_raw[1]))
+
+    # Get color temp in mireds (stored as "color_temp" in state attributes)
+    mireds_raw = state.attributes.get("color_temp")
+    if mireds_raw is not None:
+        color_temp_mireds = int(mireds_raw)
+
+    return hs_color, color_temp_mireds
+
+
 async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None:
     """Sleep for the remaining time in a fade step.
 
