@@ -373,7 +373,7 @@ async def test_fade_unknown_entity_logs_warning(
         await hass.async_block_till_done()
 
     # Should have logged about the unknown light
-    assert "Unknown light 'light.nonexistent_light'" in caplog.text
+    assert "light.nonexistent_light: Unknown light" in caplog.text
 
     # No service calls should be made for the unknown entity
     assert len(service_calls) == 0
@@ -633,7 +633,7 @@ async def test_fade_entity_not_found_logs_warning(
             cancel_event,
         )
 
-    assert f"Entity {entity_id} not found" in caplog.text
+    assert f"{entity_id}: Entity not found" in caplog.text
     assert len(service_calls) == 0
 
 
