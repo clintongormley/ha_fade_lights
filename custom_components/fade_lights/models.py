@@ -25,3 +25,15 @@ class FadeParams:
     from_brightness_pct: int | None = None
     from_hs_color: tuple[float, float] | None = None
     from_color_temp_mireds: int | None = None
+
+
+@dataclass
+class FadeStep:
+    """A single step in a fade sequence.
+
+    All values are optional - only include attributes being faded.
+    """
+
+    brightness: int | None = None
+    hs_color: tuple[float, float] | None = None
+    color_temp_mireds: int | None = None
