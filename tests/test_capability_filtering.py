@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import logging
+
+import pytest
 from homeassistant.components.light import ATTR_SUPPORTED_COLOR_MODES
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights import _can_fade_color
+from custom_components.fade_lights.const import (
+    ATTR_BRIGHTNESS_PCT,
+    ATTR_COLOR_TEMP_KELVIN,
+    ATTR_HS_COLOR,
+    ATTR_TRANSITION,
+    DOMAIN,
+    SERVICE_FADE_LIGHTS,
+)
 from custom_components.fade_lights.models import FadeParams
 
 
@@ -121,3 +133,167 @@ class TestCanFadeColor:
         state = hass.states.get(entity_id)
         params = FadeParams(color_temp_mireds=250)
         assert _can_fade_color(state, params) is True
+
+
+class TestServiceHandlerFiltering:
+    """Test that the service handler skips incompatible lights."""
+
+    async def test_skips_brightness_only_light_for_hs_fade(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test that a brightness-only light is skipped for HS fade."""
+        entity_id = "light.brightness_only"
+        hass.states.async_set(
+            entity_id,
+            STATE_ON,
+            {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+        )
+
+        with caplog.at_level(logging.INFO):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_FADE_LIGHTS,
+                {
+                    "entity_id": entity_id,
+                    ATTR_HS_COLOR: [200, 80],
+                    ATTR_TRANSITION: 0.1,
+                },
+                blocking=True,
+            )
+
+        assert "Skipping" in caplog.text
+        assert entity_id in caplog.text
+
+    async def test_skips_brightness_only_light_for_color_temp_fade(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test that a brightness-only light is skipped for color temp fade."""
+        entity_id = "light.brightness_only_ct"
+        hass.states.async_set(
+            entity_id,
+            STATE_ON,
+            {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+        )
+
+        with caplog.at_level(logging.INFO):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_FADE_LIGHTS,
+                {
+                    "entity_id": entity_id,
+                    ATTR_COLOR_TEMP_KELVIN: 4000,
+                    ATTR_TRANSITION: 0.1,
+                },
+                blocking=True,
+            )
+
+        assert "Skipping" in caplog.text
+        assert entity_id in caplog.text
+
+    async def test_does_not_skip_capable_light(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test that a capable light is NOT skipped."""
+        entity_id = "light.rgb_capable"
+        hass.states.async_set(
+            entity_id,
+            STATE_ON,
+            {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.HS, ColorMode.COLOR_TEMP]},
+        )
+
+        with caplog.at_level(logging.INFO):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_FADE_LIGHTS,
+                {
+                    "entity_id": entity_id,
+                    ATTR_HS_COLOR: [200, 80],
+                    ATTR_TRANSITION: 0.1,
+                },
+                blocking=True,
+            )
+
+        assert "Skipping" not in caplog.text
+
+    async def test_group_skips_incompatible_members(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test group fade skips incompatible members, fades compatible ones."""
+        capable = "light.capable_member"
+        hass.states.async_set(
+            capable,
+            STATE_ON,
+            {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.HS]},
+        )
+
+        incapable = "light.incapable_member"
+        hass.states.async_set(
+            incapable,
+            STATE_ON,
+            {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+        )
+
+        group_id = "light.mixed_group"
+        hass.states.async_set(
+            group_id,
+            STATE_ON,
+            {
+                ATTR_SUPPORTED_COLOR_MODES: [ColorMode.HS],
+                "entity_id": [capable, incapable],
+            },
+        )
+
+        with caplog.at_level(logging.INFO):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_FADE_LIGHTS,
+                {
+                    "entity_id": group_id,
+                    ATTR_HS_COLOR: [200, 80],
+                    ATTR_TRANSITION: 0.1,
+                },
+                blocking=True,
+            )
+
+        assert "Skipping" in caplog.text
+        assert incapable in caplog.text
+
+    async def test_brightness_only_fade_not_skipped(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test brightness-only fade is NOT skipped even on brightness-only light."""
+        entity_id = "light.brightness_only_fade"
+        hass.states.async_set(
+            entity_id,
+            STATE_ON,
+            {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+        )
+
+        with caplog.at_level(logging.INFO):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_FADE_LIGHTS,
+                {
+                    "entity_id": entity_id,
+                    ATTR_BRIGHTNESS_PCT: 50,
+                    ATTR_TRANSITION: 0.1,
+                },
+                blocking=True,
+            )
+
+        assert "Skipping" not in caplog.text
