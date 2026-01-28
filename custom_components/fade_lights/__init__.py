@@ -58,6 +58,7 @@ from .const import (
     DOMAIN,
     FADE_CANCEL_TIMEOUT_S,
     OPTION_MIN_STEP_DELAY_MS,
+    PLANCKIAN_LOCUS_HS,
     PLANCKIAN_LOCUS_SATURATION_THRESHOLD,
     SERVICE_FADE_LIGHTS,
     STALE_THRESHOLD,
@@ -787,6 +788,41 @@ def _is_on_planckian_locus(hs_color: tuple[float, float]) -> bool:
     """
     _, saturation = hs_color
     return saturation <= PLANCKIAN_LOCUS_SATURATION_THRESHOLD
+
+
+def _hs_to_mireds(hs_color: tuple[float, float]) -> int:
+    """Convert an HS color to approximate mireds using Planckian locus lookup.
+
+    Finds the closest matching color temperature on the Planckian locus
+    based on hue matching. Used when transitioning from HS to color temp.
+
+    Args:
+        hs_color: Tuple of (hue 0-360, saturation 0-100)
+
+    Returns:
+        Approximate color temperature in mireds
+    """
+    hue, saturation = hs_color
+
+    # For very low saturation, return neutral white
+    if saturation < 3:
+        return 286  # ~3500K neutral white
+
+    # Find closest match in the lookup table based on hue
+    best_mireds = 286  # Default to neutral white
+    best_distance = float("inf")
+
+    for mireds, (locus_hue, _) in PLANCKIAN_LOCUS_HS:
+        # Calculate hue distance (circular)
+        distance = abs(hue - locus_hue)
+        if distance > 180:
+            distance = 360 - distance
+
+        if distance < best_distance:
+            best_distance = distance
+            best_mireds = mireds
+
+    return best_mireds
 
 
 def _build_fade_steps(
