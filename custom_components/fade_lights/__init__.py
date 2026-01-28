@@ -268,6 +268,72 @@ def _validate_color_params(data: dict) -> None:
             )
 
 
+def _validate_color_ranges(data: dict) -> None:
+    """Validate color parameter value ranges.
+
+    Raises:
+        ServiceValidationError: If values are out of valid ranges.
+    """
+    _validate_color_ranges_dict(data, "")
+
+    from_data = data.get(ATTR_FROM, {})
+    if from_data:
+        _validate_color_ranges_dict(from_data, "from: ")
+
+
+def _validate_color_ranges_dict(data: dict, prefix: str) -> None:
+    """Validate color ranges in a single dict."""
+    if ATTR_HS_COLOR in data:
+        hs = data[ATTR_HS_COLOR]
+        if not (0 <= hs[0] <= 360):
+            raise ServiceValidationError(
+                f"{prefix}Hue must be between 0 and 360, got {hs[0]}"
+            )
+        if not (0 <= hs[1] <= 100):
+            raise ServiceValidationError(
+                f"{prefix}Saturation must be between 0 and 100, got {hs[1]}"
+            )
+
+    if ATTR_RGB_COLOR in data:
+        rgb = data[ATTR_RGB_COLOR]
+        for i, val in enumerate(rgb[:3]):
+            if not (0 <= val <= 255):
+                raise ServiceValidationError(
+                    f"{prefix}RGB values must be between 0 and 255, got {val}"
+                )
+
+    if ATTR_RGBW_COLOR in data:
+        rgbw = data[ATTR_RGBW_COLOR]
+        for val in rgbw[:4]:
+            if not (0 <= val <= 255):
+                raise ServiceValidationError(
+                    f"{prefix}RGBW values must be between 0 and 255, got {val}"
+                )
+
+    if ATTR_RGBWW_COLOR in data:
+        rgbww = data[ATTR_RGBWW_COLOR]
+        for val in rgbww[:5]:
+            if not (0 <= val <= 255):
+                raise ServiceValidationError(
+                    f"{prefix}RGBWW values must be between 0 and 255, got {val}"
+                )
+
+    if ATTR_XY_COLOR in data:
+        xy = data[ATTR_XY_COLOR]
+        for val in xy[:2]:
+            if not (0 <= val <= 1):
+                raise ServiceValidationError(
+                    f"{prefix}XY values must be between 0 and 1, got {val}"
+                )
+
+    if ATTR_COLOR_TEMP_KELVIN in data:
+        kelvin = data[ATTR_COLOR_TEMP_KELVIN]
+        if not (1000 <= kelvin <= 40000):
+            raise ServiceValidationError(
+                f"{prefix}Color temp must be between 1000K and 40000K, got {kelvin}K"
+            )
+
+
 def _parse_color_params(data: dict) -> FadeParams:
     """Parse and convert color parameters to internal representation.
 
@@ -447,6 +513,7 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
 
     # Validate color parameters
     _validate_color_params(call.data)
+    _validate_color_ranges(call.data)
 
     brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
     transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
