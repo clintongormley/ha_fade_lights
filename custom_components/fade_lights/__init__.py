@@ -825,6 +825,40 @@ def _hs_to_mireds(hs_color: tuple[float, float]) -> int:
     return best_mireds
 
 
+def _mireds_to_hs(mireds: int) -> tuple[float, float]:
+    """Convert mireds to approximate HS using Planckian locus lookup.
+
+    Interpolates between lookup table entries to find the HS color
+    that corresponds to the given color temperature.
+
+    Args:
+        mireds: Color temperature in mireds
+
+    Returns:
+        Tuple of (hue 0-360, saturation 0-100)
+    """
+    # Handle values outside the lookup range
+    if mireds <= PLANCKIAN_LOCUS_HS[0][0]:
+        return PLANCKIAN_LOCUS_HS[0][1]
+    if mireds >= PLANCKIAN_LOCUS_HS[-1][0]:
+        return PLANCKIAN_LOCUS_HS[-1][1]
+
+    # Find the two bracketing entries
+    for i in range(len(PLANCKIAN_LOCUS_HS) - 1):
+        lower_mireds, lower_hs = PLANCKIAN_LOCUS_HS[i]
+        upper_mireds, upper_hs = PLANCKIAN_LOCUS_HS[i + 1]
+
+        if lower_mireds <= mireds <= upper_mireds:
+            # Interpolate between the two entries
+            t = (mireds - lower_mireds) / (upper_mireds - lower_mireds)
+            hue = lower_hs[0] + (upper_hs[0] - lower_hs[0]) * t
+            sat = lower_hs[1] + (upper_hs[1] - lower_hs[1]) * t
+            return (round(hue, 2), round(sat, 2))
+
+    # Fallback (should not reach here)
+    return (38.0, 12.0)  # Neutral white
+
+
 def _build_fade_steps(
     start_brightness: int | None,
     end_brightness: int | None,
