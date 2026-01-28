@@ -737,6 +737,46 @@ async def _apply_brightness(hass: HomeAssistant, entity_id: str, level: int) -> 
         )
 
 
+async def _apply_step(hass: HomeAssistant, entity_id: str, step: FadeStep) -> None:
+    """Apply a fade step to a light.
+
+    Handles brightness, hs_color, and color_temp_mireds in a single service call.
+    If brightness is 0, turns off the light. If step is empty, does nothing.
+    Color temp is converted from mireds to kelvin for the service call.
+    """
+    # Build service data based on what's in the step
+    service_data: dict = {ATTR_ENTITY_ID: entity_id}
+
+    if step.brightness is not None:
+        if step.brightness == 0:
+            # Turn off - no other attributes needed
+            await hass.services.async_call(
+                LIGHT_DOMAIN,
+                SERVICE_TURN_OFF,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+            )
+            return
+        service_data[ATTR_BRIGHTNESS] = step.brightness
+
+    if step.hs_color is not None:
+        service_data[HA_ATTR_HS_COLOR] = step.hs_color
+
+    if step.color_temp_mireds is not None:
+        # Convert mireds to kelvin for service call
+        kelvin = int(1_000_000 / step.color_temp_mireds)
+        service_data[HA_ATTR_COLOR_TEMP_KELVIN] = kelvin
+
+    # Only call service if there's something to set (beyond entity_id)
+    if len(service_data) > 1:
+        await hass.services.async_call(
+            LIGHT_DOMAIN,
+            SERVICE_TURN_ON,
+            service_data,
+            blocking=True,
+        )
+
+
 async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None:
     """Sleep for the remaining time in a fade step.
 
