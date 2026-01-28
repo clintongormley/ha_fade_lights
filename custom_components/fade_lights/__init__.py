@@ -501,18 +501,28 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     if not expanded_entities:
         return
 
-    tasks = [
-        asyncio.create_task(
-            _fade_light(
-                hass,
+    fade_params = _parse_color_params(call.data)
+
+    tasks = []
+    for entity_id in expanded_entities:
+        state = hass.states.get(entity_id)
+        if state and not _can_fade_color(state, fade_params):
+            _LOGGER.info(
+                "%s: Skipping - does not support requested color mode",
                 entity_id,
-                brightness_pct,
-                transition_ms,
-                min_step_delay_ms,
+            )
+            continue
+        tasks.append(
+            asyncio.create_task(
+                _fade_light(
+                    hass,
+                    entity_id,
+                    brightness_pct,
+                    transition_ms,
+                    min_step_delay_ms,
+                )
             )
         )
-        for entity_id in expanded_entities
-    ]
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
