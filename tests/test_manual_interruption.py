@@ -506,7 +506,9 @@ async def test_brightness_tolerance_allows_rounding(
     )
 
     # Simulate that we're expecting brightness 100 (now a dict mapping brightness to timestamp)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        entity_id=entity_id, values={100: time.monotonic()}
+    )
 
     # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
@@ -531,7 +533,9 @@ async def test_brightness_tolerance_allows_rounding(
         assert not cancel_event.is_set(), "Cancel should not be set for within-tolerance"
 
         # Re-add expected brightness since the previous match removed it from tracking
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+            entity_id=entity_id, values={100: time.monotonic()}
+        )
 
         # Now test with brightness AT the tolerance boundary
         hass.states.async_set(
@@ -577,7 +581,9 @@ async def test_brightness_outside_tolerance_cancels_fade(
     )
 
     # Simulate that we're expecting brightness 100 (now a dict mapping brightness to timestamp)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        entity_id=entity_id, values={100: time.monotonic()}
+    )
 
     # Use an event to control the fake fade task
     stop_fake_fade = asyncio.Event()
@@ -637,7 +643,9 @@ async def test_expected_brightness_changes_ignored(
     )
 
     # Simulate that we're expecting brightness 100 (now a dict mapping brightness to timestamp)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        entity_id=entity_id, values={100: time.monotonic()}
+    )
 
     # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
@@ -661,7 +669,9 @@ async def test_expected_brightness_changes_ignored(
         assert not cancel_event.is_set(), "Cancel event should not be set for expected brightness"
 
         # Re-add expected brightness since the previous match removed it from tracking
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+            entity_id=entity_id, values={100: time.monotonic()}
+        )
 
         # Also verify with brightness slightly different but within tolerance
         hass.states.async_set(
@@ -764,7 +774,9 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
     hass.data[DOMAIN]["data"][entity_id] = initial_brightness
 
     # Simulate that we're expecting brightness 100 (mid-fade) but user set 150
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        entity_id=entity_id, values={100: time.monotonic()}
+    )
 
     # Use an event to control the fake fade task
     stop_fake_fade = asyncio.Event()
@@ -838,7 +850,9 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
     hass.data[DOMAIN]["data"][entity_id] = original_brightness
 
     # Simulate that we're expecting brightness 50 (near end of fade to 0%)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={50: time.monotonic()})
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        entity_id=entity_id, values={50: time.monotonic()}
+    )
 
     # Use an event to control the fake fade task
     stop_fake_fade = asyncio.Event()
