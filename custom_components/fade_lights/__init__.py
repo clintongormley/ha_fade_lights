@@ -745,6 +745,31 @@ async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None
         await asyncio.sleep(sleep_ms / 1000)
 
 
+def _interpolate_hue(start: float, end: float, t: float) -> float:
+    """Interpolate hue using circular short-path.
+
+    Hue is circular (0-360 wraps around). This function always takes the
+    shortest path between two hues.
+
+    Args:
+        start: Starting hue (0-360)
+        end: Ending hue (0-360)
+        t: Interpolation factor (0.0 = start, 1.0 = end)
+
+    Returns:
+        Interpolated hue in range [0, 360)
+    """
+    diff = end - start
+
+    if diff > 180:
+        diff -= 360
+    elif diff < -180:
+        diff += 360
+
+    result = start + diff * t
+    return result % 360
+
+
 def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | None) -> list[str]:
     """Expand entity IDs, handling groups and various input formats.
 
