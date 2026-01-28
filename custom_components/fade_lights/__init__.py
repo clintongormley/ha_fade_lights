@@ -784,7 +784,6 @@ def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | No
     return list(result)
 
 
-
 def _can_fade_color(state: State, params: FadeParams) -> bool:
     """Check if a light supports the color mode needed for this fade.
 
@@ -812,6 +811,7 @@ def _can_fade_color(state: State, params: FadeParams) -> bool:
         return ColorMode.COLOR_TEMP in modes
 
     return True
+
 
 # =============================================================================
 # State Change Handler
