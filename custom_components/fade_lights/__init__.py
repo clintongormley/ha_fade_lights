@@ -498,7 +498,6 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     _validate_color_params(call.data)
     _validate_color_ranges(call.data)
 
-    brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
     transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
 
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
@@ -506,6 +505,10 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
         return
 
     fade_params = _parse_color_params(call.data)
+
+    # Apply default brightness if not specified
+    if fade_params.brightness_pct is None:
+        fade_params.brightness_pct = default_brightness
 
     tasks = []
     for entity_id in expanded_entities:
@@ -521,7 +524,7 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
                 _fade_light(
                     hass,
                     entity_id,
-                    brightness_pct,
+                    fade_params,
                     transition_ms,
                     min_step_delay_ms,
                 )
@@ -535,11 +538,11 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
 async def _fade_light(
     hass: HomeAssistant,
     entity_id: str,
-    brightness_pct: int,
+    fade_params: FadeParams,
     transition_ms: int,
     min_step_delay_ms: int,
 ) -> None:
-    """Fade a single light to the specified brightness.
+    """Fade a single light to the specified brightness and/or color.
 
     This is the entry point for fading a single light. It handles:
     - Cancelling any existing fade for the same entity
@@ -567,7 +570,7 @@ async def _fade_light(
 
     try:
         await _execute_fade(
-            hass, entity_id, brightness_pct, transition_ms, min_step_delay_ms, cancel_event
+            hass, entity_id, fade_params, transition_ms, min_step_delay_ms, cancel_event
         )
     except asyncio.CancelledError:
         pass  # Normal cancellation, not an error
@@ -588,58 +591,144 @@ async def _fade_light(
 async def _execute_fade(
     hass: HomeAssistant,
     entity_id: str,
-    brightness_pct: int,
+    fade_params: FadeParams,
     transition_ms: int,
     min_step_delay_ms: int,
     cancel_event: asyncio.Event,
 ) -> None:
-    """Execute the fade operation."""
+    """Execute the fade operation using step-based approach.
+
+    Generates fade steps for brightness, HS color, and/or color temperature,
+    then applies each step with appropriate timing.
+    """
     state = hass.states.get(entity_id)
     if not state:
         _LOGGER.warning("%s: Entity not found", entity_id)
         return
 
     # Handle non-dimmable lights (on/off only)
-    if ColorMode.BRIGHTNESS not in state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
-        await _apply_brightness(hass, entity_id, 255 if brightness_pct > 0 else 0)
+    supported_modes = state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, [])
+    has_any_color = any(
+        mode in supported_modes
+        for mode in [
+            ColorMode.HS,
+            ColorMode.RGB,
+            ColorMode.RGBW,
+            ColorMode.RGBWW,
+            ColorMode.XY,
+            ColorMode.COLOR_TEMP,
+        ]
+    )
+    if ColorMode.BRIGHTNESS not in supported_modes and not has_any_color:
+        # On/off only light
+        target_brightness = fade_params.brightness_pct or 0
+        await _apply_step(hass, entity_id, FadeStep(brightness=255 if target_brightness > 0 else 0))
         return
 
-    brightness = state.attributes.get(ATTR_BRIGHTNESS)
-    start_level = int(brightness) if brightness is not None else 0
-    end_level = int(brightness_pct / 100 * 255)
+    # Get current state
+    current_brightness = state.attributes.get(ATTR_BRIGHTNESS)
+    start_brightness = int(current_brightness) if current_brightness is not None else 0
+    current_hs, current_mireds = _get_current_color_state(state)
 
-    if start_level == end_level:
-        return
+    # Determine start and end values
+    end_brightness = None
+    if fade_params.brightness_pct is not None:
+        end_brightness = int(fade_params.brightness_pct / 100 * 255)
+        if fade_params.from_brightness_pct is not None:
+            start_brightness = int(fade_params.from_brightness_pct / 100 * 255)
+
+    # HS color
+    start_hs = (
+        fade_params.from_hs_color if fade_params.from_hs_color is not None else current_hs
+    )
+    end_hs = fade_params.hs_color
+
+    # Color temp (mireds)
+    start_mireds = (
+        fade_params.from_color_temp_mireds
+        if fade_params.from_color_temp_mireds is not None
+        else current_mireds
+    )
+    end_mireds = fade_params.color_temp_mireds
 
     # Store original brightness if not already stored (for restoration after fade)
     existing_orig = _get_orig_brightness(hass, entity_id)
-    if existing_orig == 0 and start_level > 0:
-        _store_orig_brightness(hass, entity_id, start_level)
+    if existing_orig == 0 and start_brightness > 0:
+        _store_orig_brightness(hass, entity_id, start_brightness)
 
-    current_level = start_level
-
-    # Calculate fade parameters
-    num_steps, delta, delay_ms = _calculate_fade_steps(
-        start_level, end_level, transition_ms, min_step_delay_ms
+    # Check if anything is changing
+    brightness_changing = (
+        fade_params.brightness_pct is not None and start_brightness != end_brightness
     )
+    hs_changing = end_hs is not None and start_hs != end_hs
+    mireds_changing = end_mireds is not None and start_mireds != end_mireds
+
+    if not brightness_changing and not hs_changing and not mireds_changing:
+        _LOGGER.debug("%s: Nothing to fade", entity_id)
+        return
+
+    # Determine which step builder to use
+    if (
+        start_hs is not None
+        and end_mireds is not None
+        and not _is_on_planckian_locus(start_hs)
+    ):
+        # Hybrid HS -> mireds transition
+        steps = _build_hs_to_mireds_steps(
+            start_hs, end_mireds, transition_ms, min_step_delay_ms
+        )
+        # If also fading brightness, add it to each step
+        if brightness_changing and end_brightness is not None:
+            num_steps = len(steps)
+            for i, step in enumerate(steps):
+                t = (i + 1) / num_steps
+                step.brightness = round(
+                    start_brightness + (end_brightness - start_brightness) * t
+                )
+    else:
+        # Standard fade using _build_fade_steps
+        steps = _build_fade_steps(
+            start_brightness=start_brightness if brightness_changing else None,
+            end_brightness=end_brightness if brightness_changing else None,
+            start_hs=start_hs if hs_changing else None,
+            end_hs=end_hs if hs_changing else None,
+            start_mireds=start_mireds if mireds_changing else None,
+            end_mireds=end_mireds if mireds_changing else None,
+            transition_ms=transition_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        )
+
+    if not steps:
+        _LOGGER.debug("%s: No steps to execute", entity_id)
+        return
+
+    # Calculate delay between steps
+    delay_ms = transition_ms / len(steps)
 
     _LOGGER.info(
-        "%s: Fading from %s to %s in %s steps", entity_id, start_level, end_level, num_steps
+        "%s: Fading in %s steps (brightness: %s->%s, hs: %s->%s, mireds: %s->%s)",
+        entity_id,
+        len(steps),
+        start_brightness if brightness_changing else "-",
+        end_brightness if brightness_changing else "-",
+        start_hs if hs_changing else "-",
+        end_hs if hs_changing else "-",
+        start_mireds if mireds_changing else "-",
+        end_mireds if mireds_changing else "-",
     )
 
     # Execute fade loop
-    for i in range(num_steps):
+    for step in steps:
         step_start = time.monotonic()
 
         if cancel_event.is_set():
             return
 
-        current_level = _calculate_next_brightness(
-            current_level, end_level, delta, is_last_step=(i == num_steps - 1)
-        )
-        _add_expected_brightness(entity_id, current_level)
+        # Track expected brightness for manual intervention detection
+        if step.brightness is not None:
+            _add_expected_brightness(entity_id, step.brightness)
 
-        await _apply_brightness(hass, entity_id, current_level)
+        await _apply_step(hass, entity_id, step)
 
         if cancel_event.is_set():
             return
@@ -648,12 +737,17 @@ async def _execute_fade(
 
     # Store final brightness after successful fade completion
     if not cancel_event.is_set():
-        if end_level > 0:
-            _store_orig_brightness(hass, entity_id, end_level)
+        final_brightness = (
+            steps[-1].brightness if steps[-1].brightness is not None else end_brightness
+        )
+        if final_brightness is not None and final_brightness > 0:
+            _store_orig_brightness(hass, entity_id, final_brightness)
             await _save_storage(hass)
-            _LOGGER.info("%s: Fade complete at brightness %s", entity_id, end_level)
-        else:
+            _LOGGER.info("%s: Fade complete at brightness %s", entity_id, final_brightness)
+        elif final_brightness == 0:
             _LOGGER.info("%s: Fade complete (turned off)", entity_id)
+        else:
+            _LOGGER.info("%s: Fade complete", entity_id)
 
 
 def _calculate_fade_steps(
@@ -1030,7 +1124,11 @@ def _build_fade_steps(
         step = FadeStep()
 
         if start_brightness is not None and end_brightness is not None:
-            step.brightness = round(start_brightness + (end_brightness - start_brightness) * t)
+            brightness = round(start_brightness + (end_brightness - start_brightness) * t)
+            # Skip brightness level 1 (many lights behave oddly at this level)
+            if brightness == 1:
+                brightness = 0 if end_brightness < start_brightness else 2
+            step.brightness = brightness
 
         if start_hs is not None and end_hs is not None:
             hue = _interpolate_hue(start_hs[0], end_hs[0], t)

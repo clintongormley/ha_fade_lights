@@ -48,7 +48,7 @@ async def test_service_accepts_single_entity(
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
         assert call_args[0][1] == mock_light_entity  # entity_id
-        assert call_args[0][2] == 50  # brightness_pct
+        assert call_args[0][2].brightness_pct == 50  # fade_params.brightness_pct
         assert call_args[0][3] == 2000  # transition_ms (2 seconds * 1000)
 
 
@@ -84,7 +84,7 @@ async def test_service_accepts_entity_list(
 
         # Verify brightness and transition for all calls
         for call in mock_fade_light.call_args_list:
-            assert call[0][2] == 75  # brightness_pct
+            assert call[0][2].brightness_pct == 75  # fade_params.brightness_pct
             assert call[0][3] == 5000  # transition_ms
 
 
@@ -203,7 +203,7 @@ async def test_service_uses_default_brightness(
         # Verify _fade_light was called with default brightness
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        assert call_args[0][2] == DEFAULT_BRIGHTNESS_PCT  # brightness_pct
+        assert call_args[0][2].brightness_pct == DEFAULT_BRIGHTNESS_PCT  # fade_params.brightness_pct
 
 
 async def test_service_uses_default_transition(
