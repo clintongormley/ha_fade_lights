@@ -14,12 +14,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.light.const import ColorMode
-from homeassistant.util.color import (
-    color_RGB_to_hs,
-    color_rgbw_to_rgb,
-    color_rgbww_to_rgb,
-    color_xy_to_hs,
-)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -39,6 +33,12 @@ from homeassistant.core import (
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util.color import (
+    color_RGB_to_hs,
+    color_rgbw_to_rgb,
+    color_rgbww_to_rgb,
+    color_xy_to_hs,
+)
 
 from .const import (
     ATTR_BRIGHTNESS_PCT,
@@ -263,8 +263,9 @@ def _validate_color_params(data: dict) -> None:
     if from_data:
         from_specified = [param for param in COLOR_PARAMS if param in from_data]
         if len(from_specified) > 1:
+            params = ", ".join(sorted(from_specified))
             raise ServiceValidationError(
-                f"Only one color parameter allowed in 'from:', got: {', '.join(sorted(from_specified))}"
+                f"Only one color parameter allowed in 'from:', got: {params}"
             )
 
 
@@ -286,9 +287,7 @@ def _validate_color_ranges_dict(data: dict, prefix: str) -> None:
     if ATTR_HS_COLOR in data:
         hs = data[ATTR_HS_COLOR]
         if not (0 <= hs[0] <= 360):
-            raise ServiceValidationError(
-                f"{prefix}Hue must be between 0 and 360, got {hs[0]}"
-            )
+            raise ServiceValidationError(f"{prefix}Hue must be between 0 and 360, got {hs[0]}")
         if not (0 <= hs[1] <= 100):
             raise ServiceValidationError(
                 f"{prefix}Saturation must be between 0 and 100, got {hs[1]}"
@@ -296,7 +295,7 @@ def _validate_color_ranges_dict(data: dict, prefix: str) -> None:
 
     if ATTR_RGB_COLOR in data:
         rgb = data[ATTR_RGB_COLOR]
-        for i, val in enumerate(rgb[:3]):
+        for val in rgb[:3]:
             if not (0 <= val <= 255):
                 raise ServiceValidationError(
                     f"{prefix}RGB values must be between 0 and 255, got {val}"
@@ -401,8 +400,7 @@ def _extract_color(data: dict) -> tuple[tuple[float, float] | None, int | None]:
     if ATTR_RGBWW_COLOR in data:
         rgbww = data[ATTR_RGBWW_COLOR]
         rgb = color_rgbww_to_rgb(
-            rgbww[0], rgbww[1], rgbww[2], rgbww[3], rgbww[4],
-            min_kelvin=2700, max_kelvin=6500
+            rgbww[0], rgbww[1], rgbww[2], rgbww[3], rgbww[4], min_kelvin=2700, max_kelvin=6500
         )
         hs = color_RGB_to_hs(rgb[0], rgb[1], rgb[2])
         return hs, None
