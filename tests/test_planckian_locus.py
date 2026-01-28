@@ -39,3 +39,45 @@ class TestIsOnPlanckianLocus:
         """Test behavior at saturation threshold boundary."""
         assert _is_on_planckian_locus((35.0, 15.0)) is True
         assert _is_on_planckian_locus((35.0, 16.0)) is False
+
+
+from custom_components.fade_lights import _hs_to_mireds
+
+
+class TestHsToMireds:
+    """Test conversion from HS to approximate mireds using lookup table."""
+
+    def test_cool_daylight_hue(self) -> None:
+        """Test cool daylight hue maps to cool mireds."""
+        # Hue ~220 is cool daylight (~6500K = 154 mireds)
+        mireds = _hs_to_mireds((220.0, 5.0))
+        assert 140 <= mireds <= 180
+
+    def test_warm_white_hue(self) -> None:
+        """Test warm white hue maps to warm mireds."""
+        # Hue ~35 is warm white (~3000K = 333 mireds)
+        mireds = _hs_to_mireds((35.0, 18.0))
+        assert 300 <= mireds <= 370
+
+    def test_neutral_white_hue(self) -> None:
+        """Test neutral white maps to middle mireds."""
+        # Hue ~42 is neutral (~4000K = 250 mireds)
+        mireds = _hs_to_mireds((42.0, 8.0))
+        assert 220 <= mireds <= 290
+
+    def test_candlelight_hue(self) -> None:
+        """Test very warm hue maps to high mireds."""
+        # Hue ~28 is candlelight (~2000K = 500 mireds)
+        mireds = _hs_to_mireds((28.0, 45.0))
+        assert 450 <= mireds <= 550
+
+    def test_pure_white_defaults_to_neutral(self) -> None:
+        """Test pure white (0 saturation) returns neutral mireds."""
+        mireds = _hs_to_mireds((0.0, 0.0))
+        # Should return something reasonable in the middle range
+        assert 200 <= mireds <= 400
+
+    def test_returns_int(self) -> None:
+        """Test that result is an integer."""
+        mireds = _hs_to_mireds((35.0, 10.0))
+        assert isinstance(mireds, int)
