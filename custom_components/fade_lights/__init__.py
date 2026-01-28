@@ -859,6 +859,71 @@ def _mireds_to_hs(mireds: int) -> tuple[float, float]:
     return (38.0, 12.0)  # Neutral white
 
 
+def _build_hs_to_mireds_steps(
+    start_hs: tuple[float, float],
+    end_mireds: int,
+    transition_ms: int,
+    min_step_delay_ms: int,
+) -> list[FadeStep]:
+    """Build hybrid step sequence from HS color to mireds.
+
+    If the starting HS is already on the Planckian locus, generates
+    pure mireds-based steps. Otherwise, first fades the HS toward
+    the locus (reducing saturation), then switches to mireds.
+
+    Args:
+        start_hs: Starting (hue, saturation)
+        end_mireds: Target color temperature in mireds
+        transition_ms: Total transition time in milliseconds
+        min_step_delay_ms: Minimum delay between steps
+
+    Returns:
+        List of FadeStep objects transitioning from HS to mireds
+    """
+    max_steps = max(1, transition_ms // min_step_delay_ms)
+
+    # If already on locus, just do mireds-based fading
+    if _is_on_planckian_locus(start_hs):
+        start_mireds = _hs_to_mireds(start_hs)
+        return _build_fade_steps(
+            start_brightness=None,
+            end_brightness=None,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=start_mireds,
+            end_mireds=end_mireds,
+            transition_ms=transition_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        )
+
+    # Off locus: need to transition HS toward locus first, then to mireds
+    # Get the target HS on the locus (what the end_mireds looks like in HS)
+    target_locus_hs = _mireds_to_hs(end_mireds)
+
+    # Calculate how much of the transition is HS->locus vs locus->mireds
+    # Use 70% of steps for HS transition, 30% for final mireds adjustment
+    hs_steps_count = max(1, int(max_steps * 0.7))
+    mireds_steps_count = max(1, max_steps - hs_steps_count)
+
+    steps = []
+
+    # Phase 1: HS toward the locus target
+    for i in range(1, hs_steps_count + 1):
+        t = i / hs_steps_count
+        hue = _interpolate_hue(start_hs[0], target_locus_hs[0], t)
+        sat = start_hs[1] + (target_locus_hs[1] - start_hs[1]) * t
+        steps.append(FadeStep(hs_color=(round(hue, 2), round(sat, 2))))
+
+    # Phase 2: Mireds from locus point to target
+    locus_mireds = _hs_to_mireds(target_locus_hs)
+    for i in range(1, mireds_steps_count + 1):
+        t = i / mireds_steps_count
+        mireds = round(locus_mireds + (end_mireds - locus_mireds) * t)
+        steps.append(FadeStep(color_temp_mireds=mireds))
+
+    return steps
+
+
 def _build_fade_steps(
     start_brightness: int | None,
     end_brightness: int | None,
