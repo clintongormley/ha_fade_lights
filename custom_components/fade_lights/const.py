@@ -9,6 +9,25 @@ SERVICE_FADE_LIGHTS = "fade_lights"
 ATTR_BRIGHTNESS_PCT = "brightness_pct"
 ATTR_TRANSITION = "transition"
 
+# Color attributes (input parameters)
+ATTR_COLOR_TEMP_KELVIN = "color_temp_kelvin"
+ATTR_HS_COLOR = "hs_color"
+ATTR_RGB_COLOR = "rgb_color"
+ATTR_RGBW_COLOR = "rgbw_color"
+ATTR_RGBWW_COLOR = "rgbww_color"
+ATTR_XY_COLOR = "xy_color"
+ATTR_FROM = "from"
+
+# All color parameter names (for validation)
+COLOR_PARAMS = frozenset({
+    ATTR_COLOR_TEMP_KELVIN,
+    ATTR_HS_COLOR,
+    ATTR_RGB_COLOR,
+    ATTR_RGBW_COLOR,
+    ATTR_RGBWW_COLOR,
+    ATTR_XY_COLOR,
+})
+
 # Storage
 STORAGE_KEY = f"{DOMAIN}.last_brightness"
 
