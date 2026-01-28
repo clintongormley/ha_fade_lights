@@ -61,19 +61,19 @@ STALE_THRESHOLD = 5.0
 # Approximates the curve of blackbody radiation through HS color space.
 # Used for HS ↔ color temperature transitions.
 PLANCKIAN_LOCUS_HS: tuple[tuple[int, tuple[float, float]], ...] = (
-    (154, (220.0, 5.0)),   # 6500K - Cool daylight (bluish)
-    (167, (215.0, 4.5)),   # 6000K
-    (182, (210.0, 4.0)),   # 5500K - Noon daylight
-    (200, (55.0, 5.0)),    # 5000K - Horizon daylight
-    (222, (45.0, 6.0)),    # 4500K - Cool white
-    (250, (42.0, 8.0)),    # 4000K
-    (286, (38.0, 12.0)),   # 3500K - Neutral white
-    (303, (36.0, 15.0)),   # 3300K
-    (333, (35.0, 18.0)),   # 3000K - Warm white
-    (370, (33.0, 24.0)),   # 2700K - Soft white
-    (400, (32.0, 30.0)),   # 2500K
-    (435, (30.0, 38.0)),   # 2300K
-    (500, (28.0, 45.0)),   # 2000K - Candlelight
+    (154, (220.0, 5.0)),  # 6500K - Cool daylight (bluish)
+    (167, (215.0, 4.5)),  # 6000K
+    (182, (210.0, 4.0)),  # 5500K - Noon daylight
+    (200, (55.0, 5.0)),  # 5000K - Horizon daylight
+    (222, (45.0, 6.0)),  # 4500K - Cool white
+    (250, (42.0, 8.0)),  # 4000K
+    (286, (38.0, 12.0)),  # 3500K - Neutral white
+    (303, (36.0, 15.0)),  # 3300K
+    (333, (35.0, 18.0)),  # 3000K - Warm white
+    (370, (33.0, 24.0)),  # 2700K - Soft white
+    (400, (32.0, 30.0)),  # 2500K
+    (435, (30.0, 38.0)),  # 2300K
+    (500, (28.0, 45.0)),  # 2000K - Candlelight
 )
 
 # Maximum saturation to consider a color "on" the Planckian locus
