@@ -37,3 +37,16 @@ class FadeStep:
     brightness: int | None = None
     hs_color: tuple[float, float] | None = None
     color_temp_mireds: int | None = None
+
+
+@dataclass
+class ExpectedValues:
+    """Expected state values for manual intervention detection.
+
+    Only includes dimensions being actively faded. None means
+    that dimension is not being tracked for this fade.
+    """
+
+    brightness: int | None = None
+    hs_color: tuple[float, float] | None = None
+    color_temp_mireds: int | None = None
