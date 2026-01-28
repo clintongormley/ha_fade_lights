@@ -242,10 +242,12 @@ class TestFromParameter:
         from custom_components.fade_lights import _parse_color_params
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _parse_color_params({
-            ATTR_BRIGHTNESS_PCT: 100,
-            ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 0},
-        })
+        params = _parse_color_params(
+            {
+                ATTR_BRIGHTNESS_PCT: 100,
+                ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 0},
+            }
+        )
 
         assert params.brightness_pct == 100
         assert params.from_brightness_pct == 0
@@ -260,10 +262,12 @@ class TestFromParameter:
         from custom_components.fade_lights import _parse_color_params
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _parse_color_params({
-            ATTR_HS_COLOR: [200, 80],
-            ATTR_FROM: {ATTR_HS_COLOR: [0, 0]},
-        })
+        params = _parse_color_params(
+            {
+                ATTR_HS_COLOR: [200, 80],
+                ATTR_FROM: {ATTR_HS_COLOR: [0, 0]},
+            }
+        )
 
         assert params.hs_color == (200, 80)
         assert params.from_hs_color == (0, 0)
@@ -278,10 +282,12 @@ class TestFromParameter:
         from custom_components.fade_lights import _parse_color_params
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _parse_color_params({
-            ATTR_COLOR_TEMP_KELVIN: 4000,
-            ATTR_FROM: {ATTR_COLOR_TEMP_KELVIN: 2700},
-        })
+        params = _parse_color_params(
+            {
+                ATTR_COLOR_TEMP_KELVIN: 4000,
+                ATTR_FROM: {ATTR_COLOR_TEMP_KELVIN: 2700},
+            }
+        )
 
         assert params.color_temp_mireds == 250  # 4000K
         assert params.from_color_temp_mireds == 370  # 2700K
@@ -296,10 +302,12 @@ class TestFromParameter:
         from custom_components.fade_lights import _parse_color_params
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _parse_color_params({
-            ATTR_HS_COLOR: [200, 80],
-            ATTR_FROM: {ATTR_RGB_COLOR: [255, 0, 0]},  # Red
-        })
+        params = _parse_color_params(
+            {
+                ATTR_HS_COLOR: [200, 80],
+                ATTR_FROM: {ATTR_RGB_COLOR: [255, 0, 0]},  # Red
+            }
+        )
 
         assert params.from_hs_color is not None
         assert abs(params.from_hs_color[0] - 0) < 1  # hue ~0 (red)

@@ -19,14 +19,16 @@ ATTR_XY_COLOR = "xy_color"
 ATTR_FROM = "from"
 
 # All color parameter names (for validation)
-COLOR_PARAMS = frozenset({
-    ATTR_COLOR_TEMP_KELVIN,
-    ATTR_HS_COLOR,
-    ATTR_RGB_COLOR,
-    ATTR_RGBW_COLOR,
-    ATTR_RGBWW_COLOR,
-    ATTR_XY_COLOR,
-})
+COLOR_PARAMS = frozenset(
+    {
+        ATTR_COLOR_TEMP_KELVIN,
+        ATTR_HS_COLOR,
+        ATTR_RGB_COLOR,
+        ATTR_RGBW_COLOR,
+        ATTR_RGBWW_COLOR,
+        ATTR_XY_COLOR,
+    }
+)
 
 # Storage
 STORAGE_KEY = f"{DOMAIN}.last_brightness"
