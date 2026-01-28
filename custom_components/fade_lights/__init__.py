@@ -10,9 +10,13 @@ from dataclasses import dataclass, field
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
-    ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN,
-    ATTR_HS_COLOR as HA_ATTR_HS_COLOR,
     ATTR_SUPPORTED_COLOR_MODES,
+)
+from homeassistant.components.light import (
+    ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN,
+)
+from homeassistant.components.light import (
+    ATTR_HS_COLOR as HA_ATTR_HS_COLOR,
 )
 from homeassistant.components.light.const import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.light.const import ColorMode
@@ -638,9 +642,7 @@ async def _execute_fade(
             start_brightness = int(fade_params.from_brightness_pct / 100 * 255)
 
     # HS color
-    start_hs = (
-        fade_params.from_hs_color if fade_params.from_hs_color is not None else current_hs
-    )
+    start_hs = fade_params.from_hs_color if fade_params.from_hs_color is not None else current_hs
     end_hs = fade_params.hs_color
 
     # Color temp (mireds)
@@ -668,23 +670,15 @@ async def _execute_fade(
         return
 
     # Determine which step builder to use
-    if (
-        start_hs is not None
-        and end_mireds is not None
-        and not _is_on_planckian_locus(start_hs)
-    ):
+    if start_hs is not None and end_mireds is not None and not _is_on_planckian_locus(start_hs):
         # Hybrid HS -> mireds transition
-        steps = _build_hs_to_mireds_steps(
-            start_hs, end_mireds, transition_ms, min_step_delay_ms
-        )
+        steps = _build_hs_to_mireds_steps(start_hs, end_mireds, transition_ms, min_step_delay_ms)
         # If also fading brightness, add it to each step
         if brightness_changing and end_brightness is not None:
             num_steps = len(steps)
             for i, step in enumerate(steps):
                 t = (i + 1) / num_steps
-                step.brightness = round(
-                    start_brightness + (end_brightness - start_brightness) * t
-                )
+                step.brightness = round(start_brightness + (end_brightness - start_brightness) * t)
     else:
         # Standard fade using _build_fade_steps
         steps = _build_fade_steps(

@@ -725,7 +725,10 @@ async def test_fade_cancel_event_after_brightness_apply(
                 )
             else:
                 await hass.services.async_call(
-                    "light", "turn_on", {ATTR_ENTITY_ID: eid, ATTR_BRIGHTNESS: step.brightness}, blocking=True
+                    "light",
+                    "turn_on",
+                    {ATTR_ENTITY_ID: eid, ATTR_BRIGHTNESS: step.brightness},
+                    blocking=True,
                 )
 
     with patch("custom_components.fade_lights._apply_step", side_effect=cancelling_apply):
