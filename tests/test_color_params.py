@@ -117,3 +117,113 @@ class TestColorParameterValidation:
             },
             blocking=True,
         )
+
+
+class TestColorConversions:
+    """Test color format conversions to internal representations."""
+
+    async def test_rgb_converts_to_hs(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test rgb_color is converted to hs_color internally."""
+        from custom_components.fade_lights import _parse_color_params
+
+        params = _parse_color_params({ATTR_RGB_COLOR: [255, 0, 0]})
+
+        # Pure red should be hue ~0, saturation 100
+        assert params.hs_color is not None
+        assert abs(params.hs_color[0] - 0) < 1  # hue ~0
+        assert abs(params.hs_color[1] - 100) < 1  # saturation 100
+
+    async def test_rgbw_converts_to_hs(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test rgbw_color is converted to hs_color internally."""
+        from custom_components.fade_lights import _parse_color_params
+
+        # Green with some white
+        params = _parse_color_params({ATTR_RGBW_COLOR: [0, 255, 0, 50]})
+
+        assert params.hs_color is not None
+        # Green is hue ~120
+        assert 115 < params.hs_color[0] < 125
+
+    async def test_rgbww_converts_to_hs(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test rgbww_color is converted to hs_color internally."""
+        from custom_components.fade_lights import _parse_color_params
+
+        # Blue with some whites
+        params = _parse_color_params({ATTR_RGBWW_COLOR: [0, 0, 255, 30, 20]})
+
+        assert params.hs_color is not None
+        # Blue is hue ~240
+        assert 235 < params.hs_color[0] < 245
+
+    async def test_xy_converts_to_hs(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test xy_color is converted to hs_color internally."""
+        from custom_components.fade_lights import _parse_color_params
+
+        # Red-ish xy coordinates
+        params = _parse_color_params({ATTR_XY_COLOR: [0.64, 0.33]})
+
+        assert params.hs_color is not None
+        # Should be reddish (hue near 0 or 360)
+        assert params.hs_color[0] < 30 or params.hs_color[0] > 330
+
+    async def test_hs_passes_through(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test hs_color passes through unchanged."""
+        from custom_components.fade_lights import _parse_color_params
+
+        params = _parse_color_params({ATTR_HS_COLOR: [180, 75]})
+
+        assert params.hs_color == (180, 75)
+
+    async def test_color_temp_converts_to_mireds(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test color_temp_kelvin is converted to mireds."""
+        from custom_components.fade_lights import _parse_color_params
+
+        # 4000K = 250 mireds (1_000_000 / 4000)
+        params = _parse_color_params({ATTR_COLOR_TEMP_KELVIN: 4000})
+
+        assert params.color_temp_mireds == 250
+        assert params.hs_color is None
+
+    async def test_no_color_returns_none(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test no color params returns None for both."""
+        from custom_components.fade_lights import _parse_color_params
+
+        params = _parse_color_params({ATTR_BRIGHTNESS_PCT: 50})
+
+        assert params.hs_color is None
+        assert params.color_temp_mireds is None
