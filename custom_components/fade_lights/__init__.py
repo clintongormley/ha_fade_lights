@@ -14,6 +14,12 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.light.const import ColorMode
+from homeassistant.util.color import (
+    color_RGB_to_hs,
+    color_rgbw_to_rgb,
+    color_rgbww_to_rgb,
+    color_xy_to_hs,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -248,6 +254,64 @@ def _validate_color_params(data: dict) -> None:
         raise ServiceValidationError(
             f"Only one color parameter allowed, got: {', '.join(sorted(specified))}"
         )
+
+
+def _parse_color_params(data: dict) -> FadeParams:
+    """Parse and convert color parameters to internal representation.
+
+    Converts:
+    - rgb_color, rgbw_color, rgbww_color, xy_color -> hs_color
+    - color_temp_kelvin -> color_temp_mireds
+
+    Args:
+        data: Service call data dictionary
+
+    Returns:
+        FadeParams with normalized color values
+    """
+    params = FadeParams()
+
+    # Handle HS color (pass through)
+    if ATTR_HS_COLOR in data:
+        hs = data[ATTR_HS_COLOR]
+        params.hs_color = (float(hs[0]), float(hs[1]))
+
+    # Handle RGB -> HS
+    elif ATTR_RGB_COLOR in data:
+        rgb = data[ATTR_RGB_COLOR]
+        hs = color_RGB_to_hs(rgb[0], rgb[1], rgb[2])
+        params.hs_color = hs
+
+    # Handle RGBW -> RGB -> HS
+    elif ATTR_RGBW_COLOR in data:
+        rgbw = data[ATTR_RGBW_COLOR]
+        rgb = color_rgbw_to_rgb(rgbw[0], rgbw[1], rgbw[2], rgbw[3])
+        hs = color_RGB_to_hs(rgb[0], rgb[1], rgb[2])
+        params.hs_color = hs
+
+    # Handle RGBWW -> RGB -> HS
+    elif ATTR_RGBWW_COLOR in data:
+        rgbww = data[ATTR_RGBWW_COLOR]
+        # Use typical LED strip kelvin range (2700K-6500K)
+        rgb = color_rgbww_to_rgb(
+            rgbww[0], rgbww[1], rgbww[2], rgbww[3], rgbww[4],
+            min_kelvin=2700, max_kelvin=6500
+        )
+        hs = color_RGB_to_hs(rgb[0], rgb[1], rgb[2])
+        params.hs_color = hs
+
+    # Handle XY -> HS
+    elif ATTR_XY_COLOR in data:
+        xy = data[ATTR_XY_COLOR]
+        hs = color_xy_to_hs(xy[0], xy[1])
+        params.hs_color = hs
+
+    # Handle color temperature
+    elif ATTR_COLOR_TEMP_KELVIN in data:
+        kelvin = data[ATTR_COLOR_TEMP_KELVIN]
+        params.color_temp_mireds = int(1_000_000 / kelvin)
+
+    return params
 
 
 # =============================================================================
