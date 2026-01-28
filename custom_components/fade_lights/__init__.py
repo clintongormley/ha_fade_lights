@@ -72,17 +72,27 @@ FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 class ExpectedState:
     """Track expected brightness values and provide synchronization for waiting."""
 
+    entity_id: str
     values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
     _condition: asyncio.Condition | None = field(default=None, repr=False)
 
     def add(self, brightness: int) -> None:
         """Add an expected brightness value with current timestamp."""
         self.values[brightness] = time.monotonic()
-        _LOGGER.debug("ExpectedState.add(%s) -> values=%s", brightness, list(self.values.keys()))
+        _LOGGER.debug(
+            "%s: ExpectedState.add(%s) -> values=%s",
+            self.entity_id,
+            brightness,
+            list(self.values.keys()),
+        )
 
     def get_condition(self) -> asyncio.Condition:
         """Get or create the condition for waiting, pruning stale values first."""
-        _LOGGER.debug("ExpectedState.get_condition() values=%s", list(self.values.keys()))
+        _LOGGER.debug(
+            "%s: ExpectedState.get_condition() values=%s",
+            self.entity_id,
+            list(self.values.keys()),
+        )
 
         # Prune stale values
         now = time.monotonic()
@@ -92,18 +102,29 @@ class ExpectedState:
             if now - timestamp > STALE_THRESHOLD
         ]
         if stale_keys:
-            _LOGGER.debug("ExpectedState.get_condition() removing stale keys: %s", stale_keys)
+            _LOGGER.debug(
+                "%s: ExpectedState.get_condition() removing stale keys: %s",
+                self.entity_id,
+                stale_keys,
+            )
         for key in stale_keys:
             del self.values[key]
 
-        _LOGGER.debug("ExpectedState.get_condition() after prune=%s", list(self.values.keys()))
+        _LOGGER.debug(
+            "%s: ExpectedState.get_condition() after prune=%s",
+            self.entity_id,
+            list(self.values.keys()),
+        )
 
         if self._condition is None:
             self._condition = asyncio.Condition()
 
         # Notify if all values were pruned
         if not self.values:
-            _LOGGER.debug("ExpectedState.get_condition -> values empty, notifying condition")
+            _LOGGER.debug(
+                "%s: ExpectedState.get_condition -> values empty, notifying condition",
+                self.entity_id,
+            )
             asyncio.get_event_loop().call_soon(
                 lambda c=self._condition: asyncio.create_task(self._notify(c))
             )
@@ -120,7 +141,8 @@ class ExpectedState:
             The matched brightness value, or None if no match.
         """
         _LOGGER.debug(
-            "ExpectedState.match_and_remove(%s) values=%s",
+            "%s: ExpectedState.match_and_remove(%s) values=%s",
+            self.entity_id,
             brightness,
             list(self.values.keys()),
         )
@@ -136,13 +158,18 @@ class ExpectedState:
                     break
 
         if matched_value is None:
-            _LOGGER.debug("ExpectedState.match_and_remove(%s) -> no match found", brightness)
+            _LOGGER.debug(
+                "%s: ExpectedState.match_and_remove(%s) -> no match found",
+                self.entity_id,
+                brightness,
+            )
             return None
 
         # Remove matched value
         del self.values[matched_value]
         _LOGGER.debug(
-            "ExpectedState.match_and_remove(%s) matched=%s now=%s",
+            "%s: ExpectedState.match_and_remove(%s) matched=%s now=%s",
+            self.entity_id,
             brightness,
             matched_value,
             list(self.values.keys()),
@@ -150,7 +177,10 @@ class ExpectedState:
 
         # Notify condition if set is now empty
         if not self.values and self._condition is not None:
-            _LOGGER.debug("ExpectedState.match_and_remove -> values empty, notifying condition")
+            _LOGGER.debug(
+                "%s: ExpectedState.match_and_remove -> values empty, notifying condition",
+                self.entity_id,
+            )
             # Schedule notification (can't await in callback context)
             asyncio.get_event_loop().call_soon(
                 lambda c=self._condition: asyncio.create_task(self._notify(c))
@@ -357,7 +387,7 @@ async def _execute_fade(
     """Execute the fade operation."""
     state = hass.states.get(entity_id)
     if not state:
-        _LOGGER.warning("Entity %s not found", entity_id)
+        _LOGGER.warning("%s: Entity not found", entity_id)
         return
 
     # Handle non-dimmable lights (on/off only)
@@ -544,7 +574,7 @@ def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | No
 
         state = hass.states.get(entity_id)
         if state is None:
-            _LOGGER.error("Unknown light '%s'", entity_id)
+            _LOGGER.error("%s: Unknown light", entity_id)
             continue
 
         # Check if this is a group (has entity_id attribute with member lights)
@@ -867,7 +897,7 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
 def _add_expected_brightness(entity_id: str, brightness: int) -> None:
     """Register an expected brightness value before making a service call."""
     if entity_id not in FADE_EXPECTED_BRIGHTNESS:
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState()
+        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
     FADE_EXPECTED_BRIGHTNESS[entity_id].add(brightness)
 
 
