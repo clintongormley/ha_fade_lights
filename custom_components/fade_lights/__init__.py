@@ -207,8 +207,12 @@ def _extract_fade_values(
     return brightness_pct, hs, mireds
 
 
-def _parse_color_params(data: dict) -> FadeParams:
-    """Parse and convert color parameters to internal representation.
+def _validate_and_parse_color_params(data: dict) -> FadeParams:
+    """Validate and parse color parameters to internal representation.
+
+    Validates:
+    - At most one color parameter is specified
+    - Color parameter values are within valid ranges
 
     Converts:
     - rgb_color, rgbw_color, rgbww_color, xy_color -> hs_color
@@ -221,7 +225,13 @@ def _parse_color_params(data: dict) -> FadeParams:
 
     Returns:
         FadeParams with normalized color values
+
+    Raises:
+        ServiceValidationError: If validation fails
     """
+    _validate_color_params(data)
+    _validate_color_ranges(data)
+
     params = FadeParams()
 
     params.brightness_pct, params.hs_color, params.color_temp_mireds = _extract_fade_values(data)
@@ -370,17 +380,12 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     domain_data = hass.data.get(DOMAIN, {})
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 
-    # Validate color parameters
-    _validate_color_params(call.data)
-    _validate_color_ranges(call.data)
-
+    fade_params = _validate_and_parse_color_params(call.data)
     transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, DEFAULT_TRANSITION)))
 
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
     if not expanded_entities:
         return
-
-    fade_params = _parse_color_params(call.data)
 
     # Apply default brightness if not specified
     if fade_params.brightness_pct is None:
