@@ -38,6 +38,22 @@ class FadeParams:
     from_hs_color: tuple[float, float] | None = None
     from_color_temp_mireds: int | None = None
 
+    def has_target(self) -> bool:
+        """Check if any fade target values are specified."""
+        return (
+            self.brightness_pct is not None
+            or self.hs_color is not None
+            or self.color_temp_mireds is not None
+        )
+
+    def has_from_target(self) -> bool:
+        """Check if any from values are specified."""
+        return (
+            self.from_brightness_pct is not None
+            or self.from_hs_color is not None
+            or self.from_color_temp_mireds is not None
+        )
+
 
 @dataclass
 class FadeStep:
