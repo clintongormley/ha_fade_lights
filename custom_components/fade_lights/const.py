@@ -82,3 +82,9 @@ PLANCKIAN_LOCUS_HS: tuple[tuple[int, tuple[float, float]], ...] = (
 
 # Maximum saturation to consider a color "on" the Planckian locus
 PLANCKIAN_LOCUS_SATURATION_THRESHOLD = 15.0
+
+# Minimum deltas for step calculation (smoothest possible fade)
+MIN_BRIGHTNESS_DELTA = 1      # 0-255 scale
+MIN_HUE_DELTA = 1.0           # degrees (0-360)
+MIN_SATURATION_DELTA = 1.0    # percentage (0-100)
+MIN_MIREDS_DELTA = 5          # mireds (~150-500 typical range)
