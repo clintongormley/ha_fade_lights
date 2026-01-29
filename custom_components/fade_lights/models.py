@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+import logging
+import time
+from dataclasses import dataclass, field
 
-from .const import DEFAULT_TRANSITION
+from .const import (
+    BRIGHTNESS_TOLERANCE,
+    DEFAULT_TRANSITION,
+    HUE_TOLERANCE,
+    MIREDS_TOLERANCE,
+    SATURATION_TOLERANCE,
+    STALE_THRESHOLD,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,3 +62,182 @@ class ExpectedValues:
     brightness: int | None = None
     hs_color: tuple[float, float] | None = None
     color_temp_mireds: int | None = None
+
+
+@dataclass
+class ExpectedState:
+    """Track expected values (brightness + colors) and provide synchronization for waiting."""
+
+    entity_id: str
+    values: list[tuple[ExpectedValues, float]] = field(default_factory=list)
+    _condition: asyncio.Condition | None = field(default=None, repr=False)
+
+    def add(self, expected: ExpectedValues) -> None:
+        """Add an expected value with current timestamp."""
+        self.values.append((expected, time.monotonic()))
+        _LOGGER.debug(
+            "%s: ExpectedState.add(%s) -> count=%d",
+            self.entity_id,
+            expected,
+            len(self.values),
+        )
+
+    def get_condition(self) -> asyncio.Condition:
+        """Get or create the condition for waiting, pruning stale values first."""
+        _LOGGER.debug(
+            "%s: ExpectedState.get_condition() count=%d",
+            self.entity_id,
+            len(self.values),
+        )
+
+        # Prune stale values
+        now = time.monotonic()
+        stale_count = sum(1 for _, ts in self.values if now - ts > STALE_THRESHOLD)
+        if stale_count:
+            _LOGGER.debug(
+                "%s: ExpectedState.get_condition() removing %d stale entries",
+                self.entity_id,
+                stale_count,
+            )
+        self.values = [(v, ts) for v, ts in self.values if now - ts <= STALE_THRESHOLD]
+
+        _LOGGER.debug(
+            "%s: ExpectedState.get_condition() after prune count=%d",
+            self.entity_id,
+            len(self.values),
+        )
+
+        if self._condition is None:
+            self._condition = asyncio.Condition()
+
+        # Notify if all values were pruned
+        if not self.values:
+            _LOGGER.debug(
+                "%s: ExpectedState.get_condition -> values empty, notifying condition",
+                self.entity_id,
+            )
+            asyncio.get_event_loop().call_soon(
+                lambda c=self._condition: asyncio.create_task(self._notify(c))
+            )
+
+        return self._condition
+
+    def match_and_remove(self, actual: ExpectedValues) -> ExpectedValues | None:
+        """Match actual values against expected values, remove if found, notify if empty.
+
+        Args:
+            actual: The actual values from the light state
+
+        Returns:
+            The matched ExpectedValues, or None if no match.
+        """
+        _LOGGER.debug(
+            "%s: ExpectedState.match_and_remove(%s) count=%d",
+            self.entity_id,
+            actual,
+            len(self.values),
+        )
+
+        matched_index: int | None = None
+        matched_value: ExpectedValues | None = None
+
+        for i, (expected, _) in enumerate(self.values):
+            if self._values_match(expected, actual):
+                matched_index = i
+                matched_value = expected
+                break
+
+        if matched_value is None:
+            _LOGGER.debug(
+                "%s: ExpectedState.match_and_remove(%s) -> no match found",
+                self.entity_id,
+                actual,
+            )
+            return None
+
+        # Remove matched value
+        del self.values[matched_index]
+        _LOGGER.debug(
+            "%s: ExpectedState.match_and_remove(%s) matched=%s remaining=%d",
+            self.entity_id,
+            actual,
+            matched_value,
+            len(self.values),
+        )
+
+        # Notify condition if set is now empty
+        if not self.values and self._condition is not None:
+            _LOGGER.debug(
+                "%s: ExpectedState.match_and_remove -> values empty, notifying condition",
+                self.entity_id,
+            )
+            # Schedule notification (can't await in callback context)
+            asyncio.get_event_loop().call_soon(
+                lambda c=self._condition: asyncio.create_task(self._notify(c))
+            )
+
+        return matched_value
+
+    def _values_match(self, expected: ExpectedValues, actual: ExpectedValues) -> bool:
+        """Check if actual values match expected values within tolerances.
+
+        Only checks dimensions that are being tracked (non-None in expected).
+        Untracked dimensions in expected are ignored.
+        """
+        # Check brightness if tracked
+        if expected.brightness is not None:
+            if actual.brightness is None:
+                return False
+            # Special case: brightness 0 must match exactly
+            if expected.brightness == 0:
+                if actual.brightness != 0:
+                    return False
+            elif abs(expected.brightness - actual.brightness) > BRIGHTNESS_TOLERANCE:
+                return False
+
+        # Check HS color if tracked
+        if expected.hs_color is not None:
+            if actual.hs_color is None:
+                return False
+            if not self._hs_match(expected.hs_color, actual.hs_color):
+                return False
+
+        # Check mireds if tracked
+        if expected.color_temp_mireds is not None:
+            if actual.color_temp_mireds is None:
+                return False
+            if abs(expected.color_temp_mireds - actual.color_temp_mireds) > MIREDS_TOLERANCE:
+                return False
+
+        return True
+
+    @staticmethod
+    def _hs_match(
+        expected: tuple[float, float],
+        actual: tuple[float, float],
+    ) -> bool:
+        """Check if two HS colors match within tolerance, handling hue wraparound."""
+        expected_hue, expected_sat = expected
+        actual_hue, actual_sat = actual
+
+        # Check saturation first (simple linear comparison)
+        if abs(expected_sat - actual_sat) > SATURATION_TOLERANCE:
+            return False
+
+        # Check hue with wraparound (0 and 360 are the same)
+        hue_diff = abs(expected_hue - actual_hue)
+        if hue_diff > 180:
+            hue_diff = 360 - hue_diff
+
+        return hue_diff <= HUE_TOLERANCE
+
+    @property
+    def is_empty(self) -> bool:
+        """Check if there are no expected values."""
+        return not self.values
+
+    @staticmethod
+    async def _notify(condition: asyncio.Condition) -> None:
+        """Notify all waiters on the condition."""
+        async with condition:
+            condition.notify_all()
