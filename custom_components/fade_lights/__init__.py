@@ -194,6 +194,19 @@ def _validate_color_ranges_dict(data: dict, prefix: str) -> None:
             )
 
 
+def _extract_fade_values(
+    data: dict,
+) -> tuple[int | None, tuple[float, float] | None, int | None]:
+    """Extract brightness, HS color, and mireds from data dict.
+
+    Returns:
+        Tuple of (brightness_pct, hs_color, color_temp_mireds)
+    """
+    brightness_pct = int(data[ATTR_BRIGHTNESS_PCT]) if ATTR_BRIGHTNESS_PCT in data else None
+    hs, mireds = _extract_color(data)
+    return brightness_pct, hs, mireds
+
+
 def _parse_color_params(data: dict) -> FadeParams:
     """Parse and convert color parameters to internal representation.
 
@@ -211,24 +224,15 @@ def _parse_color_params(data: dict) -> FadeParams:
     """
     params = FadeParams()
 
-    # Parse brightness
-    if ATTR_BRIGHTNESS_PCT in data:
-        params.brightness_pct = int(data[ATTR_BRIGHTNESS_PCT])
+    params.brightness_pct, params.hs_color, params.color_temp_mireds = _extract_fade_values(data)
 
-    # Parse target color
-    hs, mireds = _extract_color(data)
-    params.hs_color = hs
-    params.color_temp_mireds = mireds
-
-    # Parse from: parameter
     from_data = data.get(ATTR_FROM, {})
     if from_data:
-        if ATTR_BRIGHTNESS_PCT in from_data:
-            params.from_brightness_pct = int(from_data[ATTR_BRIGHTNESS_PCT])
-
-        from_hs, from_mireds = _extract_color(from_data)
-        params.from_hs_color = from_hs
-        params.from_color_temp_mireds = from_mireds
+        (
+            params.from_brightness_pct,
+            params.from_hs_color,
+            params.from_color_temp_mireds,
+        ) = _extract_fade_values(from_data)
 
     return params
 
