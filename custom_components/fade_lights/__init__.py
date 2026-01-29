@@ -720,10 +720,27 @@ async def _execute_fade(
         _LOGGER.debug("%s: Nothing to fade", entity_id)
         return
 
+    # Get current color mode for hybrid transition detection
+    color_mode = state.attributes.get("color_mode")
+
     # Determine which step builder to use
     if start_hs is not None and end_mireds is not None and not _is_on_planckian_locus(start_hs):
         # Hybrid HS -> mireds transition
         steps = _build_hs_to_mireds_steps(start_hs, end_mireds, transition_ms, min_step_delay_ms)
+        # If also fading brightness, add it to each step
+        if brightness_changing and end_brightness is not None:
+            num_steps = len(steps)
+            for i, step in enumerate(steps):
+                t = (i + 1) / num_steps
+                step.brightness = round(start_brightness + (end_brightness - start_brightness) * t)
+    elif color_mode == ColorMode.COLOR_TEMP and end_hs is not None:
+        # Hybrid mireds -> HS transition
+        steps = _build_mireds_to_hs_steps(
+            start_mireds if start_mireds is not None else 333,  # Default to ~3000K
+            end_hs,
+            transition_ms,
+            min_step_delay_ms,
+        )
         # If also fading brightness, add it to each step
         if brightness_changing and end_brightness is not None:
             num_steps = len(steps)
