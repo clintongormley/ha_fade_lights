@@ -1071,8 +1071,6 @@ def _build_mireds_to_hs_steps(
     Returns:
         List of FadeStep objects transitioning from mireds to HS
     """
-    max_steps = max(1, transition_ms // min_step_delay_ms)
-
     # Find the locus point closest to the target hue
     target_locus_mireds = _hs_to_mireds(end_hs)
 
@@ -1091,9 +1089,29 @@ def _build_mireds_to_hs_steps(
             min_step_delay_ms=min_step_delay_ms,
         )
 
+    # Calculate changes for mireds phase
+    mireds_diff = abs(target_locus_mireds - start_mireds)
+
+    # Calculate changes for HS phase
+    locus_hs = _mireds_to_hs(target_locus_mireds)
+    hue_diff = abs(locus_hs[0] - end_hs[0])
+    if hue_diff > 180:
+        hue_diff = 360 - hue_diff
+    sat_diff = abs(locus_hs[1] - end_hs[1])
+
+    # Calculate total step count based on all changes
+    total_steps = _calculate_step_count(
+        brightness_change=None,
+        hue_change=hue_diff,
+        sat_change=sat_diff,
+        mireds_change=mireds_diff,
+        transition_ms=transition_ms,
+        min_step_delay_ms=min_step_delay_ms,
+    )
+
     # Split: ~30% mireds, ~70% HS (opposite of HS->mireds which is 70/30)
-    mireds_steps_count = max(1, int(max_steps * 0.3))
-    hs_steps_count = max(1, max_steps - mireds_steps_count)
+    mireds_steps_count = max(1, int(total_steps * 0.3))
+    hs_steps_count = max(1, total_steps - mireds_steps_count)
 
     steps = []
 
@@ -1104,7 +1122,6 @@ def _build_mireds_to_hs_steps(
         steps.append(FadeStep(color_temp_mireds=mireds))
 
     # Phase 2: HS from locus point to final target
-    locus_hs = _mireds_to_hs(target_locus_mireds)
     for i in range(1, hs_steps_count + 1):
         t = i / hs_steps_count
         hue = _interpolate_hue(locus_hs[0], end_hs[0], t)
