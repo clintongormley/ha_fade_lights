@@ -97,6 +97,24 @@ FADE_EXPECTED_STATE: dict[str, ExpectedState] = {}
 FADE_COMPLETE_CONDITIONS: dict[str, asyncio.Condition] = {}
 
 
+def _validate_single_color_param(data: dict, context: str = "") -> None:
+    """Validate that at most one color parameter is specified in data.
+
+    Args:
+        data: Dictionary to check for color parameters.
+        context: Optional context string for error message (e.g., "in 'from:'").
+
+    Raises:
+        ServiceValidationError: If multiple color parameters are provided.
+    """
+    specified = [param for param in COLOR_PARAMS if param in data]
+    if len(specified) > 1:
+        ctx = f" {context}" if context else ""
+        raise ServiceValidationError(
+            f"Only one color parameter allowed{ctx}, got: {', '.join(sorted(specified))}"
+        )
+
+
 def _validate_color_params(data: dict) -> None:
     """Validate that at most one color parameter is specified.
 
@@ -105,22 +123,11 @@ def _validate_color_params(data: dict) -> None:
     Raises:
         ServiceValidationError: If multiple color parameters are provided.
     """
-    # Validate main params
-    specified = [param for param in COLOR_PARAMS if param in data]
-    if len(specified) > 1:
-        raise ServiceValidationError(
-            f"Only one color parameter allowed, got: {', '.join(sorted(specified))}"
-        )
+    _validate_single_color_param(data)
 
-    # Validate from: params
     from_data = data.get(ATTR_FROM, {})
     if from_data:
-        from_specified = [param for param in COLOR_PARAMS if param in from_data]
-        if len(from_specified) > 1:
-            params = ", ".join(sorted(from_specified))
-            raise ServiceValidationError(
-                f"Only one color parameter allowed in 'from:', got: {params}"
-            )
+        _validate_single_color_param(from_data, "in 'from:'")
 
 
 def _validate_color_ranges(data: dict) -> None:
