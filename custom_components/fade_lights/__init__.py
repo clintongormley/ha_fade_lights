@@ -1146,6 +1146,68 @@ def _calculate_mireds_to_hs_changes(
     ]
 
 
+def _calculate_changes(
+    params: FadeParams,
+    current_state: dict,
+    min_step_delay_ms: int,
+) -> list[FadeChange]:
+    """Calculate fade changes, dispatching to hybrid calculators if needed.
+
+    Returns a list of FadeChange phases:
+    - Simple fades: single FadeChange
+    - Hybrid transitions (HS<->mireds): two FadeChange phases
+    """
+    # Resolve start values from state or params.from_*
+    start_brightness = _resolve_start_brightness(params, current_state)
+    start_hs = _resolve_start_hs(params, current_state)
+    start_mireds = _resolve_start_mireds(params, current_state)
+
+    # Resolve end values from params
+    end_brightness = _resolve_end_brightness(params, current_state)
+    end_hs = params.hs_color
+    end_mireds = params.color_temp_mireds
+
+    # Detect hybrid transitions
+    # HS -> mireds: starting with HS color (not on Planckian locus) and targeting mireds
+    if (
+        start_hs is not None
+        and end_mireds is not None
+        and end_hs is None
+        and not _is_on_planckian_locus(start_hs)
+    ):
+        return _calculate_hs_to_mireds_changes(
+            start_brightness,
+            end_brightness,
+            start_hs,
+            end_mireds,
+            params.transition_ms,
+            min_step_delay_ms,
+        )
+
+    # mireds -> HS: starting with color temp and targeting HS color
+    if start_mireds is not None and end_hs is not None and end_mireds is None:
+        return _calculate_mireds_to_hs_changes(
+            start_brightness,
+            end_brightness,
+            start_mireds,
+            end_hs,
+            params.transition_ms,
+            min_step_delay_ms,
+        )
+
+    # Simple fade (single phase)
+    return [FadeChange(
+        start_brightness=start_brightness,
+        end_brightness=end_brightness,
+        start_hs=start_hs if end_hs is not None else None,
+        end_hs=end_hs,
+        start_mireds=start_mireds if end_mireds is not None else None,
+        end_mireds=end_mireds,
+        transition_ms=params.transition_ms,
+        min_step_delay_ms=min_step_delay_ms,
+    )]
+
+
 def _build_hs_to_mireds_steps(
     start_hs: tuple[float, float],
     end_mireds: int,
