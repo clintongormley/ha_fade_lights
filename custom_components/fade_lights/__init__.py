@@ -551,7 +551,10 @@ async def _execute_fade(
     end_mireds = fade_params.color_temp_mireds
 
     # Check if anything is actually changing
-    brightness_changing = fade_params.brightness_pct is not None and effective_start_brightness != end_brightness
+    brightness_changing = (
+        fade_params.brightness_pct is not None
+        and effective_start_brightness != end_brightness
+    )
     hs_changing = end_hs is not None and start_hs != end_hs
     mireds_changing = end_mireds is not None and start_mireds != end_mireds
 
@@ -604,10 +607,9 @@ async def _execute_fade(
     if not cancel_event.is_set():
         # Get final brightness from last phase's end_brightness (efficient)
         final_brightness = phases[-1].end_brightness
-        if final_brightness is None:
+        if final_brightness is None and fade_params.brightness_pct is not None:
             # Try to get from params
-            if fade_params.brightness_pct is not None:
-                final_brightness = int(fade_params.brightness_pct / 100 * 255)
+            final_brightness = int(fade_params.brightness_pct / 100 * 255)
 
         if final_brightness is not None and final_brightness > 0:
             _store_orig_brightness(hass, entity_id, final_brightness)

@@ -144,7 +144,11 @@ class FadeChange:
                 ideal_steps.append(mireds_change // MIN_MIREDS_DELTA)
 
         ideal = max(ideal_steps) if ideal_steps else 1
-        max_by_time = self.transition_ms // self.min_step_delay_ms if self.min_step_delay_ms > 0 else ideal
+        max_by_time = (
+            self.transition_ms // self.min_step_delay_ms
+            if self.min_step_delay_ms > 0
+            else ideal
+        )
 
         self._step_count = max(1, min(ideal, max_by_time))
         return self._step_count
@@ -201,7 +205,9 @@ class FadeChange:
         """
         if self.start_brightness is None or self.end_brightness is None:
             return None
-        brightness = round(self.start_brightness + (self.end_brightness - self.start_brightness) * t)
+        brightness = round(
+            self.start_brightness + (self.end_brightness - self.start_brightness) * t
+        )
         # Skip brightness level 1 (many lights behave oddly at this level)
         if brightness == 1:
             brightness = 0 if self.end_brightness < self.start_brightness else 2
