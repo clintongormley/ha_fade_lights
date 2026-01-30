@@ -129,9 +129,9 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test rgb_color is converted to hs_color internally."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
-        params = _validate_and_parse_color_params({ATTR_RGB_COLOR: [255, 0, 0]})
+        params = FadeParams.from_service_data({ATTR_RGB_COLOR: [255, 0, 0]})
 
         # Pure red should be hue ~0, saturation 100
         assert params.hs_color is not None
@@ -145,10 +145,10 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test rgbw_color is converted to hs_color internally."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
         # Green with some white
-        params = _validate_and_parse_color_params({ATTR_RGBW_COLOR: [0, 255, 0, 50]})
+        params = FadeParams.from_service_data({ATTR_RGBW_COLOR: [0, 255, 0, 50]})
 
         assert params.hs_color is not None
         # Green is hue ~120
@@ -161,10 +161,10 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test rgbww_color is converted to hs_color internally."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
         # Blue with some whites
-        params = _validate_and_parse_color_params({ATTR_RGBWW_COLOR: [0, 0, 255, 30, 20]})
+        params = FadeParams.from_service_data({ATTR_RGBWW_COLOR: [0, 0, 255, 30, 20]})
 
         assert params.hs_color is not None
         # Blue is hue ~240
@@ -177,10 +177,10 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test xy_color is converted to hs_color internally."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
         # Red-ish xy coordinates
-        params = _validate_and_parse_color_params({ATTR_XY_COLOR: [0.64, 0.33]})
+        params = FadeParams.from_service_data({ATTR_XY_COLOR: [0.64, 0.33]})
 
         assert params.hs_color is not None
         # Should be reddish (hue near 0 or 360)
@@ -193,9 +193,9 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test hs_color passes through unchanged."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
-        params = _validate_and_parse_color_params({ATTR_HS_COLOR: [180, 75]})
+        params = FadeParams.from_service_data({ATTR_HS_COLOR: [180, 75]})
 
         assert params.hs_color == (180, 75)
 
@@ -206,10 +206,10 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test color_temp_kelvin is converted to mireds."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
         # 4000K = 250 mireds (1_000_000 / 4000)
-        params = _validate_and_parse_color_params({ATTR_COLOR_TEMP_KELVIN: 4000})
+        params = FadeParams.from_service_data({ATTR_COLOR_TEMP_KELVIN: 4000})
 
         assert params.color_temp_mireds == 250
         assert params.hs_color is None
@@ -221,9 +221,9 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test no color params returns None for both."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
 
-        params = _validate_and_parse_color_params({ATTR_BRIGHTNESS_PCT: 50})
+        params = FadeParams.from_service_data({ATTR_BRIGHTNESS_PCT: 50})
 
         assert params.hs_color is None
         assert params.color_temp_mireds is None
@@ -239,10 +239,10 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with brightness_pct."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _validate_and_parse_color_params(
+        params = FadeParams.from_service_data(
             {
                 ATTR_BRIGHTNESS_PCT: 100,
                 ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 0},
@@ -259,10 +259,10 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with hs_color."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _validate_and_parse_color_params(
+        params = FadeParams.from_service_data(
             {
                 ATTR_HS_COLOR: [200, 80],
                 ATTR_FROM: {ATTR_HS_COLOR: [0, 0]},
@@ -279,10 +279,10 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with color_temp_kelvin."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _validate_and_parse_color_params(
+        params = FadeParams.from_service_data(
             {
                 ATTR_COLOR_TEMP_KELVIN: 4000,
                 ATTR_FROM: {ATTR_COLOR_TEMP_KELVIN: 2700},
@@ -299,10 +299,10 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter converts rgb_color to hs."""
-        from custom_components.fade_lights import _validate_and_parse_color_params
+        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
 
-        params = _validate_and_parse_color_params(
+        params = FadeParams.from_service_data(
             {
                 ATTR_HS_COLOR: [200, 80],
                 ATTR_FROM: {ATTR_RGB_COLOR: [255, 0, 0]},  # Red
