@@ -20,6 +20,7 @@ from .const import (
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
+    ATTR_TRANSITION,
     ATTR_XY_COLOR,
     COLOR_PARAMS,
     DEFAULT_TRANSITION,
@@ -101,10 +102,15 @@ class FadeParams:
                 from_color_temp_mireds,
             ) = cls._extract_fade_values(from_data)
 
+        transition_ms = int(
+            1000 * float(data.get(ATTR_TRANSITION, DEFAULT_TRANSITION))
+        )
+
         return cls(
             brightness_pct=brightness_pct,
             hs_color=hs_color,
             color_temp_mireds=color_temp_mireds,
+            transition_ms=transition_ms,
             from_brightness_pct=from_brightness_pct,
             from_hs_color=from_hs_color,
             from_color_temp_mireds=from_color_temp_mireds,

@@ -49,7 +49,7 @@ async def test_service_accepts_single_entity(
         call_args = mock_fade_light.call_args
         assert call_args[0][1] == mock_light_entity  # entity_id
         assert call_args[0][2].brightness_pct == 50  # fade_params.brightness_pct
-        assert call_args[0][3] == 2000  # transition_ms (2 seconds * 1000)
+        assert call_args[0][2].transition_ms == 2000  # transition_ms (2 seconds * 1000)
 
 
 async def test_service_accepts_entity_list(
@@ -85,7 +85,7 @@ async def test_service_accepts_entity_list(
         # Verify brightness and transition for all calls
         for call in mock_fade_light.call_args_list:
             assert call[0][2].brightness_pct == 75  # fade_params.brightness_pct
-            assert call[0][3] == 5000  # transition_ms
+            assert call[0][2].transition_ms == 5000
 
 
 async def test_service_accepts_comma_string(
@@ -235,7 +235,7 @@ async def test_service_uses_default_transition(
         # Verify _fade_light was called with default transition (converted to ms)
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        assert call_args[0][3] == DEFAULT_TRANSITION * 1000  # transition_ms
+        assert call_args[0][2].transition_ms == DEFAULT_TRANSITION * 1000
 
 
 async def test_service_deduplicates_entities(

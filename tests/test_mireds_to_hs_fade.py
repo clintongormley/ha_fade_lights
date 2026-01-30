@@ -89,7 +89,6 @@ class TestMiredsToHsFade:
                 mock_hass,
                 "light.test",
                 fade_params,
-                transition_ms=3000,
                 min_step_delay_ms=100,
                 cancel_event=cancel_event,
             )
@@ -132,7 +131,6 @@ class TestMiredsToHsFade:
                 mock_hass,
                 "light.test",
                 fade_params,
-                transition_ms=3000,
                 min_step_delay_ms=100,
                 cancel_event=cancel_event,
             )
@@ -167,7 +165,6 @@ class TestMiredsToHsFade:
                 mock_hass,
                 "light.test",
                 fade_params,
-                transition_ms=3000,
                 min_step_delay_ms=100,
                 cancel_event=cancel_event,
             )
