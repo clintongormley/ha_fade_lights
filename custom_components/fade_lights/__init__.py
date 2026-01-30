@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 import time
 
 from homeassistant.components.light import (
@@ -528,7 +527,11 @@ async def _execute_fade(
     current_hs, current_mireds = _get_current_color_state(state)
 
     # Determine start and end values for change detection
-    end_brightness = int(fade_params.brightness_pct / 100 * 255) if fade_params.brightness_pct is not None else None
+    end_brightness = (
+        int(fade_params.brightness_pct / 100 * 255)
+        if fade_params.brightness_pct is not None
+        else None
+    )
     effective_start_brightness = (
         int(fade_params.from_brightness_pct / 100 * 255)
         if fade_params.from_brightness_pct is not None
