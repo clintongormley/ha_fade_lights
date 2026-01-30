@@ -69,7 +69,9 @@ from .const import (
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
 )
-from .models import ExpectedState, ExpectedValues, FadeChange, FadeParams, FadeStep
+from .expected_state import ExpectedState, ExpectedValues
+from .fade_change import FadeChange, FadeStep
+from .models import FadeParams
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -19,7 +19,7 @@ from custom_components.fade_lights import (
     _match_and_remove_expected,
     _wait_until_stale_events_flushed,
 )
-from custom_components.fade_lights.models import ExpectedValues
+from custom_components.fade_lights.expected_state import ExpectedValues
 
 
 def _has_brightness(expected_state: ExpectedState, brightness: int) -> bool:

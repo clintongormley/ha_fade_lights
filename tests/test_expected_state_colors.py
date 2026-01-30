@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from custom_components.fade_lights import ExpectedState
-from custom_components.fade_lights.models import ExpectedValues
+from custom_components.fade_lights.expected_state import ExpectedValues
 
 
 class TestExpectedStateColorMatching:

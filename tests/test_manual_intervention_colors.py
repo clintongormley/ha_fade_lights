@@ -12,7 +12,7 @@ from custom_components.fade_lights import (
     ExpectedState,
     _match_and_remove_expected,
 )
-from custom_components.fade_lights.models import ExpectedValues
+from custom_components.fade_lights.expected_state import ExpectedValues
 
 
 @pytest.fixture

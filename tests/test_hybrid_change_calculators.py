@@ -8,7 +8,7 @@ from custom_components.fade_lights import (
     _hs_to_mireds,
     _mireds_to_hs,
 )
-from custom_components.fade_lights.models import FadeChange
+from custom_components.fade_lights.fade_change import FadeChange
 
 
 class TestCalculateHsToMiredsChanges:

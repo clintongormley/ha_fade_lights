@@ -8,7 +8,8 @@ from homeassistant.components.light.const import ColorMode
 from homeassistant.const import STATE_ON
 
 from custom_components.fade_lights import _execute_fade, _calculate_changes
-from custom_components.fade_lights.models import FadeChange, FadeParams
+from custom_components.fade_lights.fade_change import FadeChange
+from custom_components.fade_lights.models import FadeParams
 
 
 @pytest.fixture

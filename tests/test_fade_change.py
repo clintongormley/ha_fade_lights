@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.fade_lights.models import FadeChange, FadeStep
+from custom_components.fade_lights.fade_change import FadeChange, FadeStep
 
 
 class TestFadeChangeStepCount:

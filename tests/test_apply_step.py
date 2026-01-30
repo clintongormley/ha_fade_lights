@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.fade_lights import _apply_step
-from custom_components.fade_lights.models import FadeStep
+from custom_components.fade_lights.fade_change import FadeStep
 
 
 @pytest.fixture

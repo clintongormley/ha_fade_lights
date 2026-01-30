@@ -6,7 +6,8 @@ from homeassistant.components.light import ATTR_BRIGHTNESS
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 
 from custom_components.fade_lights import _calculate_changes
-from custom_components.fade_lights.models import FadeChange, FadeParams
+from custom_components.fade_lights.fade_change import FadeChange
+from custom_components.fade_lights.models import FadeParams
 
 
 class TestCalculateChangesBasicStructure:

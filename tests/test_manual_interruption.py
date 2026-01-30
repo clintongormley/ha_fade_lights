@@ -28,7 +28,7 @@ from custom_components.fade_lights.const import (
     DOMAIN,
     SERVICE_FADE_LIGHTS,
 )
-from custom_components.fade_lights.models import ExpectedValues
+from custom_components.fade_lights.expected_state import ExpectedValues
 
 
 @pytest.fixture
