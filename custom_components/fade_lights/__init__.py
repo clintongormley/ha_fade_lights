@@ -332,6 +332,11 @@ async def _execute_fade(
     # Wait for any late events and clear expected state
     expected_state = FADE_EXPECTED_STATE.get(entity_id)
     if expected_state:
+        _LOGGER.debug(
+            "%s: Fade finished. Waiting for expected state events to be flushed (remaining: %d)",
+            entity_id,
+            len(expected_state.values),
+        )
         await expected_state.wait_and_clear()
 
     # Store final brightness after successful fade completion
