@@ -16,6 +16,32 @@ from custom_components.fade_lights.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
+def clear_module_state() -> Generator[None]:
+    """Clear module-level state between tests to prevent state leakage."""
+    # Import here to avoid circular imports
+    from custom_components.fade_lights import (
+        ACTIVE_FADES,
+        FADE_CANCEL_EVENTS,
+        FADE_COMPLETE_CONDITIONS,
+        FADE_EXPECTED_STATE,
+    )
+
+    # Clear before test
+    ACTIVE_FADES.clear()
+    FADE_CANCEL_EVENTS.clear()
+    FADE_COMPLETE_CONDITIONS.clear()
+    FADE_EXPECTED_STATE.clear()
+
+    yield
+
+    # Clear after test
+    ACTIVE_FADES.clear()
+    FADE_CANCEL_EVENTS.clear()
+    FADE_COMPLETE_CONDITIONS.clear()
+    FADE_EXPECTED_STATE.clear()
+
+
+@pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(
     enable_custom_integrations: None,
 ) -> Generator[None]:

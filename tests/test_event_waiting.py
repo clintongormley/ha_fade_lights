@@ -13,12 +13,18 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights import (
-    FADE_EXPECTED_BRIGHTNESS,
+    FADE_EXPECTED_STATE,
     ExpectedState,
     _add_expected_brightness,
     _match_and_remove_expected,
     _wait_until_stale_events_flushed,
 )
+from custom_components.fade_lights.expected_state import ExpectedValues
+
+
+def _has_brightness(expected_state: ExpectedState, brightness: int) -> bool:
+    """Check if expected state contains a value with the given brightness."""
+    return any(ev.brightness == brightness for ev, _ in expected_state.values)
 
 
 async def test_add_expected_brightness_creates_entry(
@@ -29,39 +35,38 @@ async def test_add_expected_brightness_creates_entry(
     entity_id = "light.test_add"
 
     # Ensure no entry exists
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
     _add_expected_brightness(entity_id, 100)
 
-    assert entity_id in FADE_EXPECTED_BRIGHTNESS
-    assert 100 in FADE_EXPECTED_BRIGHTNESS[entity_id].values
-    assert FADE_EXPECTED_BRIGHTNESS[entity_id]._condition is None
+    assert entity_id in FADE_EXPECTED_STATE
+    assert _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
+    assert FADE_EXPECTED_STATE[entity_id]._condition is None
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
-async def test_add_expected_brightness_updates_timestamp(
+async def test_add_expected_brightness_adds_multiple_entries(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _add_expected_brightness updates timestamp for same brightness."""
+    """Test _add_expected_brightness adds multiple entries (not overwrites)."""
     entity_id = "light.test_timestamp"
 
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
     _add_expected_brightness(entity_id, 100)
-    first_timestamp = FADE_EXPECTED_BRIGHTNESS[entity_id].values[100]
+    assert len(FADE_EXPECTED_STATE[entity_id].values) == 1
 
     await asyncio.sleep(0.01)
 
     _add_expected_brightness(entity_id, 100)
-    second_timestamp = FADE_EXPECTED_BRIGHTNESS[entity_id].values[100]
-
-    assert second_timestamp > first_timestamp
+    # New implementation appends to list, so we now have 2 entries
+    assert len(FADE_EXPECTED_STATE[entity_id].values) == 2
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_match_and_remove_expected_removes_matched_value(
@@ -77,16 +82,19 @@ async def test_match_and_remove_expected_removes_matched_value(
         {ATTR_BRIGHTNESS: 100, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
+    )
 
     state = hass.states.get(entity_id)
     result = _match_and_remove_expected(entity_id, state)
 
     assert result is True
-    assert 100 not in FADE_EXPECTED_BRIGHTNESS[entity_id].values
+    assert not _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_match_and_remove_expected_with_tolerance(
@@ -102,16 +110,19 @@ async def test_match_and_remove_expected_with_tolerance(
         {ATTR_BRIGHTNESS: 102, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
+    )
 
     state = hass.states.get(entity_id)
     result = _match_and_remove_expected(entity_id, state)
 
     assert result is True
-    assert 100 not in FADE_EXPECTED_BRIGHTNESS[entity_id].values
+    assert not _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_match_and_remove_expected_off_state(
@@ -127,16 +138,19 @@ async def test_match_and_remove_expected_off_state(
         {ATTR_BRIGHTNESS: None, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={0: time.monotonic()})
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=0), time.monotonic())],
+    )
 
     state = hass.states.get(entity_id)
     result = _match_and_remove_expected(entity_id, state)
 
     assert result is True
-    assert 0 not in FADE_EXPECTED_BRIGHTNESS[entity_id].values
+    assert not _has_brightness(FADE_EXPECTED_STATE[entity_id], 0)
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_match_and_remove_expected_notifies_condition(
@@ -152,9 +166,12 @@ async def test_match_and_remove_expected_notifies_condition(
         {ATTR_BRIGHTNESS: 100, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    expected_state = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    expected_state = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
+    )
     condition = expected_state.get_condition()  # Create condition via method
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = expected_state
+    FADE_EXPECTED_STATE[entity_id] = expected_state
 
     notified = asyncio.Event()
 
@@ -178,7 +195,7 @@ async def test_match_and_remove_expected_notifies_condition(
         await wait_task
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_get_condition_prunes_stale_values(
@@ -189,14 +206,20 @@ async def test_get_condition_prunes_stale_values(
     # Create entry with old timestamp (6 seconds ago) and fresh timestamp
     old_timestamp = time.monotonic() - 6.0
     fresh_timestamp = time.monotonic()
-    expected_state = ExpectedState(entity_id="light.test", values={100: old_timestamp, 200: fresh_timestamp})
+    expected_state = ExpectedState(
+        entity_id="light.test",
+        values=[
+            (ExpectedValues(brightness=100), old_timestamp),
+            (ExpectedValues(brightness=200), fresh_timestamp),
+        ],
+    )
 
     # get_condition should prune stale values
     expected_state.get_condition()
 
     # Stale value should be removed, fresh value should remain
-    assert 100 not in expected_state.values
-    assert 200 in expected_state.values
+    assert not _has_brightness(expected_state, 100)
+    assert _has_brightness(expected_state, 200)
 
 
 async def test_get_condition_prunes_all_stale_values(
@@ -206,7 +229,13 @@ async def test_get_condition_prunes_all_stale_values(
     """Test get_condition prunes all stale values."""
     # Create entry with only old timestamps
     old_timestamp = time.monotonic() - 6.0
-    expected_state = ExpectedState(entity_id="light.test", values={100: old_timestamp, 150: old_timestamp})
+    expected_state = ExpectedState(
+        entity_id="light.test",
+        values=[
+            (ExpectedValues(brightness=100), old_timestamp),
+            (ExpectedValues(brightness=150), old_timestamp),
+        ],
+    )
 
     # get_condition should prune all stale values
     expected_state.get_condition()
@@ -221,14 +250,20 @@ async def test_get_condition_keeps_fresh_values(
 ) -> None:
     """Test get_condition keeps fresh values."""
     # Create entry with fresh timestamps
-    expected_state = ExpectedState(entity_id="light.test", values={100: time.monotonic(), 200: time.monotonic()})
+    expected_state = ExpectedState(
+        entity_id="light.test",
+        values=[
+            (ExpectedValues(brightness=100), time.monotonic()),
+            (ExpectedValues(brightness=200), time.monotonic()),
+        ],
+    )
 
     # get_condition should not remove fresh values
     expected_state.get_condition()
 
     # Both values should remain
-    assert 100 in expected_state.values
-    assert 200 in expected_state.values
+    assert _has_brightness(expected_state, 100)
+    assert _has_brightness(expected_state, 200)
 
 
 async def test_wait_until_stale_events_flushed_returns_immediately_when_empty(
@@ -238,7 +273,7 @@ async def test_wait_until_stale_events_flushed_returns_immediately_when_empty(
     """Test _wait_until_stale_events_flushed returns immediately when no expected values."""
     entity_id = "light.test_empty"
 
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
     start = time.monotonic()
     await _wait_until_stale_events_flushed(entity_id)
@@ -255,7 +290,10 @@ async def test_wait_until_stale_events_flushed_times_out(
     """Test _wait_until_stale_events_flushed times out when events don't arrive."""
     entity_id = "light.test_timeout"
 
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
+    )
 
     start = time.monotonic()
     await _wait_until_stale_events_flushed(entity_id, timeout=0.2)
@@ -266,7 +304,7 @@ async def test_wait_until_stale_events_flushed_times_out(
     assert elapsed < 0.5
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_wait_until_stale_events_flushed_returns_when_notified(
@@ -276,9 +314,12 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
     """Test _wait_until_stale_events_flushed returns early when condition is notified."""
     entity_id = "light.test_early_return"
 
-    expected_state = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    expected_state = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
+    )
     condition = expected_state.get_condition()  # Create condition via method
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = expected_state
+    FADE_EXPECTED_STATE[entity_id] = expected_state
 
     async def clear_and_notify() -> None:
         await asyncio.sleep(0.1)
@@ -296,7 +337,7 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
     assert elapsed < 0.5
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness(
@@ -313,7 +354,10 @@ async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness
         {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id, values={100: time.monotonic()})
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
+    )
 
     state = hass.states.get(entity_id)
     result = _match_and_remove_expected(entity_id, state)
@@ -321,7 +365,7 @@ async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness
     # Should return False since brightness is None for ON state
     assert result is False
     # Expected value should remain unchanged
-    assert 100 in FADE_EXPECTED_BRIGHTNESS[entity_id].values
+    assert _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
 
     # Clean up
-    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+    FADE_EXPECTED_STATE.pop(entity_id, None)
