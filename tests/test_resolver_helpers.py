@@ -6,7 +6,7 @@ from homeassistant.components.light import ATTR_BRIGHTNESS
 from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 
-from custom_components.fade_lights import (
+from custom_components.fade_lights.fade_change import (
     _resolve_end_brightness,
     _resolve_start_brightness,
     _resolve_start_hs,
@@ -82,9 +82,8 @@ class TestResolveEndBrightness:
     def test_uses_brightness_pct_when_specified(self) -> None:
         """Test that brightness_pct is converted to 0-255 scale."""
         params = FadeParams(brightness_pct=75)
-        state = {ATTR_BRIGHTNESS: 100}
 
-        result = _resolve_end_brightness(params, state)
+        result = _resolve_end_brightness(params)
 
         # 75% of 255 = 191.25, truncated to 191
         assert result == 191
@@ -92,38 +91,38 @@ class TestResolveEndBrightness:
     def test_returns_none_when_not_specified(self) -> None:
         """Test that None is returned when brightness_pct is not set."""
         params = FadeParams()
-        state = {ATTR_BRIGHTNESS: 200}
 
-        result = _resolve_end_brightness(params, state)
+        result = _resolve_end_brightness(params)
 
         assert result is None
 
     def test_brightness_pct_zero(self) -> None:
         """Test handling of 0% end brightness."""
         params = FadeParams(brightness_pct=0)
-        state = {}
 
-        result = _resolve_end_brightness(params, state)
+        result = _resolve_end_brightness(params)
 
         assert result == 0
 
     def test_brightness_pct_100(self) -> None:
         """Test handling of 100% end brightness."""
         params = FadeParams(brightness_pct=100)
-        state = {}
 
-        result = _resolve_end_brightness(params, state)
+        result = _resolve_end_brightness(params)
 
         assert result == 255
 
     def test_state_ignored(self) -> None:
-        """Test that state is ignored for end brightness (unlike start)."""
+        """Test that state is ignored for end brightness (unlike start).
+
+        This function only uses params, not state - demonstrating the design
+        that end brightness is explicitly specified, not derived from state.
+        """
         params = FadeParams()
-        state = {ATTR_BRIGHTNESS: 255}
 
-        result = _resolve_end_brightness(params, state)
+        result = _resolve_end_brightness(params)
 
-        # Should return None, not the state value
+        # Should return None since no brightness_pct specified
         assert result is None
 
 
