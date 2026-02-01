@@ -1,6 +1,6 @@
 fade_lights:
   name: Fade lights
-  description: Fades lights to a desired level over a specified transition period.
+  description: Fades lights to a desired brightness and/or color over a specified transition period.
   fields:
     entity_id:
       name: Entity ID
@@ -13,9 +13,8 @@ fade_lights:
           multiple: true
     brightness_pct:
       name: Brightness percentage
-      description: Integer value from 0 to 100 representing the desired final brightness level as a percentage.
+      description: Target brightness level as a percentage (0-100).
       required: false
-      default: 40
       example: 75
       selector:
         number:
@@ -25,7 +24,7 @@ fade_lights:
           unit_of_measurement: "%"
     transition:
       name: Transition time
-      description: Transition time for fading in seconds. Accepts decimal values, e.g., 0.5 for 500ms.
+      description: Transition time for fading in seconds. Accepts decimal values.
       required: false
       default: 3
       example: "0.5"
@@ -36,3 +35,62 @@ fade_lights:
           step: 0.1
           mode: box
           unit_of_measurement: "s"
+    color_temp_kelvin:
+      name: Color temperature
+      description: Target color temperature in Kelvin (1000-40000).
+      required: false
+      example: 4000
+      selector:
+        color_temp:
+          unit: kelvin
+          min: 1000
+          max: 40000
+    hs_color:
+      name: HS color
+      description: Target color as [hue (0-360), saturation (0-100)].
+      required: false
+      example: "[200, 80]"
+      selector:
+        object:
+    from:
+      name: Starting values
+      description: >-
+        Override starting values instead of using current state.
+        Accepts brightness_pct and one color parameter (color_temp_kelvin, hs_color, rgb_color, rgbw_color, rgbww_color, or xy_color).
+      required: false
+      example: "{ brightness_pct: 0, color_temp_kelvin: 2700 }"
+      selector:
+        object:
+  sections:
+    advanced:
+      name: Advanced color options
+      collapsed: true
+      fields:
+        rgb_color:
+          name: RGB color
+          description: Target color as [red, green, blue] values (0-255 each).
+          required: false
+          example: "[255, 128, 0]"
+          selector:
+            color_rgb:
+        rgbw_color:
+          name: RGBW color
+          description: Target color as [red, green, blue, white] values (0-255 each).
+          required: false
+          example: "[255, 128, 0, 50]"
+          selector:
+            object:
+        rgbww_color:
+          name: RGBWW color
+          description: Target color as [red, green, blue, cold_white, warm_white] values (0-255 each).
+          required: false
+          example: "[255, 128, 0, 50, 30]"
+          selector:
+            object:
+        xy_color:
+          name: XY color
+          description: Target color as CIE xy coordinates [x, y] (0-1 each).
+          required: false
+          example: "[0.3, 0.4]"
+          selector:
+            object:

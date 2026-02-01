@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 import time
-from dataclasses import dataclass, field
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
+)
+from homeassistant.components.light import (
+    ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN,
+)
+from homeassistant.components.light import (
+    ATTR_HS_COLOR as HA_ATTR_HS_COLOR,
+)
+from homeassistant.components.light import (
+    ATTR_MAX_COLOR_TEMP_KELVIN as HA_ATTR_MAX_COLOR_TEMP_KELVIN,
+)
+from homeassistant.components.light import (
+    ATTR_MIN_COLOR_TEMP_KELVIN as HA_ATTR_MIN_COLOR_TEMP_KELVIN,
 )
 from homeassistant.components.light.const import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.light.const import ColorMode
@@ -25,6 +35,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import (
     Event,
+    EventStateChangedData,
     HomeAssistant,
     ServiceCall,
     State,
@@ -35,19 +46,19 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
-    ATTR_BRIGHTNESS_PCT,
-    ATTR_TRANSITION,
-    BRIGHTNESS_TOLERANCE,
-    DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
-    DEFAULT_TRANSITION,
     DOMAIN,
     FADE_CANCEL_TIMEOUT_S,
+    HYBRID_HS_PHASE_RATIO,
     OPTION_MIN_STEP_DELAY_MS,
+    PLANCKIAN_LOCUS_HS,
+    PLANCKIAN_LOCUS_SATURATION_THRESHOLD,
     SERVICE_FADE_LIGHTS,
-    STALE_THRESHOLD,
     STORAGE_KEY,
 )
+from .expected_state import ExpectedState, ExpectedValues
+from .fade_change import FadeChange, FadeStep
+from .fade_params import FadeParams
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,141 +79,9 @@ ACTIVE_FADES: dict[str, asyncio.Task] = {}
 FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 
 
-@dataclass
-class ExpectedState:
-    """Track expected brightness values and provide synchronization for waiting."""
-
-    entity_id: str
-    values: dict[int, float] = field(default_factory=dict)  # brightness -> timestamp
-    _condition: asyncio.Condition | None = field(default=None, repr=False)
-
-    def add(self, brightness: int) -> None:
-        """Add an expected brightness value with current timestamp."""
-        self.values[brightness] = time.monotonic()
-        _LOGGER.debug(
-            "%s: ExpectedState.add(%s) -> values=%s",
-            self.entity_id,
-            brightness,
-            list(self.values.keys()),
-        )
-
-    def get_condition(self) -> asyncio.Condition:
-        """Get or create the condition for waiting, pruning stale values first."""
-        _LOGGER.debug(
-            "%s: ExpectedState.get_condition() values=%s",
-            self.entity_id,
-            list(self.values.keys()),
-        )
-
-        # Prune stale values
-        now = time.monotonic()
-        stale_keys = [
-            brightness
-            for brightness, timestamp in self.values.items()
-            if now - timestamp > STALE_THRESHOLD
-        ]
-        if stale_keys:
-            _LOGGER.debug(
-                "%s: ExpectedState.get_condition() removing stale keys: %s",
-                self.entity_id,
-                stale_keys,
-            )
-        for key in stale_keys:
-            del self.values[key]
-
-        _LOGGER.debug(
-            "%s: ExpectedState.get_condition() after prune=%s",
-            self.entity_id,
-            list(self.values.keys()),
-        )
-
-        if self._condition is None:
-            self._condition = asyncio.Condition()
-
-        # Notify if all values were pruned
-        if not self.values:
-            _LOGGER.debug(
-                "%s: ExpectedState.get_condition -> values empty, notifying condition",
-                self.entity_id,
-            )
-            asyncio.get_event_loop().call_soon(
-                lambda c=self._condition: asyncio.create_task(self._notify(c))
-            )
-
-        return self._condition
-
-    def match_and_remove(self, brightness: int) -> int | None:
-        """Match brightness against expected values, remove if found, notify if empty.
-
-        Args:
-            brightness: The brightness value to match (0 for off)
-
-        Returns:
-            The matched brightness value, or None if no match.
-        """
-        _LOGGER.debug(
-            "%s: ExpectedState.match_and_remove(%s) values=%s",
-            self.entity_id,
-            brightness,
-            list(self.values.keys()),
-        )
-        matched_value: int | None = None
-
-        if brightness == 0:
-            if 0 in self.values:
-                matched_value = 0
-        else:
-            for expected in self.values:
-                if abs(brightness - expected) <= BRIGHTNESS_TOLERANCE:
-                    matched_value = expected
-                    break
-
-        if matched_value is None:
-            _LOGGER.debug(
-                "%s: ExpectedState.match_and_remove(%s) -> no match found",
-                self.entity_id,
-                brightness,
-            )
-            return None
-
-        # Remove matched value
-        del self.values[matched_value]
-        _LOGGER.debug(
-            "%s: ExpectedState.match_and_remove(%s) matched=%s now=%s",
-            self.entity_id,
-            brightness,
-            matched_value,
-            list(self.values.keys()),
-        )
-
-        # Notify condition if set is now empty
-        if not self.values and self._condition is not None:
-            _LOGGER.debug(
-                "%s: ExpectedState.match_and_remove -> values empty, notifying condition",
-                self.entity_id,
-            )
-            # Schedule notification (can't await in callback context)
-            asyncio.get_event_loop().call_soon(
-                lambda c=self._condition: asyncio.create_task(self._notify(c))
-            )
-
-        return matched_value
-
-    @property
-    def is_empty(self) -> bool:
-        """Check if there are no expected values."""
-        return not self.values
-
-    @staticmethod
-    async def _notify(condition: asyncio.Condition) -> None:
-        """Notify all waiters on the condition."""
-        async with condition:
-            condition.notify_all()
-
-
-# Maps entity_id -> ExpectedState for tracking expected brightness during fades
+# Maps entity_id -> ExpectedState for tracking expected state during fades
 # and waiting for state change events after service calls.
-FADE_EXPECTED_BRIGHTNESS: dict[str, ExpectedState] = {}
+FADE_EXPECTED_STATE: dict[str, ExpectedState] = {}
 
 # Maps entity_id -> asyncio.Condition to signal when fade cleanup completes.
 # Waiters use this instead of polling to know when a cancelled fade has finished.
@@ -225,15 +104,13 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Fade Lights from a config entry."""
-    store = Store(hass, 1, STORAGE_KEY)
+    store: Store[dict[str, int]] = Store(hass, 1, STORAGE_KEY)
     storage_data = await store.async_load() or {}
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN] = {
         "store": store,
         "data": storage_data,
-        "default_brightness": DEFAULT_BRIGHTNESS_PCT,
-        "default_transition": DEFAULT_TRANSITION,
         "min_step_delay_ms": entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS),
     }
 
@@ -242,7 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _handle_fade_lights(hass, call)
 
     @callback
-    def handle_light_state_change(event: Event) -> None:
+    def handle_light_state_change(event: Event[EventStateChangedData]) -> None:
         """Event handler wrapper."""
         _handle_light_state_change(hass, event)
 
@@ -278,7 +155,7 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
 
     ACTIVE_FADES.clear()
     FADE_CANCEL_EVENTS.clear()
-    FADE_EXPECTED_BRIGHTNESS.clear()
+    FADE_EXPECTED_STATE.clear()
     FADE_COMPLETE_CONDITIONS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
@@ -295,29 +172,37 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
 async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the fade_lights service call."""
     domain_data = hass.data.get(DOMAIN, {})
-    default_brightness = domain_data.get("default_brightness", DEFAULT_BRIGHTNESS_PCT)
-    default_transition = domain_data.get("default_transition", DEFAULT_TRANSITION)
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 
-    brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
-    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
+    fade_params = FadeParams.from_service_data(call.data)
+
+    if not fade_params.has_target() and not fade_params.has_from_target():
+        _LOGGER.debug("No fade parameters specified, nothing to do")
+        return
 
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
     if not expanded_entities:
         return
 
-    tasks = [
-        asyncio.create_task(
-            _fade_light(
-                hass,
+    tasks = []
+    for entity_id in expanded_entities:
+        state = hass.states.get(entity_id)
+        if state and not _can_apply_fade_params(state, fade_params):
+            _LOGGER.info(
+                "%s: Skipping - light cannot apply any requested fade parameters",
                 entity_id,
-                brightness_pct,
-                transition_ms,
-                min_step_delay_ms,
+            )
+            continue
+        tasks.append(
+            asyncio.create_task(
+                _fade_light(
+                    hass,
+                    entity_id,
+                    fade_params,
+                    min_step_delay_ms,
+                )
             )
         )
-        for entity_id in expanded_entities
-    ]
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -326,11 +211,10 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
 async def _fade_light(
     hass: HomeAssistant,
     entity_id: str,
-    brightness_pct: int,
-    transition_ms: int,
+    fade_params: FadeParams,
     min_step_delay_ms: int,
 ) -> None:
-    """Fade a single light to the specified brightness.
+    """Fade a single light to the specified brightness and/or color.
 
     This is the entry point for fading a single light. It handles:
     - Cancelling any existing fade for the same entity
@@ -357,16 +241,14 @@ async def _fade_light(
         ACTIVE_FADES[entity_id] = current_task
 
     try:
-        await _execute_fade(
-            hass, entity_id, brightness_pct, transition_ms, min_step_delay_ms, cancel_event
-        )
+        await _execute_fade(hass, entity_id, fade_params, min_step_delay_ms, cancel_event)
     except asyncio.CancelledError:
         pass  # Normal cancellation, not an error
     finally:
         # Clean up tracking state regardless of how the fade ended
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
-        # Note: FADE_EXPECTED_BRIGHTNESS is NOT cleared here - values persist
+        # Note: FADE_EXPECTED_STATE is NOT cleared here - values persist
         # for event matching and are pruned when next fade starts
 
         # Notify any waiters that cleanup is complete
@@ -379,153 +261,527 @@ async def _fade_light(
 async def _execute_fade(
     hass: HomeAssistant,
     entity_id: str,
-    brightness_pct: int,
-    transition_ms: int,
+    fade_params: FadeParams,
     min_step_delay_ms: int,
     cancel_event: asyncio.Event,
 ) -> None:
-    """Execute the fade operation."""
+    """Execute the fade operation using FadeChange iterator pattern.
+
+    Uses _resolve_fade to create a single FadeChange that handles all fade types
+    including hybrid transitions internally. The iterator generates steps
+    seamlessly across mode switches.
+    """
     state = hass.states.get(entity_id)
     if not state:
         _LOGGER.warning("%s: Entity not found", entity_id)
         return
 
-    # Handle non-dimmable lights (on/off only)
-    if ColorMode.BRIGHTNESS not in state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
-        await _apply_brightness(hass, entity_id, 255 if brightness_pct > 0 else 0)
-        return
-
-    brightness = state.attributes.get(ATTR_BRIGHTNESS)
-    start_level = int(brightness) if brightness is not None else 0
-    end_level = int(brightness_pct / 100 * 255)
-
-    if start_level == end_level:
-        return
-
-    # Store original brightness if not already stored (for restoration after fade)
+    # Store original brightness if not already stored
+    current_brightness = state.attributes.get(ATTR_BRIGHTNESS)
+    start_brightness = int(current_brightness) if current_brightness is not None else 0
     existing_orig = _get_orig_brightness(hass, entity_id)
-    if existing_orig == 0 and start_level > 0:
-        _store_orig_brightness(hass, entity_id, start_level)
+    if existing_orig == 0 and start_brightness > 0:
+        _store_orig_brightness(hass, entity_id, start_brightness)
 
-    current_level = start_level
+    # Get stored brightness for auto-turn-on when fading color from off
+    stored_brightness = existing_orig if existing_orig > 0 else start_brightness
 
-    # Calculate fade parameters
-    num_steps, delta, delay_ms = _calculate_fade_steps(
-        start_level, end_level, transition_ms, min_step_delay_ms
-    )
+    # Resolve fade parameters into a configured FadeChange
+    fade = _resolve_fade(fade_params, state.attributes, min_step_delay_ms, stored_brightness)
+
+    if fade is None:
+        _LOGGER.debug("%s: Nothing to fade", entity_id)
+        return
+
+    total_steps = fade.step_count()
+    delay_ms = fade.delay_ms()
 
     _LOGGER.info(
-        "%s: Fading from %s to %s in %s steps", entity_id, start_level, end_level, num_steps
+        "%s: Fading in %s steps, (brightness=%s->%s, hs=%s->%s, mireds=%s->%s, "
+        "hybrid=%s, crossover_step=%s, delay_ms=%s)",
+        entity_id,
+        total_steps,
+        fade.start_brightness,
+        fade.end_brightness,
+        fade.start_hs,
+        fade.end_hs,
+        fade.start_mireds,
+        fade.end_mireds,
+        fade._hybrid_direction,
+        fade._crossover_step,
+        delay_ms,
     )
 
-    # Execute fade loop
-    for i in range(num_steps):
+    # Execute fade steps
+    while fade.has_next():
         step_start = time.monotonic()
 
         if cancel_event.is_set():
             return
 
-        current_level = _calculate_next_brightness(
-            current_level, end_level, delta, is_last_step=(i == num_steps - 1)
-        )
-        _add_expected_brightness(entity_id, current_level)
+        step = fade.next_step()
 
-        await _apply_brightness(hass, entity_id, current_level)
+        # Track expected values for manual intervention detection
+        expected = ExpectedValues(
+            brightness=step.brightness,
+            hs_color=step.hs_color,
+            color_temp_kelvin=step.color_temp_kelvin,
+        )
+        _add_expected_values(entity_id, expected)
+
+        await _apply_step(hass, entity_id, step)
 
         if cancel_event.is_set():
             return
 
-        await _sleep_remaining_step_time(step_start, delay_ms)
+        # Sleep remaining time (skip after last step)
+        if fade.has_next():
+            await _sleep_remaining_step_time(step_start, delay_ms)
+
+    # Wait for any late events and clear expected state
+    expected_state = FADE_EXPECTED_STATE.get(entity_id)
+    if expected_state:
+        _LOGGER.debug(
+            "%s: Fade finished. Waiting for expected state events to be flushed (remaining: %d)",
+            entity_id,
+            len(expected_state.values),
+        )
+        await expected_state.wait_and_clear()
 
     # Store final brightness after successful fade completion
     if not cancel_event.is_set():
-        if end_level > 0:
-            _store_orig_brightness(hass, entity_id, end_level)
+        final_brightness = fade.end_brightness
+
+        if final_brightness is not None and final_brightness > 0:
+            _store_orig_brightness(hass, entity_id, final_brightness)
             await _save_storage(hass)
-            _LOGGER.info("%s: Fade complete at brightness %s", entity_id, end_level)
-        else:
+            _LOGGER.info("%s: Fade complete at brightness %s", entity_id, final_brightness)
+        elif final_brightness == 0:
             _LOGGER.info("%s: Fade complete (turned off)", entity_id)
+        else:
+            _LOGGER.info("%s: Fade complete", entity_id)
 
 
-def _calculate_fade_steps(
-    start_level: int,
-    end_level: int,
-    transition_ms: int,
-    min_step_delay_ms: int,
-) -> tuple[int, int, float]:
-    """Calculate fade step parameters.
+async def _apply_step(hass: HomeAssistant, entity_id: str, step: FadeStep) -> None:
+    """Apply a fade step to a light.
 
-    Returns:
-        Tuple of (num_steps, delta_per_step, delay_ms_per_step)
+    Handles brightness, hs_color, and color_temp_kelvin in a single service call.
+    If brightness is 0, turns off the light. If step is empty, does nothing.
     """
-    level_diff = abs(end_level - start_level)
+    # Build service data based on what's in the step
+    service_data: dict = {ATTR_ENTITY_ID: entity_id}
 
-    # Maximum steps we can fit in the transition time
-    max_steps_by_time = max(1, int(transition_ms / min_step_delay_ms))
+    if step.brightness is not None:
+        if step.brightness == 0:
+            # Turn off - no other attributes needed
+            await hass.services.async_call(
+                LIGHT_DOMAIN,
+                SERVICE_TURN_OFF,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+            )
+            return
+        service_data[ATTR_BRIGHTNESS] = step.brightness
 
-    # Can't have more steps than brightness levels to change
-    num_steps = min(max_steps_by_time, level_diff)
+    if step.hs_color is not None:
+        service_data[HA_ATTR_HS_COLOR] = step.hs_color
 
-    # Calculate brightness change per step (at least 1)
-    delta = (end_level - start_level) / num_steps
-    delta = math.ceil(delta) if delta > 0 else math.floor(delta)
+    if step.color_temp_kelvin is not None:
+        service_data[HA_ATTR_COLOR_TEMP_KELVIN] = step.color_temp_kelvin
 
-    # Recalculate steps based on rounded delta
-    actual_steps = math.ceil(level_diff / abs(delta))
-
-    # Delay between steps to spread evenly across transition
-    delay_ms = transition_ms / actual_steps
-
-    return (actual_steps, delta, delay_ms)
-
-
-def _calculate_next_brightness(
-    current_level: int,
-    end_level: int,
-    delta: int,
-    is_last_step: bool,
-) -> int:
-    """Calculate the next brightness level for a fade step.
-
-    Handles clamping, final step targeting, and the brightness=1 edge case.
-    """
-    new_level = current_level + delta
-    new_level = max(0, min(255, new_level))
-
-    # Ensure we hit target on last step or if we've overshot
-    if (
-        is_last_step
-        or (delta > 0 and new_level > end_level)
-        or (delta < 0 and new_level < end_level)
-    ):
-        new_level = end_level
-
-    # Skip brightness=1 (many lights behave oddly at this level)
-    if new_level == 1:
-        new_level = 0 if delta < 0 else 2
-
-    return new_level
-
-
-async def _apply_brightness(hass: HomeAssistant, entity_id: str, level: int) -> None:
-    """Apply a brightness level to a light.
-
-    Handles the special case of level 0 (turn off) vs positive levels (turn on).
-    """
-    if level == 0:
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_OFF,
-            {ATTR_ENTITY_ID: entity_id},
-            blocking=True,
-        )
-    else:
+    # Only call service if there's something to set (beyond entity_id)
+    if len(service_data) > 1:
         await hass.services.async_call(
             LIGHT_DOMAIN,
             SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: level},
+            service_data,
             blocking=True,
         )
+
+
+def _resolve_start_brightness(params: FadeParams, state: dict) -> int | None:
+    """Resolve starting brightness from params.from_brightness_pct or current state.
+
+    Args:
+        params: FadeParams with optional from_brightness_pct
+        state: Light attributes dict from state.attributes
+
+    Returns:
+        Starting brightness (0-255 scale), or None if not targeting brightness
+    """
+    if params.from_brightness_pct is not None:
+        return int(params.from_brightness_pct * 255 / 100)
+    # When light is off (no brightness in state), treat as 0
+    brightness = state.get(ATTR_BRIGHTNESS)
+    return int(brightness) if brightness is not None else 0
+
+
+def _resolve_end_brightness(params: FadeParams, _state: dict) -> int | None:
+    """Resolve ending brightness from params.brightness_pct.
+
+    Args:
+        params: FadeParams with optional brightness_pct
+        _state: Light attributes dict (unused, kept for API consistency)
+
+    Returns:
+        Ending brightness (0-255 scale), or None if not specified
+    """
+    if params.brightness_pct is not None:
+        return int(params.brightness_pct * 255 / 100)
+    return None
+
+
+def _resolve_start_hs(params: FadeParams, state: dict) -> tuple[float, float] | None:
+    """Resolve starting HS from params.from_hs_color or current state.
+
+    Only returns HS if the light is actually in HS mode (not emulated HS from COLOR_TEMP).
+    If from_color_temp_kelvin is explicitly set, returns None (user wants to start from color_temp).
+
+    Args:
+        params: FadeParams with optional from_hs_color
+        state: Light attributes dict from state.attributes
+
+    Returns:
+        Starting HS color (hue 0-360, saturation 0-100), or None if not available
+    """
+    # If from_color_temp_kelvin is explicitly set, user wants to start from color_temp, not HS
+    if params.from_color_temp_kelvin is not None:
+        return None
+    if params.from_hs_color is not None:
+        return params.from_hs_color
+    # Only use state HS if light is actually in HS mode (not emulated from COLOR_TEMP)
+    color_mode = state.get("color_mode")
+    if color_mode == ColorMode.COLOR_TEMP:
+        return None
+    return state.get(HA_ATTR_HS_COLOR)
+
+
+def _resolve_start_mireds(params: FadeParams, state: dict) -> int | None:
+    """Resolve starting mireds from params.from_color_temp_kelvin or current state.
+
+    FadeParams stores kelvin, but FadeChange needs mireds for linear interpolation.
+    This function handles the kelvin->mireds conversion at the boundary.
+    Only returns mireds if the light is in COLOR_TEMP mode, or if color_mode is unknown.
+    Does NOT return mireds if light is explicitly in HS/RGB mode (those would be emulated).
+    If from_hs_color is explicitly set, returns None (user wants to start from HS).
+
+    Args:
+        params: FadeParams with optional from_color_temp_kelvin
+        state: Light attributes dict from state.attributes
+
+    Returns:
+        Starting color temperature in mireds, or None if not available
+    """
+    # If from_hs_color is explicitly set, user wants to start from HS, not color_temp
+    if params.from_hs_color is not None:
+        return None
+    if params.from_color_temp_kelvin is not None:
+        return int(1_000_000 / params.from_color_temp_kelvin)
+    # Check color_mode to avoid using emulated values
+    color_mode = state.get("color_mode")
+    # If color_mode is explicitly HS or other color mode, don't use color_temp (it's emulated)
+    if color_mode is not None and color_mode != ColorMode.COLOR_TEMP:
+        return None
+    # Either color_mode is COLOR_TEMP or unknown - use kelvin if available
+    kelvin = state.get(HA_ATTR_COLOR_TEMP_KELVIN)
+    if kelvin is not None:
+        return int(1_000_000 / kelvin)
+    return None
+
+
+def _resolve_end_mireds(params: FadeParams) -> int | None:
+    """Resolve ending mireds from params.color_temp_kelvin.
+
+    Args:
+        params: FadeParams with optional color_temp_kelvin
+
+    Returns:
+        Ending color temperature in mireds, or None if not specified
+    """
+    if params.color_temp_kelvin is not None:
+        return int(1_000_000 / params.color_temp_kelvin)
+    return None
+
+
+def _get_supported_color_modes(state_attributes: dict) -> set[ColorMode]:
+    """Extract supported color modes from state attributes.
+
+    Args:
+        state_attributes: Light state attributes dict
+
+    Returns:
+        Set of supported ColorMode values
+    """
+    modes_raw = state_attributes.get(ATTR_SUPPORTED_COLOR_MODES, [])
+    return set(modes_raw)
+
+
+def _supports_brightness(supported_modes: set[ColorMode]) -> bool:
+    """Check if light supports brightness control (dimming).
+
+    Args:
+        supported_modes: Set of supported ColorMode values
+
+    Returns:
+        True if light can be dimmed
+    """
+    # Any color mode implies brightness support except ONOFF and UNKNOWN
+    dimmable_modes = {
+        ColorMode.BRIGHTNESS,
+        ColorMode.HS,
+        ColorMode.RGB,
+        ColorMode.RGBW,
+        ColorMode.RGBWW,
+        ColorMode.XY,
+        ColorMode.COLOR_TEMP,
+    }
+    return bool(supported_modes & dimmable_modes)
+
+
+def _supports_hs(supported_modes: set[ColorMode]) -> bool:
+    """Check if light supports HS color.
+
+    Args:
+        supported_modes: Set of supported ColorMode values
+
+    Returns:
+        True if light can use HS color
+    """
+    hs_modes = {
+        ColorMode.HS,
+        ColorMode.RGB,
+        ColorMode.RGBW,
+        ColorMode.RGBWW,
+        ColorMode.XY,
+    }
+    return bool(supported_modes & hs_modes)
+
+
+def _supports_color_temp(supported_modes: set[ColorMode]) -> bool:
+    """Check if light supports color temperature.
+
+    Args:
+        supported_modes: Set of supported ColorMode values
+
+    Returns:
+        True if light can use color temperature
+    """
+    return ColorMode.COLOR_TEMP in supported_modes
+
+
+def _resolve_fade(
+    params: FadeParams,
+    state_attributes: dict,
+    min_step_delay_ms: int,
+    stored_brightness: int = 0,
+) -> FadeChange | None:
+    """Resolve fade parameters against light state, returning configured FadeChange.
+
+    This function consolidates all resolution and filtering logic:
+    - Extracts light capabilities from state attributes
+    - Resolves start values from params or state
+    - Converts kelvin to mireds (with bounds clamping)
+    - Detects hybrid transition scenarios (HS <-> color temp)
+    - Filters/converts based on light capabilities
+    - Handles non-dimmable lights (single step, zero delay)
+    - Auto-fades brightness from 0 when targeting color from off state
+    - Returns None if nothing to fade
+
+    Args:
+        params: FadeParams from service call
+        state_attributes: Light state attributes dict
+        min_step_delay_ms: Minimum delay between steps in milliseconds
+        stored_brightness: Previously stored brightness (for auto-turn-on from off)
+
+    Returns:
+        Configured FadeChange, or None if nothing to fade
+    """
+    # Extract light capabilities from state
+    supported_color_modes = _get_supported_color_modes(state_attributes)
+    can_dim = _supports_brightness(supported_color_modes)
+    can_hs = _supports_hs(supported_color_modes)
+    can_color_temp = _supports_color_temp(supported_color_modes)
+
+    # Extract color temp bounds (kelvin -> mireds with inversion)
+    min_kelvin = state_attributes.get(HA_ATTR_MIN_COLOR_TEMP_KELVIN)
+    max_kelvin = state_attributes.get(HA_ATTR_MAX_COLOR_TEMP_KELVIN)
+    min_mireds = int(1_000_000 / max_kelvin) if max_kelvin else None
+    max_mireds = int(1_000_000 / min_kelvin) if min_kelvin else None
+
+    # Resolve brightness values
+    start_brightness = _resolve_start_brightness(params, state_attributes)
+    end_brightness = _resolve_end_brightness(params, state_attributes)
+
+    # Handle non-dimmable lights (on/off only)
+    if not can_dim:
+        # Only process if brightness is being targeted
+        if end_brightness is None:
+            return None
+        # Single step with zero delay - just set on/off
+        target = 255 if end_brightness > 0 else 0
+        return FadeChange(
+            start_brightness=start_brightness,
+            end_brightness=target,
+            transition_ms=0,
+            min_step_delay_ms=min_step_delay_ms,
+        )
+
+    # Resolve color values
+    start_hs = _resolve_start_hs(params, state_attributes)
+    end_hs = params.hs_color
+    start_mireds = _resolve_start_mireds(params, state_attributes)
+    end_mireds = _resolve_end_mireds(params)
+
+    # Clamp mireds to light's supported range
+    if start_mireds is not None:
+        start_mireds = _clamp_mireds(start_mireds, min_mireds, max_mireds)
+    if end_mireds is not None:
+        end_mireds = _clamp_mireds(end_mireds, min_mireds, max_mireds)
+
+    # Handle capability filtering - convert unsupported color modes
+    if end_mireds is not None and not can_color_temp and can_hs:
+        # Convert target color temp to equivalent HS on Planckian locus
+        end_hs = _mireds_to_hs(end_mireds)
+        end_mireds = None
+    if end_hs is not None and not can_hs and can_color_temp:
+        # Convert target HS to nearest mireds (if low saturation)
+        if _is_on_planckian_locus(end_hs):
+            end_mireds = _hs_to_mireds(end_hs)
+            end_mireds = _clamp_mireds(end_mireds, min_mireds, max_mireds)
+        end_hs = None
+
+    # Filter out unsupported modes entirely
+    if not can_hs:
+        start_hs = None
+        end_hs = None
+    if not can_color_temp:
+        start_mireds = None
+        end_mireds = None
+
+    # Handle HS on Planckian locus -> mireds transition:
+    # When start_hs is on the locus (low saturation) and we're targeting mireds,
+    # convert start_hs to equivalent start_mireds for smooth interpolation
+    if (
+        start_hs is not None
+        and start_mireds is None
+        and end_mireds is not None
+        and _is_on_planckian_locus(start_hs)
+    ):
+        start_mireds = _hs_to_mireds(start_hs)
+        start_mireds = _clamp_mireds(start_mireds, min_mireds, max_mireds)
+        start_hs = None  # Clear HS since we're doing a pure mireds fade
+        _LOGGER.debug(
+            "_resolve_fade: Converted on-locus start_hs to start_mireds=%s",
+            start_mireds,
+        )
+
+    # Auto-turn-on: when fading color from off state without explicit brightness,
+    # automatically fade brightness from 0 to stored value (or full brightness)
+    if (
+        start_brightness == 0
+        and end_brightness is None
+        and (end_hs is not None or end_mireds is not None)
+    ):
+        # Use stored brightness if available, otherwise full brightness
+        end_brightness = stored_brightness if stored_brightness > 0 else 255
+        _LOGGER.debug(
+            "_resolve_fade: Auto-turn-on from off state, end_brightness=%s",
+            end_brightness,
+        )
+
+    # Check if anything is changing
+    brightness_changing = end_brightness is not None and start_brightness != end_brightness
+    hs_changing = end_hs is not None and start_hs != end_hs
+    mireds_changing = end_mireds is not None and start_mireds != end_mireds
+
+    if not brightness_changing and not hs_changing and not mireds_changing:
+        return None  # Nothing to fade
+
+    # Detect hybrid transitions and configure FadeChange accordingly
+    hybrid_direction = None
+    crossover_step = None
+    crossover_hs = None
+    crossover_mireds = None
+
+    # HS -> mireds: starting with HS color and targeting mireds
+    if (
+        start_hs is not None
+        and end_mireds is not None
+        and end_hs is None
+        and start_mireds is None
+        and not _is_on_planckian_locus(start_hs)
+    ):
+        hybrid_direction = "hs_to_mireds"
+        # Find crossover point on Planckian locus
+        crossover_hs = _mireds_to_hs(end_mireds)
+        crossover_mireds = _hs_to_mireds(crossover_hs)
+        crossover_mireds = _clamp_mireds(crossover_mireds, min_mireds, max_mireds)
+
+    # mireds -> HS: starting with color temp and targeting HS
+    elif (
+        start_mireds is not None and end_hs is not None and end_mireds is None and start_hs is None
+    ):
+        hybrid_direction = "mireds_to_hs"
+        # Find crossover point on Planckian locus closest to target HS
+        crossover_mireds = _hs_to_mireds(end_hs)
+        crossover_mireds = _clamp_mireds(crossover_mireds, min_mireds, max_mireds)
+        crossover_hs = _mireds_to_hs(crossover_mireds)
+
+    # Handle missing start values for non-hybrid transitions:
+    # When starting from off/unknown state with a color target but no start value,
+    # use the closest boundary as start for a visible transition.
+    # (Hybrid transitions handle this differently.)
+    if not hybrid_direction:
+        if end_mireds is not None and start_mireds is None:
+            # Use closest boundary (min or max mireds) as start for a visible transition
+            if min_mireds is not None and max_mireds is not None:
+                dist_to_min = abs(end_mireds - min_mireds)
+                dist_to_max = abs(end_mireds - max_mireds)
+                start_mireds = min_mireds if dist_to_min <= dist_to_max else max_mireds
+            elif min_mireds is not None:
+                start_mireds = min_mireds
+            elif max_mireds is not None:
+                start_mireds = max_mireds
+            else:
+                # No bounds available, use target as start (no color transition)
+                start_mireds = end_mireds
+            _LOGGER.debug(
+                "_resolve_fade: No start_mireds, using boundary mireds=%s as start",
+                start_mireds,
+            )
+        if end_hs is not None and start_hs is None:
+            # For HS with no start, use white (0, 0) as start for visible transition
+            start_hs = (0.0, 0.0)
+            _LOGGER.debug(
+                "_resolve_fade: No start_hs, using white (0, 0) as start",
+            )
+
+    # Create FadeChange
+    fade = FadeChange(
+        start_brightness=start_brightness if brightness_changing else None,
+        end_brightness=end_brightness if brightness_changing else None,
+        start_hs=start_hs if (hs_changing or hybrid_direction) else None,
+        end_hs=end_hs if (hs_changing or hybrid_direction) else None,
+        start_mireds=start_mireds if (mireds_changing or hybrid_direction) else None,
+        end_mireds=end_mireds if (mireds_changing or hybrid_direction) else None,
+        transition_ms=params.transition_ms,
+        min_step_delay_ms=min_step_delay_ms,
+        _hybrid_direction=hybrid_direction,
+        _crossover_hs=crossover_hs,
+        _crossover_mireds=crossover_mireds,
+    )
+
+    # Calculate crossover step if hybrid
+    if hybrid_direction:
+        total_steps = fade.step_count()
+        if hybrid_direction == "hs_to_mireds":
+            crossover_step = int(total_steps * HYBRID_HS_PHASE_RATIO)
+        else:  # mireds_to_hs
+            crossover_step = int(total_steps * (1 - HYBRID_HS_PHASE_RATIO))
+        # Update the crossover step (need to set directly since it's a private field)
+        fade._crossover_step = crossover_step  # noqa: SLF001
+
+    return fade
 
 
 async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None:
@@ -538,6 +794,139 @@ async def _sleep_remaining_step_time(step_start: float, delay_ms: float) -> None
     sleep_ms = max(0, delay_ms - elapsed_ms)
     if sleep_ms > 0:
         await asyncio.sleep(sleep_ms / 1000)
+
+
+def _interpolate_hue(start: float, end: float, t: float) -> float:
+    """Interpolate hue using circular short-path.
+
+    Hue is circular (0-360 wraps around). This function always takes the
+    shortest path between two hues.
+
+    Args:
+        start: Starting hue (0-360)
+        end: Ending hue (0-360)
+        t: Interpolation factor (0.0 = start, 1.0 = end)
+
+    Returns:
+        Interpolated hue in range [0, 360)
+    """
+    diff = end - start
+
+    if diff > 180:
+        diff -= 360
+    elif diff < -180:
+        diff += 360
+
+    result = start + diff * t
+    return result % 360
+
+
+def _is_on_planckian_locus(hs_color: tuple[float, float]) -> bool:
+    """Check if an HS color is on or near the Planckian locus.
+
+    The Planckian locus represents the colors of blackbody radiation
+    (color temperatures). Colors on the locus have low saturation
+    (white/off-white appearance).
+
+    Args:
+        hs_color: Tuple of (hue 0-360, saturation 0-100)
+
+    Returns:
+        True if the color is close enough to the locus to transition
+        directly to mireds-based fading.
+    """
+    _, saturation = hs_color
+    return saturation <= PLANCKIAN_LOCUS_SATURATION_THRESHOLD
+
+
+def _hs_to_mireds(hs_color: tuple[float, float]) -> int:
+    """Convert an HS color to approximate mireds using Planckian locus lookup.
+
+    Finds the closest matching color temperature on the Planckian locus
+    based on hue matching. Used when transitioning from HS to color temp.
+
+    Args:
+        hs_color: Tuple of (hue 0-360, saturation 0-100)
+
+    Returns:
+        Approximate color temperature in mireds
+    """
+    hue, saturation = hs_color
+
+    # For very low saturation, return neutral white
+    if saturation < 3:
+        return 286  # ~3500K neutral white
+
+    # Find closest match in the lookup table based on hue
+    best_mireds = 286  # Default to neutral white
+    best_distance = float("inf")
+
+    for mireds, (locus_hue, _) in PLANCKIAN_LOCUS_HS:
+        # Calculate hue distance (circular)
+        distance = abs(hue - locus_hue)
+        if distance > 180:
+            distance = 360 - distance
+
+        if distance < best_distance:
+            best_distance = distance
+            best_mireds = mireds
+
+    return best_mireds
+
+
+def _mireds_to_hs(mireds: int) -> tuple[float, float]:
+    """Convert mireds to approximate HS using Planckian locus lookup.
+
+    Interpolates between lookup table entries to find the HS color
+    that corresponds to the given color temperature.
+
+    Args:
+        mireds: Color temperature in mireds
+
+    Returns:
+        Tuple of (hue 0-360, saturation 0-100)
+    """
+    # Handle values outside the lookup range
+    if mireds <= PLANCKIAN_LOCUS_HS[0][0]:
+        return PLANCKIAN_LOCUS_HS[0][1]
+    if mireds >= PLANCKIAN_LOCUS_HS[-1][0]:
+        return PLANCKIAN_LOCUS_HS[-1][1]
+
+    # Find the two bracketing entries
+    for i in range(len(PLANCKIAN_LOCUS_HS) - 1):
+        lower_mireds, lower_hs = PLANCKIAN_LOCUS_HS[i]
+        upper_mireds, upper_hs = PLANCKIAN_LOCUS_HS[i + 1]
+
+        if lower_mireds <= mireds <= upper_mireds:
+            # Interpolate between the two entries
+            t = (mireds - lower_mireds) / (upper_mireds - lower_mireds)
+            hue = lower_hs[0] + (upper_hs[0] - lower_hs[0]) * t
+            sat = lower_hs[1] + (upper_hs[1] - lower_hs[1]) * t
+            return (round(hue, 2), round(sat, 2))
+
+    # Fallback (should not reach here)
+    return (38.0, 12.0)  # Neutral white
+
+
+def _clamp_mireds(mireds: int, min_mireds: int | None, max_mireds: int | None) -> int:
+    """Clamp mireds to the light's supported range.
+
+    Args:
+        mireds: The mireds value to clamp
+        min_mireds: Minimum mireds (coolest/highest kelvin), or None for no limit
+        max_mireds: Maximum mireds (warmest/lowest kelvin), or None for no limit
+
+    Returns:
+        Clamped mireds value
+    """
+    if min_mireds is None and max_mireds is None:
+        return mireds
+    result = mireds
+    if min_mireds is not None:
+        result = max(result, min_mireds)
+    if max_mireds is not None:
+        result = min(result, max_mireds)
+    return result
 
 
 def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | None) -> list[str]:
@@ -589,13 +978,50 @@ def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | No
     return list(result)
 
 
+def _can_apply_fade_params(state: State, params: FadeParams) -> bool:
+    """Check if a light can perform at least one of the requested fade operations.
+
+    Returns True if the light can do ANY of:
+    - Brightness fade (any light, including on/off only)
+    - HS color fade (if requested and light supports HS/RGB/RGBW/RGBWW/XY)
+    - Color temp fade (if requested and light supports COLOR_TEMP)
+    """
+    modes = set(state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []))
+
+    # Check if brightness is requested - any light can handle it
+    # (on/off lights get turned on/off, dimmable lights get faded)
+    brightness_requested = (
+        params.brightness_pct is not None or params.from_brightness_pct is not None
+    )
+    if brightness_requested:
+        return True
+
+    # Check if HS color is requested and light supports it
+    hs_requested = params.hs_color is not None or params.from_hs_color is not None
+    hs_capable = modes & {
+        ColorMode.HS,
+        ColorMode.RGB,
+        ColorMode.RGBW,
+        ColorMode.RGBWW,
+        ColorMode.XY,
+    }
+    if hs_requested and hs_capable:
+        return True
+
+    # Check if color temp is requested and light supports it
+    color_temp_requested = (
+        params.color_temp_kelvin is not None or params.from_color_temp_kelvin is not None
+    )
+    return color_temp_requested and ColorMode.COLOR_TEMP in modes
+
+
 # =============================================================================
 # State Change Handler
 # =============================================================================
 
 
 @callback
-def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
+def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChangedData]) -> None:
     """Handle light state changes - detects manual intervention and tracks brightness."""
     new_state: State | None = event.data.get("new_state")
     old_state: State | None = event.data.get("old_state")
@@ -608,15 +1034,12 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
 
     entity_id = new_state.entity_id
 
-    _log_state_change(entity_id, new_state)
-
     # Check if this is an expected state change (from our service calls)
     if _match_and_remove_expected(entity_id, new_state):
-        _LOGGER.debug("%s: State matches expected, removed from tracking", entity_id)
         return
 
     # During fade: if we get here, state didn't match expected - manual intervention
-    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_BRIGHTNESS:
+    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_STATE:
         # Manual intervention detected
         _LOGGER.info(
             "%s: Manual intervention detected (state=%s, brightness=%s)",
@@ -634,8 +1057,9 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
 
     if _is_brightness_change(old_state, new_state):
         new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
-        _LOGGER.debug("%s: Storing new brightness as original: %s", entity_id, new_brightness)
-        _store_orig_brightness(hass, entity_id, new_brightness)
+        if new_brightness is not None:
+            _LOGGER.debug("%s: Storing new brightness as original: %s", entity_id, new_brightness)
+            _store_orig_brightness(hass, entity_id, new_brightness)
 
 
 def _should_process_state_change(new_state: State | None) -> bool:
@@ -648,46 +1072,39 @@ def _should_process_state_change(new_state: State | None) -> bool:
     return new_state.attributes.get(ATTR_ENTITY_ID) is None
 
 
-def _log_state_change(entity_id: str, new_state: State) -> None:
-    """Log state change details."""
-    _LOGGER.debug(
-        "%s: State change - state=%s, brightness=%s, is_fading=%s",
-        entity_id,
-        new_state.state,
-        new_state.attributes.get(ATTR_BRIGHTNESS),
-        entity_id in ACTIVE_FADES,
-    )
-
-
 def _match_and_remove_expected(entity_id: str, new_state: State) -> bool:
     """Check if state matches expected, remove if found, notify if empty.
 
     Returns True if this was an expected state change (caller should ignore it).
     """
-    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    expected_state = FADE_EXPECTED_STATE.get(entity_id)
     if not expected_state or expected_state.is_empty:
         return False
 
-    # Normalize state to brightness: OFF -> 0, ON -> actual brightness
+    # Build ExpectedValues from the new state
     if new_state.state == STATE_OFF:
-        brightness = 0
+        actual = ExpectedValues(brightness=0)
     else:
         brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
         if brightness is None:
             return False
 
-    matched = expected_state.match_and_remove(brightness)
+        # Extract color attributes
+        hs_raw = new_state.attributes.get(HA_ATTR_HS_COLOR)
+        hs_color = (float(hs_raw[0]), float(hs_raw[1])) if hs_raw else None
 
-    if matched is not None:
-        _LOGGER.debug(
-            "%s: Matched expected brightness %s, remaining: %s",
-            entity_id,
-            matched,
-            list(expected_state.values.keys()),
+        # Read kelvin directly from state attributes
+        kelvin_raw = new_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+        color_temp_kelvin = int(kelvin_raw) if kelvin_raw else None
+
+        actual = ExpectedValues(
+            brightness=brightness,
+            hs_color=hs_color,
+            color_temp_kelvin=color_temp_kelvin,
         )
-        return True
 
-    return False
+    matched = expected_state.match_and_remove(actual)
+    return matched is not None
 
 
 def _is_off_to_on_transition(old_state: State | None, new_state: State) -> bool:
@@ -761,27 +1178,33 @@ async def _restore_intended_state(
     When manual intervention is detected during a fade, late fade events may
     overwrite the user's intended state. This function:
     1. Cancels the fade and waits for cleanup
-    2. Compares current state to intended state
+    2. Compares current state to intended state (brightness + color)
     3. Restores intended state if they differ
 
     The intended brightness encodes both state and brightness:
     - 0 means OFF
     - >0 means ON at that brightness
+
+    Colors from the manual intervention are also restored.
+    Note: Only brightness is persisted to storage, not colors.
     """
     if DOMAIN not in hass.data:
         return
-    _LOGGER.debug("%s: In _restore_intended_state", entity_id)
+    _LOGGER.debug(
+        "%s: Waiting for state events to flush before restoring intended state", entity_id
+    )
     await _cancel_and_wait_for_fade(entity_id)
 
-    intended = _get_intended_brightness(hass, entity_id, old_state, new_state)
-    _LOGGER.debug("%s: Got intended brightness (%s)", entity_id, intended)
-    if intended is None:
+    intended_brightness = _get_intended_brightness(hass, entity_id, old_state, new_state)
+    _LOGGER.debug("%s: Got intended brightness (%s)", entity_id, intended_brightness)
+    if intended_brightness is None:
         return
 
     # Store as new original brightness (for future OFF->ON restore)
-    if intended > 0:
-        _LOGGER.debug("%s: Storing original brightness (%s)", entity_id, intended)
-        _store_orig_brightness(hass, entity_id, intended)
+    # Note: We only store brightness, not colors
+    if intended_brightness > 0:
+        _LOGGER.debug("%s: Storing original brightness (%s)", entity_id, intended_brightness)
+        _store_orig_brightness(hass, entity_id, intended_brightness)
 
     # Get current state after fade cleanup
     current_state = hass.states.get(entity_id)
@@ -789,32 +1212,80 @@ async def _restore_intended_state(
         _LOGGER.debug("%s: No current state found, exiting", entity_id)
         return
 
-    current = current_state.attributes.get(ATTR_BRIGHTNESS) or 0
+    current_brightness = current_state.attributes.get(ATTR_BRIGHTNESS) or 0
     if current_state.state == STATE_OFF:
-        current = 0
-        _LOGGER.debug("%s: Got current brightness (%s)", entity_id, current)
+        current_brightness = 0
 
-    # Restore if current differs from intended
-    if intended == 0 and current != 0:
-        _LOGGER.info("%s: Restoring to off as intended", entity_id)
-        _add_expected_brightness(entity_id, 0)
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_OFF,
-            {ATTR_ENTITY_ID: entity_id},
-            blocking=True,
+    # Handle OFF case
+    if intended_brightness == 0:
+        if current_brightness != 0:
+            _LOGGER.info("%s: Restoring to off as intended", entity_id)
+            _add_expected_brightness(entity_id, 0)
+            await hass.services.async_call(
+                LIGHT_DOMAIN,
+                SERVICE_TURN_OFF,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+            )
+            await _wait_until_stale_events_flushed(entity_id)
+            return
+        _LOGGER.debug("%s: already off, nothing to restore", entity_id)
+        return
+
+    # Handle ON case - check brightness and colors
+    # Build service data for restoration
+    service_data: dict = {ATTR_ENTITY_ID: entity_id}
+    need_restore = False
+
+    # Check brightness
+    if current_brightness != intended_brightness:
+        service_data[ATTR_BRIGHTNESS] = intended_brightness
+        need_restore = True
+
+    # Get intended colors from manual intervention (new_state)
+    intended_hs = new_state.attributes.get(HA_ATTR_HS_COLOR)
+    intended_kelvin = new_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+
+    # Get current colors
+    current_hs = current_state.attributes.get(HA_ATTR_HS_COLOR)
+    current_kelvin = current_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+
+    # Check HS color
+    if intended_hs and intended_hs != current_hs:
+        service_data[HA_ATTR_HS_COLOR] = intended_hs
+        need_restore = True
+
+    # Check color temp (mutually exclusive with HS)
+    if (
+        intended_kelvin
+        and intended_kelvin != current_kelvin
+        and HA_ATTR_HS_COLOR not in service_data
+    ):
+        service_data[HA_ATTR_COLOR_TEMP_KELVIN] = intended_kelvin
+        need_restore = True
+
+    if need_restore:
+        _LOGGER.info("%s: Restoring intended state: %s", entity_id, service_data)
+
+        # Track expected values (ExpectedValues uses kelvin)
+        _add_expected_values(
+            entity_id,
+            ExpectedValues(
+                brightness=service_data.get(ATTR_BRIGHTNESS),
+                hs_color=service_data.get(HA_ATTR_HS_COLOR),
+                color_temp_kelvin=service_data.get(HA_ATTR_COLOR_TEMP_KELVIN),
+            ),
         )
-        await _wait_until_stale_events_flushed(entity_id)
-    elif intended > 0 and current != intended:
-        _LOGGER.info("%s: Restoring to brightness %s as intended", entity_id, intended)
-        _add_expected_brightness(entity_id, intended)
+
         await hass.services.async_call(
             LIGHT_DOMAIN,
             SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: intended},
+            service_data,
             blocking=True,
         )
         await _wait_until_stale_events_flushed(entity_id)
+    else:
+        _LOGGER.debug("%s: already in intended state, nothing to restore", entity_id)
 
 
 def _get_intended_brightness(
@@ -894,11 +1365,16 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
     await _wait_until_stale_events_flushed(entity_id)
 
 
+def _add_expected_values(entity_id: str, values: ExpectedValues) -> None:
+    """Register expected values before making a service call."""
+    if entity_id not in FADE_EXPECTED_STATE:
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
+    FADE_EXPECTED_STATE[entity_id].add(values)
+
+
 def _add_expected_brightness(entity_id: str, brightness: int) -> None:
-    """Register an expected brightness value before making a service call."""
-    if entity_id not in FADE_EXPECTED_BRIGHTNESS:
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
-    FADE_EXPECTED_BRIGHTNESS[entity_id].add(brightness)
+    """Register an expected brightness value (convenience wrapper)."""
+    _add_expected_values(entity_id, ExpectedValues(brightness=brightness))
 
 
 async def _wait_until_stale_events_flushed(
@@ -906,10 +1382,15 @@ async def _wait_until_stale_events_flushed(
     timeout: float = 5.0,
 ) -> None:
     """Wait until all expected brightness values have been confirmed via state changes."""
-    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    expected_state = FADE_EXPECTED_STATE.get(entity_id)
     if not expected_state or expected_state.is_empty:
         return
 
+    _LOGGER.debug(
+        "%s: waiting for expected state events to be flushed (remaining: %d)",
+        entity_id,
+        len(expected_state.values),
+    )
     condition = expected_state.get_condition()
     try:
         async with condition:
@@ -919,9 +1400,9 @@ async def _wait_until_stale_events_flushed(
             )
     except TimeoutError:
         _LOGGER.warning(
-            "%s: Timed out waiting for state events to flush (remaining: %s)",
+            "%s: Timed out waiting for state events to flush (remaining: %d)",
             entity_id,
-            list(expected_state.values.keys()),
+            len(expected_state.values),
         )
 
 

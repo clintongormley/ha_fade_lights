@@ -35,7 +35,7 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_import(
-        self, import_config: dict[str, Any] | None = None
+        self, _import_config: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle import from configuration.yaml or auto-setup."""
         # Only allow a single instance

@@ -14,8 +14,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
+    ATTR_FROM,
     ATTR_TRANSITION,
-    DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_TRANSITION,
     DOMAIN,
     SERVICE_FADE_LIGHTS,
@@ -48,8 +48,8 @@ async def test_service_accepts_single_entity(
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
         assert call_args[0][1] == mock_light_entity  # entity_id
-        assert call_args[0][2] == 50  # brightness_pct
-        assert call_args[0][3] == 2000  # transition_ms (2 seconds * 1000)
+        assert call_args[0][2].brightness_pct == 50  # fade_params.brightness_pct
+        assert call_args[0][2].transition_ms == 2000  # transition_ms (2 seconds * 1000)
 
 
 async def test_service_accepts_entity_list(
@@ -84,8 +84,8 @@ async def test_service_accepts_entity_list(
 
         # Verify brightness and transition for all calls
         for call in mock_fade_light.call_args_list:
-            assert call[0][2] == 75  # brightness_pct
-            assert call[0][3] == 5000  # transition_ms
+            assert call[0][2].brightness_pct == 75  # fade_params.brightness_pct
+            assert call[0][2].transition_ms == 5000
 
 
 async def test_service_accepts_comma_string(
@@ -178,32 +178,36 @@ async def test_service_rejects_non_light_entity(
         )
 
 
-async def test_service_uses_default_brightness(
+async def test_service_accepts_missing_brightness(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     mock_light_entity: str,
 ) -> None:
-    """Test service uses default brightness when brightness_pct is not provided."""
+    """Test service accepts missing brightness_pct (passes None to fade)."""
     with patch(
         "custom_components.fade_lights._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
-        # Call without brightness_pct
+        # Call with from brightness but no target brightness_pct
         await hass.services.async_call(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
                 ATTR_ENTITY_ID: mock_light_entity,
+                ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 20},
                 ATTR_TRANSITION: 2,
             },
             blocking=True,
         )
         await hass.async_block_till_done()
 
-        # Verify _fade_light was called with default brightness
+        # Verify _fade_light was called with None brightness target
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        assert call_args[0][2] == DEFAULT_BRIGHTNESS_PCT  # brightness_pct
+        # fade_params.brightness_pct should be None when not provided as target
+        assert call_args[0][2].brightness_pct is None
+        # But from_brightness_pct should be set
+        assert call_args[0][2].from_brightness_pct == 20
 
 
 async def test_service_uses_default_transition(
@@ -231,7 +235,7 @@ async def test_service_uses_default_transition(
         # Verify _fade_light was called with default transition (converted to ms)
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        assert call_args[0][3] == DEFAULT_TRANSITION * 1000  # transition_ms
+        assert call_args[0][2].transition_ms == DEFAULT_TRANSITION * 1000
 
 
 async def test_service_deduplicates_entities(

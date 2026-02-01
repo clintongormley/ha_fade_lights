@@ -619,16 +619,17 @@ async def test_fade_entity_not_found_logs_warning(
     import asyncio
 
     from custom_components.fade_lights import _execute_fade
+    from custom_components.fade_lights.fade_params import FadeParams
 
     entity_id = "light.missing_entity"
     cancel_event = asyncio.Event()
+    fade_params = FadeParams(brightness_pct=50, transition_ms=1000)
 
     with caplog.at_level(logging.WARNING):
         await _execute_fade(
             hass,
             entity_id,
-            50,  # brightness_pct
-            1000,  # transition_ms
+            fade_params,
             50,  # min_step_delay_ms
             cancel_event,
         )
@@ -649,6 +650,7 @@ async def test_fade_cancel_event_before_brightness_apply(
     import asyncio
 
     from custom_components.fade_lights import _execute_fade
+    from custom_components.fade_lights.fade_params import FadeParams
 
     entity_id = "light.test_cancel_before"
     hass.states.async_set(
@@ -663,12 +665,12 @@ async def test_fade_cancel_event_before_brightness_apply(
     cancel_event = asyncio.Event()
     # Set cancel event BEFORE starting fade
     cancel_event.set()
+    fade_params = FadeParams(brightness_pct=50, transition_ms=5000)
 
     await _execute_fade(
         hass,
         entity_id,
-        50,  # brightness_pct
-        5000,  # long transition
+        fade_params,
         50,  # min_step_delay_ms
         cancel_event,
     )
@@ -684,11 +686,12 @@ async def test_fade_cancel_event_after_brightness_apply(
 ) -> None:
     """Test that cancel event stops fade after applying brightness.
 
-    This tests line 562 where cancel_event.is_set() after _apply_brightness.
+    This tests line 562 where cancel_event.is_set() after _apply_step.
     """
     import asyncio
 
     from custom_components.fade_lights import _execute_fade
+    from custom_components.fade_lights.fade_params import FadeParams
 
     entity_id = "light.test_cancel_after"
     hass.states.async_set(
@@ -701,33 +704,36 @@ async def test_fade_cancel_event_after_brightness_apply(
     )
 
     cancel_event = asyncio.Event()
+    fade_params = FadeParams(brightness_pct=10, transition_ms=5000)
 
-    # Create a mock for _apply_brightness that sets cancel event after first call
-    original_apply = None
+    # Create a mock for _apply_step that sets cancel event after first call
     call_count = 0
 
-    async def cancelling_apply(hass, eid, level):
-        nonlocal call_count, original_apply
+    async def cancelling_apply(hass, eid, step):
+        nonlocal call_count
         call_count += 1
         # After first apply, set the cancel event
         if call_count == 1:
             cancel_event.set()
-        # Actually apply the brightness
-        if level == 0:
-            await hass.services.async_call(
-                "light", "turn_off", {ATTR_ENTITY_ID: eid}, blocking=True
-            )
-        else:
-            await hass.services.async_call(
-                "light", "turn_on", {ATTR_ENTITY_ID: eid, ATTR_BRIGHTNESS: level}, blocking=True
-            )
+        # Actually apply the step
+        if step.brightness is not None:
+            if step.brightness == 0:
+                await hass.services.async_call(
+                    "light", "turn_off", {ATTR_ENTITY_ID: eid}, blocking=True
+                )
+            else:
+                await hass.services.async_call(
+                    "light",
+                    "turn_on",
+                    {ATTR_ENTITY_ID: eid, ATTR_BRIGHTNESS: step.brightness},
+                    blocking=True,
+                )
 
-    with patch("custom_components.fade_lights._apply_brightness", side_effect=cancelling_apply):
+    with patch("custom_components.fade_lights._apply_step", side_effect=cancelling_apply):
         await _execute_fade(
             hass,
             entity_id,
-            10,  # brightness_pct - need big change for multiple steps
-            5000,  # long transition
+            fade_params,
             50,  # min_step_delay_ms
             cancel_event,
         )
