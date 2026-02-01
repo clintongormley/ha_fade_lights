@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights import _resolve_fade
+from custom_components.fade_lights.fade_change import FadeChange
 from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_FROM,
@@ -59,7 +59,7 @@ class TestNonDimmableLightNoTarget:
     """Test non-dimmable light with no brightness target (line 610)."""
 
     def test_non_dimmable_no_brightness_target_returns_none(self) -> None:
-        """Test _resolve_fade returns None for non-dimmable with no brightness target."""
+        """Test FadeChange.resolve returns None for non-dimmable with no brightness target."""
         # State attributes for a non-dimmable light (ONOFF only)
         state_attributes = {
             ATTR_SUPPORTED_COLOR_MODES: [ColorMode.ONOFF],
@@ -72,7 +72,7 @@ class TestNonDimmableLightNoTarget:
             hs_color=(200.0, 80.0),  # Color target but no brightness
         )
 
-        result = _resolve_fade(fade_params, state_attributes, 50)
+        result = FadeChange.resolve(fade_params, state_attributes, 50)
 
         # Should return None because light can't dim and no brightness target
         assert result is None
@@ -100,7 +100,7 @@ class TestMiredsBoundaryFallback:
             color_temp_kelvin=4000,  # ~250 mireds
         )
 
-        result = _resolve_fade(fade_params, state_attributes, 50)
+        result = FadeChange.resolve(fade_params, state_attributes, 50)
 
         # Should return a FadeChange (not None)
         assert result is not None
@@ -124,7 +124,7 @@ class TestMiredsBoundaryFallback:
             color_temp_kelvin=4000,  # ~250 mireds
         )
 
-        result = _resolve_fade(fade_params, state_attributes, 50)
+        result = FadeChange.resolve(fade_params, state_attributes, 50)
 
         # Should return a FadeChange (not None)
         assert result is not None

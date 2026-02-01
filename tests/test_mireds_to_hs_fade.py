@@ -8,7 +8,11 @@ from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COL
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import STATE_ON
 
-from custom_components.fade_lights import _execute_fade, _resolve_fade
+from custom_components.fade_lights import _execute_fade
+from custom_components.fade_lights.fade_change import FadeChange
+
+# Alias for cleaner test code
+_resolve_fade = FadeChange.resolve
 from custom_components.fade_lights.fade_params import FadeParams
 
 
