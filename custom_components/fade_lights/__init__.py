@@ -318,11 +318,12 @@ async def _execute_fade(
         _LOGGER.warning("%s: Entity not found", entity_id)
         return
 
-    # Store original brightness if not already stored
+    # Store original brightness for restoration after OFF->ON
+    # Update if: (1) nothing stored yet, or (2) user changed brightness since last fade
     current_brightness = state.attributes.get(ATTR_BRIGHTNESS)
     start_brightness = int(current_brightness) if current_brightness is not None else 0
     existing_orig = _get_orig_brightness(hass, entity_id)
-    if existing_orig == 0 and start_brightness > 0:
+    if start_brightness > 0 and start_brightness != existing_orig:
         _store_orig_brightness(hass, entity_id, start_brightness)
 
     # Get stored brightness for auto-turn-on when fading color from off
@@ -1070,8 +1071,10 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChang
     if _match_and_remove_expected(entity_id, new_state):
         return
 
-    # During fade: if we get here, state didn't match expected - manual intervention
-    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_STATE:
+    # During fade or restore: if we get here, state didn't match expected - manual intervention
+    is_during_fade = entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_STATE
+    is_during_restore = entity_id in RESTORE_TASKS
+    if is_during_fade or is_during_restore:
         # Manual intervention detected - always update to latest intended state
         _LOGGER.info(
             "%s: Manual intervention detected (state=%s, brightness=%s)",
@@ -1083,14 +1086,10 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChang
 
         # Only spawn restore task if one isn't already running
         if entity_id not in RESTORE_TASKS:
-            task = hass.async_create_task(
-                _restore_intended_state(hass, entity_id, old_state)
-            )
+            task = hass.async_create_task(_restore_intended_state(hass, entity_id, old_state))
             RESTORE_TASKS[entity_id] = task
         else:
-            _LOGGER.debug(
-                "%s: Restore task already running, updated intended state", entity_id
-            )
+            _LOGGER.debug("%s: Restore task already running, updated intended state", entity_id)
         return
 
     # Normal state handling (no active fade)
@@ -1253,9 +1252,7 @@ async def _restore_intended_state(
             intended_brightness = _get_intended_brightness(
                 hass, entity_id, old_state, intended_state
             )
-            _LOGGER.debug(
-                "%s: Got intended brightness (%s)", entity_id, intended_brightness
-            )
+            _LOGGER.debug("%s: Got intended brightness (%s)", entity_id, intended_brightness)
             if intended_brightness is None:
                 break
 
@@ -1346,9 +1343,7 @@ async def _restore_intended_state(
                 )
                 await _wait_until_stale_events_flushed(entity_id)
             else:
-                _LOGGER.debug(
-                    "%s: already in intended state, nothing to restore", entity_id
-                )
+                _LOGGER.debug("%s: already in intended state, nothing to restore", entity_id)
     finally:
         # Clean up restore task tracking
         RESTORE_TASKS.pop(entity_id, None)
