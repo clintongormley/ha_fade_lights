@@ -20,6 +20,8 @@ from custom_components.fade_lights import (
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_EXPECTED_STATE,
+    LATEST_INTENDED_STATE,
+    RESTORE_TASKS,
     ExpectedState,
 )
 from custom_components.fade_lights.const import (
@@ -715,7 +717,7 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import _restore_intended_state
+    from custom_components.fade_lights import LATEST_INTENDED_STATE, _restore_intended_state
 
     entity_id = "light.test_restore_off"
 
@@ -741,16 +743,22 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
     new_state.state = STATE_OFF
     new_state.attributes = {ATTR_BRIGHTNESS: None}
 
-    # Call _restore_intended_state directly
-    # intended will be 0 (OFF), current will be 150 (ON) - should trigger turn_off
-    await _restore_intended_state(hass, entity_id, old_state, new_state)
-    await hass.async_block_till_done()
-    await asyncio.sleep(0.2)
-    await hass.async_block_till_done()
+    # Set up latest intended state (function reads from this dict)
+    LATEST_INTENDED_STATE[entity_id] = new_state
 
-    # Check that turn_off was called to restore the intended OFF state
-    turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
-    assert len(turn_off_calls) >= 1, "Light should be turned off to match intended state"
+    try:
+        # Call _restore_intended_state directly
+        # intended will be 0 (OFF), current will be 150 (ON) - should trigger turn_off
+        await _restore_intended_state(hass, entity_id, old_state)
+        await hass.async_block_till_done()
+        await asyncio.sleep(0.2)
+        await hass.async_block_till_done()
+
+        # Check that turn_off was called to restore the intended OFF state
+        turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
+        assert len(turn_off_calls) >= 1, "Light should be turned off to match intended state"
+    finally:
+        LATEST_INTENDED_STATE.pop(entity_id, None)
 
 
 async def test_restore_intended_state_turn_on_when_brightness_differs(
@@ -1055,7 +1063,7 @@ async def test_restore_intended_state_when_domain_not_in_hass(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import _restore_intended_state
+    from custom_components.fade_lights import LATEST_INTENDED_STATE, _restore_intended_state
 
     # Ensure DOMAIN is not in hass.data
     hass.data.pop(DOMAIN, None)
@@ -1064,8 +1072,14 @@ async def test_restore_intended_state_when_domain_not_in_hass(
     old_state = MagicMock()
     new_state = MagicMock()
 
-    # Should return early without raising
-    await _restore_intended_state(hass, entity_id, old_state, new_state)
+    # Set up latest intended state
+    LATEST_INTENDED_STATE[entity_id] = new_state
+
+    try:
+        # Should return early without raising
+        await _restore_intended_state(hass, entity_id, old_state)
+    finally:
+        LATEST_INTENDED_STATE.pop(entity_id, None)
 
 
 async def test_restore_intended_state_when_intended_is_none(
@@ -1078,7 +1092,7 @@ async def test_restore_intended_state_when_intended_is_none(
     """
     from unittest.mock import MagicMock, patch
 
-    from custom_components.fade_lights import _restore_intended_state
+    from custom_components.fade_lights import LATEST_INTENDED_STATE, _restore_intended_state
 
     entity_id = "light.test_entity"
 
@@ -1098,10 +1112,16 @@ async def test_restore_intended_state_when_intended_is_none(
     new_state.state = STATE_ON
     new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
-    # Make _get_intended_brightness return None
-    with patch("custom_components.fade_lights._get_intended_brightness", return_value=None):
-        # Should return early without raising
-        await _restore_intended_state(hass, entity_id, old_state, new_state)
+    # Set up latest intended state
+    LATEST_INTENDED_STATE[entity_id] = new_state
+
+    try:
+        # Make _get_intended_brightness return None
+        with patch("custom_components.fade_lights._get_intended_brightness", return_value=None):
+            # Should return early without raising
+            await _restore_intended_state(hass, entity_id, old_state)
+    finally:
+        LATEST_INTENDED_STATE.pop(entity_id, None)
 
 
 async def test_restore_intended_state_when_entity_removed(
@@ -1115,7 +1135,7 @@ async def test_restore_intended_state_when_entity_removed(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import _restore_intended_state
+    from custom_components.fade_lights import LATEST_INTENDED_STATE, _restore_intended_state
 
     entity_id = "light.test_removed"
 
@@ -1142,11 +1162,89 @@ async def test_restore_intended_state_when_entity_removed(
     new_state.state = STATE_ON
     new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
-    # Should return early when current_state is None (entity was removed)
-    await _restore_intended_state(hass, entity_id, old_state, new_state)
+    # Set up latest intended state
+    LATEST_INTENDED_STATE[entity_id] = new_state
 
-    # No service calls should have been made
-    turn_on_calls = [c for c in service_calls if c.service == "turn_on"]
-    turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
-    assert len(turn_on_calls) == 0
-    assert len(turn_off_calls) == 0
+    try:
+        # Should return early when current_state is None (entity was removed)
+        await _restore_intended_state(hass, entity_id, old_state)
+
+        # No service calls should have been made
+        turn_on_calls = [c for c in service_calls if c.service == "turn_on"]
+        turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
+        assert len(turn_on_calls) == 0
+        assert len(turn_off_calls) == 0
+    finally:
+        LATEST_INTENDED_STATE.pop(entity_id, None)
+
+
+async def test_second_manual_event_during_restore_updates_intended_state(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+) -> None:
+    """Test that a second manual event during restore wait updates the intended state.
+
+    This tests the fix where we also check RESTORE_TASKS in the event handler
+    to update LATEST_INTENDED_STATE even after the fade is cancelled.
+
+    When a restore task is running (entity_id in RESTORE_TASKS), any new state
+    change should update LATEST_INTENDED_STATE so the restore uses the latest
+    user intent rather than a stale first event.
+    """
+    from unittest.mock import MagicMock
+
+    entity_id = "light.test_second_manual"
+
+    # Set up the light as OFF (simulating after first manual OFF event)
+    hass.states.async_set(
+        entity_id,
+        STATE_OFF,
+        {
+            ATTR_BRIGHTNESS: None,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Store original brightness
+    hass.data[DOMAIN]["data"][entity_id] = 200
+
+    # Create a mock task to simulate a running restore task
+    # Using MagicMock avoids async timing issues
+    mock_task = MagicMock()
+
+    # Manually set up RESTORE_TASKS to simulate a running restore
+    RESTORE_TASKS[entity_id] = mock_task
+
+    # Set an initial intended state (simulating the first OFF event)
+    initial_off_state = hass.states.get(entity_id)
+    LATEST_INTENDED_STATE[entity_id] = initial_off_state
+
+    try:
+        # Verify initial state
+        assert LATEST_INTENDED_STATE[entity_id].state == STATE_OFF
+
+        # Second manual event - user turns light ON while restore task is "running"
+        # This should update LATEST_INTENDED_STATE because entity_id in RESTORE_TASKS
+        hass.states.async_set(
+            entity_id,
+            STATE_ON,
+            {
+                ATTR_BRIGHTNESS: 180,
+                ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+            },
+        )
+        await hass.async_block_till_done()
+
+        # The key assertion: LATEST_INTENDED_STATE should be updated to the second event
+        assert entity_id in LATEST_INTENDED_STATE
+        latest = LATEST_INTENDED_STATE[entity_id]
+        assert latest.state == STATE_ON, "Intended state should be ON (latest event)"
+        assert latest.attributes.get(ATTR_BRIGHTNESS) == 180, (
+            "Intended brightness should be 180 from second event"
+        )
+
+    finally:
+        # Clean up
+        RESTORE_TASKS.pop(entity_id, None)
+        LATEST_INTENDED_STATE.pop(entity_id, None)
