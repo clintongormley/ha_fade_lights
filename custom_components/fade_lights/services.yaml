@@ -1,20 +1,45 @@
+# Filter definitions for capability-based field visibility
+.brightness_support: &brightness_support
+  attribute:
+    supported_color_modes:
+      - light.ColorMode.BRIGHTNESS
+      - light.ColorMode.COLOR_TEMP
+      - light.ColorMode.HS
+      - light.ColorMode.XY
+      - light.ColorMode.RGB
+      - light.ColorMode.RGBW
+      - light.ColorMode.RGBWW
+
+.color_support: &color_support
+  attribute:
+    supported_color_modes:
+      - light.ColorMode.HS
+      - light.ColorMode.XY
+      - light.ColorMode.RGB
+      - light.ColorMode.RGBW
+      - light.ColorMode.RGBWW
+
+.color_temp_support: &color_temp_support
+  attribute:
+    supported_color_modes:
+      - light.ColorMode.COLOR_TEMP
+      - light.ColorMode.HS
+      - light.ColorMode.XY
+      - light.ColorMode.RGB
+      - light.ColorMode.RGBW
+      - light.ColorMode.RGBWW
+
 fade_lights:
   name: Fade lights
   description: Fades lights to a desired brightness and/or color over a specified transition period.
+  target:
+    entity:
+      domain: light
   fields:
-    entity_id:
-      name: Entity ID
-      description: Entity ID of a light or light group.
-      required: true
-      example: "light.bedroom"
-      selector:
-        entity:
-          domain: light
-          multiple: true
     brightness_pct:
       name: Brightness percentage
       description: Target brightness level as a percentage (0-100).
-      required: false
+      filter: *brightness_support
       example: 75
       selector:
         number:
@@ -24,10 +49,9 @@ fade_lights:
           unit_of_measurement: "%"
     transition:
       name: Transition time
-      description: Transition time for fading in seconds. Accepts decimal values.
-      required: false
-      default: 3
-      example: "0.5"
+      description: Transition time for fading in seconds.
+      filter: *brightness_support
+      example: "3"
       selector:
         number:
           min: 0
@@ -37,60 +61,58 @@ fade_lights:
           unit_of_measurement: "s"
     color_temp_kelvin:
       name: Color temperature
-      description: Target color temperature in Kelvin (1000-40000).
-      required: false
+      description: Target color temperature in Kelvin.
+      filter: *color_temp_support
       example: 4000
       selector:
         color_temp:
           unit: kelvin
-          min: 1000
-          max: 40000
+          min: 2000
+          max: 6500
     hs_color:
       name: HS color
       description: Target color as [hue (0-360), saturation (0-100)].
-      required: false
+      filter: *color_support
       example: "[200, 80]"
       selector:
         object:
     from:
       name: Starting values
-      description: >-
-        Override starting values instead of using current state.
-        Accepts brightness_pct and one color parameter (color_temp_kelvin, hs_color, rgb_color, rgbw_color, rgbww_color, or xy_color).
-      required: false
+      description: Override starting values instead of using current state.
+      filter: *brightness_support
+      collapsed: true
       example: "{ brightness_pct: 0, color_temp_kelvin: 2700 }"
       selector:
         object:
-  sections:
-    advanced:
-      name: Advanced color options
+    advanced_fields:
+      name: Advanced options
       collapsed: true
       fields:
         rgb_color:
           name: RGB color
           description: Target color as [red, green, blue] values (0-255 each).
-          required: false
+          filter: *color_support
           example: "[255, 128, 0]"
           selector:
             color_rgb:
         rgbw_color:
           name: RGBW color
           description: Target color as [red, green, blue, white] values (0-255 each).
-          required: false
+          filter: *color_support
           example: "[255, 128, 0, 50]"
           selector:
             object:
         rgbww_color:
           name: RGBWW color
           description: Target color as [red, green, blue, cold_white, warm_white] values (0-255 each).
-          required: false
+          filter: *color_support
           example: "[255, 128, 0, 50, 30]"
           selector:
             object:
         xy_color:
           name: XY color
           description: Target color as CIE xy coordinates [x, y] (0-1 each).
-          required: false
+          filter: *color_support
           example: "[0.3, 0.4]"
           selector:
             object:

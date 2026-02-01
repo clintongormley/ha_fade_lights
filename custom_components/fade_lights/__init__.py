@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 
+import voluptuous as vol
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
@@ -41,8 +42,13 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service import remove_entity_service_fields
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.target import (
+    TargetSelection,
+    async_extract_referenced_entity_ids,
+)
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -127,7 +133,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         handle_fade_lights,
-        schema=None,
+        schema=cv.make_entity_service_schema({}, extra=vol.ALLOW_EXTRA),
     )
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change))
@@ -174,14 +180,27 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     domain_data = hass.data.get(DOMAIN, {})
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 
-    fade_params = FadeParams.from_service_data(call.data)
+    # Remove target fields (entity_id, device_id, area_id, etc.) from service data
+    # before parsing fade parameters - these are handled separately via TargetSelection
+    service_data = remove_entity_service_fields(call)
+    fade_params = FadeParams.from_service_data(service_data)
 
     if not fade_params.has_target() and not fade_params.has_from_target():
         _LOGGER.debug("No fade parameters specified, nothing to do")
         return
 
-    expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
+    # Resolve targets to entity IDs
+    target_selection = TargetSelection(call.data)
+    selected = async_extract_referenced_entity_ids(hass, target_selection)
+    all_entity_ids = selected.referenced | selected.indirectly_referenced
+
+    # Filter to light domain and expand groups
+    light_prefix = f"{LIGHT_DOMAIN}."
+    light_entity_ids = [eid for eid in all_entity_ids if eid.startswith(light_prefix)]
+    expanded_entities = _expand_light_groups(hass, light_entity_ids)
+
     if not expanded_entities:
+        _LOGGER.debug("No light entities found in target")
         return
 
     tasks = []
@@ -929,49 +948,36 @@ def _clamp_mireds(mireds: int, min_mireds: int | None, max_mireds: int | None) -
     return result
 
 
-def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | None) -> list[str]:
-    """Expand entity IDs, handling groups and various input formats.
+def _expand_light_groups(hass: HomeAssistant, entity_ids: list[str]) -> list[str]:
+    """Expand light groups to individual light entities.
 
-    Accepts raw input from service call and handles:
-    - None: returns empty list
-    - Comma-separated string: splits into list
-    - List of strings: uses as-is
-
-    Light groups are expanded iteratively (not recursively) to get
-    individual light entities. Results are deduplicated.
+    Light groups have an entity_id attribute containing member lights.
+    Expands iteratively (not recursively) and deduplicates results.
 
     Example:
-        Input: "light.living_room_group, light.bedroom"
+        Input: ["light.living_room_group", "light.bedroom"]
         If light.living_room_group contains [light.lamp, light.ceiling]
         Output: ["light.lamp", "light.ceiling", "light.bedroom"]
     """
-    if entity_ids_raw is None:
-        return []
-
-    if isinstance(entity_ids_raw, str):
-        pending = [e.strip() for e in entity_ids_raw.split(",")]
-    else:
-        pending = list(entity_ids_raw)
-
+    pending = list(entity_ids)
     result: set[str] = set()
+    light_prefix = f"{LIGHT_DOMAIN}."
 
     while pending:
         entity_id = pending.pop()
-
-        if not entity_id.startswith("light."):
-            raise ServiceValidationError(f"Entity '{entity_id}' is not a light")
-
         state = hass.states.get(entity_id)
+
         if state is None:
-            _LOGGER.error("%s: Unknown light", entity_id)
+            _LOGGER.warning("%s: Entity not found, skipping", entity_id)
             continue
 
         # Check if this is a group (has entity_id attribute with member lights)
         if ATTR_ENTITY_ID in state.attributes:
-            group_entities = state.attributes[ATTR_ENTITY_ID]
-            if isinstance(group_entities, str):
-                group_entities = [group_entities]
-            pending.extend(group_entities)
+            group_members = state.attributes[ATTR_ENTITY_ID]
+            if isinstance(group_members, str):
+                group_members = [group_members]
+            # Filter to lights only (groups can technically contain non-lights)
+            pending.extend(m for m in group_members if m.startswith(light_prefix))
         else:
             result.add(entity_id)
 
