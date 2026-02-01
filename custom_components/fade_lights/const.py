@@ -89,7 +89,7 @@ KELVIN_TOLERANCE = 100  # kelvin
 FADE_CANCEL_TIMEOUT_S = 2.0
 
 # Time before an expected brightness value is considered stale (seconds)
-STALE_THRESHOLD = 5.0
+STALE_THRESHOLD = 3.0
 
 # Planckian locus lookup table: mireds -> (hue, saturation)
 # Approximates the curve of blackbody radiation through HS color space.
