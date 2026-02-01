@@ -94,9 +94,8 @@ class ExpectedState:
                 "%s: -> values empty, notifying condition",
                 self.entity_id,
             )
-            asyncio.get_event_loop().call_soon(
-                lambda c=self._condition: asyncio.create_task(self._notify(c))
-            )
+            condition = self._condition
+            asyncio.get_event_loop().call_soon(lambda: asyncio.create_task(self._notify(condition)))
 
         return self._condition
 
@@ -145,9 +144,8 @@ class ExpectedState:
                 self.entity_id,
             )
             # Schedule notification (can't await in callback context)
-            asyncio.get_event_loop().call_soon(
-                lambda c=self._condition: asyncio.create_task(self._notify(c))
-            )
+            condition = self._condition
+            asyncio.get_event_loop().call_soon(lambda: asyncio.create_task(self._notify(condition)))
 
         return matched_value
 

@@ -8,8 +8,7 @@ from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COL
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import STATE_ON
 
-from custom_components.fade_lights import _execute_fade, resolve_fade
-from custom_components.fade_lights.fade_change import FadeChange
+from custom_components.fade_lights import _execute_fade, _resolve_fade
 from custom_components.fade_lights.fade_params import FadeParams
 
 
@@ -50,7 +49,7 @@ class TestColorTempToHsFade:
     async def test_color_temp_to_hs_uses_hybrid_fade(self, mock_hass, color_temp_light_state):
         """Test that COLOR_TEMP mode light fading to HS uses hybrid transition.
 
-        Uses resolve_fade which returns a single FadeChange with hybrid support.
+        Uses _resolve_fade which returns a single FadeChange with hybrid support.
         """
         mock_hass.states.get = MagicMock(return_value=color_temp_light_state)
 
@@ -63,8 +62,8 @@ class TestColorTempToHsFade:
         )
 
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
-            # Use resolve_fade to verify it returns hybrid FadeChange
-            change = resolve_fade(
+            # Use _resolve_fade to verify it returns hybrid FadeChange
+            change = _resolve_fade(
                 fade_params,
                 color_temp_light_state.attributes,
                 min_step_delay_ms=100,
@@ -112,8 +111,8 @@ class TestColorTempToHsFade:
         )
 
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
-            # Use resolve_fade to verify it returns non-hybrid FadeChange
-            change = resolve_fade(
+            # Use _resolve_fade to verify it returns non-hybrid FadeChange
+            change = _resolve_fade(
                 fade_params,
                 hs_state.attributes,
                 min_step_delay_ms=100,
@@ -147,8 +146,8 @@ class TestColorTempToHsFade:
         )
 
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
-            # Use resolve_fade to verify it returns non-hybrid FadeChange
-            change = resolve_fade(
+            # Use _resolve_fade to verify it returns non-hybrid FadeChange
+            change = _resolve_fade(
                 fade_params,
                 color_temp_light_state.attributes,
                 min_step_delay_ms=100,
@@ -179,7 +178,7 @@ class TestColorTempToHsFade:
             transition_ms=3000,
         )
 
-        change = resolve_fade(
+        change = _resolve_fade(
             fade_params,
             color_temp_light_state.attributes,
             min_step_delay_ms=100,
@@ -229,7 +228,7 @@ class TestHsToColorTempFade:
         )
 
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
-            change = resolve_fade(
+            change = _resolve_fade(
                 fade_params,
                 hs_state.attributes,
                 min_step_delay_ms=100,
@@ -269,7 +268,7 @@ class TestHsToColorTempFade:
             transition_ms=3000,
         )
 
-        change = resolve_fade(
+        change = _resolve_fade(
             fade_params,
             hs_state.attributes,
             min_step_delay_ms=100,

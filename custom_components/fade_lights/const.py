@@ -114,10 +114,10 @@ PLANCKIAN_LOCUS_HS: tuple[tuple[int, tuple[float, float]], ...] = (
 PLANCKIAN_LOCUS_SATURATION_THRESHOLD = 15.0
 
 # Minimum deltas for step calculation (smoothest possible fade)
-MIN_BRIGHTNESS_DELTA = 1      # 0-255 scale
-MIN_HUE_DELTA = 1.0           # degrees (0-360)
-MIN_SATURATION_DELTA = 1.0    # percentage (0-100)
-MIN_MIREDS_DELTA = 5          # mireds (~150-500 typical range)
+MIN_BRIGHTNESS_DELTA = 1  # 0-255 scale
+MIN_HUE_DELTA = 1.0  # degrees (0-360)
+MIN_SATURATION_DELTA = 1.0  # percentage (0-100)
+MIN_MIREDS_DELTA = 5  # mireds (~150-500 typical range)
 
 # Hybrid transition crossover ratio (HS phase proportion for hs_to_mireds)
 # For hs_to_mireds: 70% of steps in HS phase, 30% in mireds phase

@@ -238,8 +238,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with brightness_pct."""
-        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
+        from custom_components.fade_lights.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -258,8 +258,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with hs_color."""
-        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
+        from custom_components.fade_lights.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -278,8 +278,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with color_temp_kelvin."""
-        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
+        from custom_components.fade_lights.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -298,8 +298,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter converts rgb_color to hs."""
-        from custom_components.fade_lights.fade_params import FadeParams
         from custom_components.fade_lights.const import ATTR_FROM
+        from custom_components.fade_lights.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {

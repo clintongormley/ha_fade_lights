@@ -4,7 +4,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/clintongormley/ha_fade_lights)](https://github.com/clintongormley/ha_fade_lights/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Home Assistant custom integration that provides smooth light fading with automatic brightness restoration.
+A Home Assistant custom integration that provides smooth light fading for brightness and colors with automatic brightness restoration.
 
 ## Compatibility
 
@@ -16,8 +16,12 @@ A Home Assistant custom integration that provides smooth light fading with autom
 ### Smooth Light Fading Service
 
 - Fade lights to any brightness level (0-100%) over a specified transition period
+- Fade colors smoothly using HS, RGB, RGBW, RGBWW, XY, or color temperature (Kelvin)
+- Hybrid transitions between color modes (e.g., color temperature to saturated color)
+- Specify starting values with the `from:` parameter for precise control
 - Supports individual lights and light groups
 - Automatically expands light groups
+- Capability-aware: skips lights that don't support requested color modes
 - Cancels fade when lights are manually adjusted
 
 ### Automatic Brightness Restoration
@@ -75,7 +79,7 @@ To adjust the integration settings, go to **Settings** → **Devices & Services*
 
 ### Service: `fade_lights.fade_lights`
 
-Fades one or more lights to a target brightness over a transition period.
+Fades one or more lights to a target brightness and/or color over a transition period.
 
 #### Parameters:
 
@@ -85,8 +89,25 @@ Fades one or more lights to a target brightness over a transition period.
   - A YAML list: `[light.bedroom, light.kitchen]`
   - Light groups are automatically expanded to their individual lights
   - Duplicate entities are automatically deduplicated
-- **brightness_pct** (optional, default: 40): Target brightness percentage (0-100)
+- **brightness_pct** (optional): Target brightness percentage (0-100)
 - **transition** (optional, default: 3): Transition duration in seconds (supports decimals, e.g., `0.5` for 500ms)
+
+**Color parameters** (only one color parameter allowed per call):
+
+- **hs_color** (optional): Target color as `[hue, saturation]` where hue is 0-360 and saturation is 0-100
+- **rgb_color** (optional): Target color as `[red, green, blue]` (0-255 each)
+- **rgbw_color** (optional): Target color as `[red, green, blue, white]` (0-255 each)
+- **rgbww_color** (optional): Target color as `[red, green, blue, cold_white, warm_white]` (0-255 each)
+- **xy_color** (optional): Target color as `[x, y]` (0-1 each)
+- **color_temp_kelvin** (optional): Target color temperature in Kelvin (1000-40000)
+
+**Starting values** (optional `from:` block):
+
+You can specify starting values to override the current light state:
+
+- **from.brightness_pct**: Starting brightness percentage
+- **from.hs_color**, **from.rgb_color**, etc.: Starting color (same formats as target colors)
+- **from.color_temp_kelvin**: Starting color temperature
 
 #### Examples:
 
@@ -120,6 +141,41 @@ data:
   entity_id: light.all_downstairs
   brightness_pct: 30
   transition: 60
+```
+
+**Fade color temperature (warm to cool white):**
+
+```yaml
+service: fade_lights.fade_lights
+data:
+  entity_id: light.bedroom
+  color_temp_kelvin: 6500
+  transition: 30
+  from:
+    color_temp_kelvin: 2700
+```
+
+**Fade to a specific color:**
+
+```yaml
+service: fade_lights.fade_lights
+data:
+  entity_id: light.accent
+  hs_color: [240, 100]  # Blue
+  brightness_pct: 80
+  transition: 5
+```
+
+**Fade from color temperature to saturated color (hybrid transition):**
+
+```yaml
+service: fade_lights.fade_lights
+data:
+  entity_id: light.living_room
+  hs_color: [0, 100]  # Red
+  transition: 10
+  from:
+    color_temp_kelvin: 4000
 ```
 
 ### Automation Example
@@ -255,7 +311,7 @@ If you encounter a bug, please [open an issue](https://github.com/clintongormley
 
 ### Running Tests
 
-The integration includes a comprehensive test suite with 85 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
+The integration includes a comprehensive test suite with 350 tests covering config flow, service handling, fade execution, color fading, manual interruption detection, and brightness restoration.
 
 #### Prerequisites
 
@@ -295,7 +351,11 @@ The test suite achieves 100% code coverage and includes tests for:
 - **Integration setup** (`test_init.py`): Service registration, storage loading, unload cleanup
 - **Service handling** (`test_services.py`): Entity ID formats, group expansion, default parameters
 - **Fade execution** (`test_fade_execution.py`): Fade up/down, turn off at 0%, non-dimmable lights
-- **Manual interruption** (`test_manual_interruption.py`): Brightness change detection, fade cancellation
+- **Color parameters** (`test_color_params.py`): Color conversions, validation, `from:` parameter
+- **Capability filtering** (`test_capability_filtering.py`): Light capability detection, unsupported mode handling
+- **Step generation** (`test_step_generation.py`): Hue interpolation, hybrid transitions
+- **Planckian locus** (`test_planckian_locus.py`): Color temperature to HS conversions
+- **Manual interruption** (`test_manual_interruption.py`): Brightness/color change detection, fade cancellation
 - **Brightness restoration** (`test_brightness_restoration.py`): Restore on turn-on, storage persistence
 - **Event waiting** (`test_event_waiting.py`): Condition-based event waiting, stale value pruning
 

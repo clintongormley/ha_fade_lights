@@ -123,9 +123,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
 
         ideal = max(ideal_steps) if ideal_steps else 1
         max_by_time = (
-            self.transition_ms // self.min_step_delay_ms
-            if self.min_step_delay_ms > 0
-            else ideal
+            self.transition_ms // self.min_step_delay_ms if self.min_step_delay_ms > 0 else ideal
         )
 
         self._step_count = max(1, min(ideal, max_by_time))
@@ -218,9 +216,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             if self._current_step <= crossover_step:
                 # Map t to [0, crossover_t] -> [0, 1] for HS interpolation
                 phase_t = t / crossover_t if crossover_t > 0 else 1.0
-                hs_color = self._interpolate_hs_between(
-                    self.start_hs, self._crossover_hs, phase_t
-                )
+                hs_color = self._interpolate_hs_between(self.start_hs, self._crossover_hs, phase_t)
                 return FadeStep(
                     brightness=self._interpolate_brightness(t),
                     hs_color=hs_color,
@@ -255,9 +251,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         # Map t from [crossover_t, 1] -> [0, 1] for HS interpolation
         remaining_t = 1.0 - crossover_t
         phase_t = (t - crossover_t) / remaining_t if remaining_t > 0 else 1.0
-        hs_color = self._interpolate_hs_between(
-            self._crossover_hs, self.end_hs, phase_t
-        )
+        hs_color = self._interpolate_hs_between(self._crossover_hs, self.end_hs, phase_t)
         return FadeStep(
             brightness=self._interpolate_brightness(t),
             hs_color=hs_color,
