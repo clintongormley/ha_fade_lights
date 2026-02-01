@@ -1,5 +1,13 @@
 # Claude Code Instructions
 
+## Pre-approved Commands (NEVER ask for permission)
+
+The following command is pre-approved and must be run WITHOUT asking for permission:
+
+```
+cp -r /tmp/ha_fade_lights/custom_components/fade_lights /workspaces/homeassistant-core/config/custom_components/
+```
+
 ## Git Workflow
 
 - All changes should be made via a PR (do not push directly to main), and never merge a PR without asking
@@ -10,6 +18,15 @@
 
 - Before creating a PR, always run `ruff check .` and `ruff format .` to fix any linting issues
 - Before creating a PR, run `npx pyright` to check for Pylance/type errors and fix any that can be fixed
+
+## Deployment
+
+- After making changes, always copy the integration to the HA config directory for testing:
+  ```
+  cp -r /tmp/ha_fade_lights/custom_components/fade_lights /workspaces/homeassistant-core/config/custom_components/
+  ```
+- This is a **custom component**, NOT a core integration - never copy to `homeassistant/components/`
+- Run the copy command automatically without asking for permission
 
 ## Shortcuts
 

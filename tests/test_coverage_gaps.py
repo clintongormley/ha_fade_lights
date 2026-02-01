@@ -39,14 +39,14 @@ class TestNoFadeParameters:
             "custom_components.fade_lights._fade_light",
             new_callable=AsyncMock,
         ) as mock_fade_light:
-            # Call with only entity_id, no brightness, colors, or from params
+            # Call with only target, no brightness, colors, or from params
             await hass.services.async_call(
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     # No brightness_pct, no color params, no from params
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
             await hass.async_block_till_done()
@@ -179,6 +179,16 @@ class TestExpectedValuesStr:
 class TestFadeParamsValidationErrors:
     """Test FadeParams validation error paths."""
 
+    def test_unknown_top_level_parameter(self) -> None:
+        """Test error for unknown top-level parameter (line 162)."""
+        with pytest.raises(ServiceValidationError, match="Unknown parameter"):
+            FadeParams.from_service_data(
+                {
+                    ATTR_BRIGHTNESS_PCT: 50,
+                    "invalid_top_level_param": "value",  # Unknown param at top level
+                }
+            )
+
     def test_unknown_from_parameter(self) -> None:
         """Test error for unknown parameter in 'from' dict (line 173)."""
         with pytest.raises(ServiceValidationError, match="Unknown parameter.*'from'"):
@@ -189,6 +199,15 @@ class TestFadeParamsValidationErrors:
                         ATTR_BRIGHTNESS_PCT: 0,
                         "invalid_param": "value",  # Unknown param in from
                     },
+                }
+            )
+
+    def test_brightness_out_of_range(self) -> None:
+        """Test error for brightness outside 0-100 (line 195)."""
+        with pytest.raises(ServiceValidationError, match="Brightness must be between"):
+            FadeParams.from_service_data(
+                {
+                    ATTR_BRIGHTNESS_PCT: 150,  # > 100 is invalid
                 }
             )
 

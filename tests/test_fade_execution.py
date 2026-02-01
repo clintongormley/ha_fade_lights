@@ -114,10 +114,10 @@ async def test_fade_down_reaches_target(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 20,  # 20% of 255 = 51
             ATTR_TRANSITION: 0.5,  # Short transition for faster test
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -152,10 +152,10 @@ async def test_fade_up_reaches_target(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 80,  # 80% of 255 = 204
             ATTR_TRANSITION: 0.5,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -188,10 +188,10 @@ async def test_fade_to_zero_turns_off(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 0.5,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -227,10 +227,10 @@ async def test_fade_already_at_target_no_op(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 50,  # Same as current
             ATTR_TRANSITION: 1,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -260,10 +260,10 @@ async def test_fade_skips_brightness_level_1(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 0.5,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -294,10 +294,10 @@ async def test_fade_non_dimmable_to_zero(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 1,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -331,10 +331,10 @@ async def test_fade_non_dimmable_to_nonzero(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 50,
             ATTR_TRANSITION: 1,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -359,21 +359,21 @@ async def test_fade_unknown_entity_logs_warning(
     entity_id = "light.nonexistent_light"
     # Don't create the entity - it should be unknown
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.WARNING):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
         await hass.async_block_till_done()
 
     # Should have logged about the unknown light
-    assert "light.nonexistent_light: Unknown light" in caplog.text
+    assert "light.nonexistent_light: Entity not found" in caplog.text
 
     # No service calls should be made for the unknown entity
     assert len(service_calls) == 0
@@ -400,10 +400,10 @@ async def test_fade_stores_orig_brightness(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 60,
             ATTR_TRANSITION: 0.3,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -434,10 +434,10 @@ async def test_fade_from_off_turns_on(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 50,
             ATTR_TRANSITION: 0.3,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -483,10 +483,10 @@ async def test_fade_step_count_limited_by_brightness_levels(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 75,  # 75% = 191, so ~9 levels difference
             ATTR_TRANSITION: 10,
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -521,10 +521,10 @@ async def test_fade_steps_spread_across_transition_time(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         {
-            ATTR_ENTITY_ID: entity_id,
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 0.5,  # 500ms transition
         },
+        target={"entity_id": entity_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -588,10 +588,10 @@ async def test_fade_timing_accounts_for_service_call_duration(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 90,  # Small change for fewer steps
                 ATTR_TRANSITION: 0.5,  # 500ms
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
         await hass.async_block_till_done()

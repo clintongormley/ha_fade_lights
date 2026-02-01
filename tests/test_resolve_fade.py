@@ -352,9 +352,8 @@ class TestResolveFadeHybridStepGeneration:
         change = _resolve_fade(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        crossover = change._crossover_step or 0
 
-        # Iterate to after crossover
+        # Iterate through all steps
         steps_with_hs = 0
         steps_with_kelvin = 0
         while change.has_next():
