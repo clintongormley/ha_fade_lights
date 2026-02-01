@@ -19,7 +19,7 @@ A Home Assistant custom integration that provides smooth light fading for bright
 - Fade colors smoothly using HS, RGB, RGBW, RGBWW, XY, or color temperature (Kelvin)
 - Hybrid transitions between color modes (e.g., color temperature to saturated color)
 - Specify starting values with the `from:` parameter for precise control
-- Supports individual lights and light groups
+- Target lights by entity, device, area, floor, or label
 - Automatically expands light groups
 - Capability-aware: skips lights that don't support requested color modes
 - Cancels fade when lights are manually adjusted
@@ -83,12 +83,18 @@ Fades one or more lights to a target brightness and/or color over a transition p
 
 #### Parameters:
 
-- **entity_id** (required): One or more light entities. Accepts:
-  - A single entity: `light.bedroom`
-  - A comma-separated string: `light.bedroom, light.kitchen`
-  - A YAML list: `[light.bedroom, light.kitchen]`
-  - Light groups are automatically expanded to their individual lights
-  - Duplicate entities are automatically deduplicated
+**Target** (required): Specify which lights to fade using any combination of:
+
+- **entity_id**: One or more light entities (e.g., `light.bedroom`)
+- **device_id**: One or more device IDs
+- **area_id**: One or more area IDs (e.g., `living_room`)
+- **floor_id**: One or more floor IDs
+- **label_id**: One or more label IDs
+
+Light groups are automatically expanded to their individual lights. Duplicate entities are automatically deduplicated.
+
+**Service data:**
+
 - **brightness_pct** (optional): Target brightness percentage (0-100)
 - **transition** (optional, default: 3): Transition duration in seconds (supports decimals, e.g., `0.5` for 500ms)
 
@@ -115,8 +121,9 @@ You can specify starting values to override the current light state:
 
 ```yaml
 service: fade_lights.fade_lights
-data:
+target:
   entity_id: light.bedroom
+data:
   brightness_pct: 50
   transition: 5
 ```
@@ -125,20 +132,33 @@ data:
 
 ```yaml
 service: fade_lights.fade_lights
-data:
+target:
   entity_id:
     - light.bedroom
     - light.living_room
+data:
   brightness_pct: 80
   transition: 10
+```
+
+**Fade all lights in an area:**
+
+```yaml
+service: fade_lights.fade_lights
+target:
+  area_id: living_room
+data:
+  brightness_pct: 30
+  transition: 60
 ```
 
 **Fade a light group:**
 
 ```yaml
 service: fade_lights.fade_lights
-data:
+target:
   entity_id: light.all_downstairs
+data:
   brightness_pct: 30
   transition: 60
 ```
@@ -147,8 +167,9 @@ data:
 
 ```yaml
 service: fade_lights.fade_lights
-data:
+target:
   entity_id: light.bedroom
+data:
   color_temp_kelvin: 6500
   transition: 30
   from:
@@ -159,8 +180,9 @@ data:
 
 ```yaml
 service: fade_lights.fade_lights
-data:
+target:
   entity_id: light.accent
+data:
   hs_color: [240, 100]  # Blue
   brightness_pct: 80
   transition: 5
@@ -170,8 +192,9 @@ data:
 
 ```yaml
 service: fade_lights.fade_lights
-data:
+target:
   entity_id: light.living_room
+data:
   hs_color: [0, 100]  # Red
   transition: 10
   from:
@@ -189,8 +212,9 @@ automation:
         offset: "-00:30:00"
     action:
       - service: fade_lights.fade_lights
+        target:
+          area_id: living_room
         data:
-          entity_id: light.living_room
           brightness_pct: 20
           transition: 1800 # 30 minutes
 ```
