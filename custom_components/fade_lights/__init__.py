@@ -28,7 +28,6 @@ from homeassistant.components.light.const import ColorMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
-    EVENT_STATE_CHANGED,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_OFF,
@@ -43,6 +42,7 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import TrackStates, async_track_state_change_filtered
 from homeassistant.helpers.service import remove_entity_service_fields
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.target import (
@@ -136,7 +136,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=cv.make_entity_service_schema({}, extra=vol.ALLOW_EXTRA),
     )
 
-    entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change))
+    # Track only light domain state changes (more efficient than listening to all events)
+    tracker = async_track_state_change_filtered(
+        hass,
+        TrackStates(False, set(), {LIGHT_DOMAIN}),
+        handle_light_state_change,
+    )
+    entry.async_on_unload(tracker.async_remove)
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     return True
