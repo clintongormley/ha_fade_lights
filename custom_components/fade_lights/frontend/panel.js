@@ -323,6 +323,77 @@ class FadeLightsPanel extends LitElement {
     this.dispatchEvent(event);
   }
 
+  _getFloorLightIds(floor) {
+    // Returns all entity_ids in the floor
+    const entityIds = [];
+    for (const area of floor.areas) {
+      for (const light of area.lights) {
+        entityIds.push(light.entity_id);
+      }
+    }
+    return entityIds;
+  }
+
+  _getAreaLightIds(area) {
+    // Returns all entity_ids in the area
+    return area.lights.map((light) => light.entity_id);
+  }
+
+  _getCheckboxState(entityIds) {
+    // Returns "all" | "none" | "some" based on how many are checked
+    if (entityIds.length === 0) {
+      return "none";
+    }
+    const checkedCount = entityIds.filter((id) => this._configureChecked.has(id)).length;
+    if (checkedCount === 0) {
+      return "none";
+    }
+    if (checkedCount === entityIds.length) {
+      return "all";
+    }
+    return "some";
+  }
+
+  _handleFloorCheckboxChange(floor, e) {
+    e.stopPropagation(); // Prevent collapse toggle
+    const entityIds = this._getFloorLightIds(floor);
+    const currentState = this._getCheckboxState(entityIds);
+    const newSet = new Set(this._configureChecked);
+
+    if (currentState === "none") {
+      // Check all
+      for (const id of entityIds) {
+        newSet.add(id);
+      }
+    } else {
+      // Uncheck all (for "all" or "some")
+      for (const id of entityIds) {
+        newSet.delete(id);
+      }
+    }
+    this._configureChecked = newSet;
+  }
+
+  _handleAreaCheckboxChange(area, e) {
+    e.stopPropagation(); // Prevent collapse toggle
+    const entityIds = this._getAreaLightIds(area);
+    const currentState = this._getCheckboxState(entityIds);
+    const newSet = new Set(this._configureChecked);
+
+    if (currentState === "none") {
+      // Check all
+      for (const id of entityIds) {
+        newSet.add(id);
+      }
+    } else {
+      // Uncheck all (for "all" or "some")
+      for (const id of entityIds) {
+        newSet.delete(id);
+      }
+    }
+    this._configureChecked = newSet;
+  }
+
   _hasRealFloors() {
     // Check if there are any floors with a real floor_id (not null/none)
     if (!this._data || !this._data.floors) return false;
@@ -358,10 +429,20 @@ class FadeLightsPanel extends LitElement {
     const floorKey = `floor_${floor.floor_id || "none"}`;
     const isCollapsed = this._collapsed[floorKey];
     const floorIcon = floor.icon || "mdi:floor-plan";
+    const floorLightIds = this._getFloorLightIds(floor);
+    const checkboxState = this._getCheckboxState(floorLightIds);
 
     return html`
       <div class="floor-section">
         <div class="floor-header" @click=${() => this._toggleCollapse(floorKey)}>
+          <input
+            type="checkbox"
+            .checked=${checkboxState === "all"}
+            .indeterminate=${checkboxState === "some"}
+            @click=${(e) => e.stopPropagation()}
+            @change=${(e) => this._handleFloorCheckboxChange(floor, e)}
+            style="margin-right: 8px;"
+          />
           <span class="chevron ${isCollapsed ? "collapsed" : ""}">▼</span>
           <ha-icon class="header-icon" icon="${floorIcon}"></ha-icon>
           ${floor.name}
@@ -377,10 +458,20 @@ class FadeLightsPanel extends LitElement {
     const areaKey = `area_${floorId || "none"}_${area.area_id || "none"}`;
     const isCollapsed = this._collapsed[areaKey];
     const areaIcon = area.icon || "mdi:texture-box";
+    const areaLightIds = this._getAreaLightIds(area);
+    const checkboxState = this._getCheckboxState(areaLightIds);
 
     return html`
       <div class="area-section ${withFloor ? "with-floor" : ""}">
         <div class="area-header" @click=${() => this._toggleCollapse(areaKey)}>
+          <input
+            type="checkbox"
+            .checked=${checkboxState === "all"}
+            .indeterminate=${checkboxState === "some"}
+            @click=${(e) => e.stopPropagation()}
+            @change=${(e) => this._handleAreaCheckboxChange(area, e)}
+            style="margin-right: 8px;"
+          />
           <span class="chevron ${isCollapsed ? "collapsed" : ""}">▼</span>
           <ha-icon class="header-icon" icon="${areaIcon}"></ha-icon>
           ${area.name}
