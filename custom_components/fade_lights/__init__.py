@@ -1034,22 +1034,13 @@ def _get_light_config(hass: HomeAssistant, entity_id: str) -> dict[str, Any]:
     """Get per-light configuration.
 
     Returns the config dict for the light, or empty dict if not configured.
-    Handles legacy storage format where entity_id maps directly to an int (brightness).
     """
-    config = hass.data.get(DOMAIN, {}).get("data", {}).get(entity_id, {})
-    # Handle legacy format where entity_id maps to int (brightness) instead of dict
-    if isinstance(config, int):
-        return {"orig_brightness": config}
-    return config if isinstance(config, dict) else {}
+    return hass.data.get(DOMAIN, {}).get("data", {}).get(entity_id, {})
 
 
 def _get_orig_brightness(hass: HomeAssistant, entity_id: str) -> int:
     """Get stored original brightness for an entity."""
-    config = _get_light_config(hass, entity_id)
-    if isinstance(config, dict):
-        return config.get("orig_brightness", 0)
-    # Legacy format: direct int value (shouldn't happen with new storage)
-    return config if isinstance(config, int) else 0
+    return _get_light_config(hass, entity_id).get("orig_brightness", 0)
 
 
 def _store_orig_brightness(hass: HomeAssistant, entity_id: str, level: int) -> None:
