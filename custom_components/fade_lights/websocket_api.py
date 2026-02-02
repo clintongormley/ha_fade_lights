@@ -9,6 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar,
+    device_registry as dr,
     entity_registry as er,
     floor_registry as fr,
 )
@@ -25,6 +26,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
 async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
     """Get all lights grouped by floor and area."""
     entity_reg = er.async_get(hass)
+    device_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
     floor_reg = fr.async_get(hass)
 
@@ -38,13 +40,24 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
         if not entity.entity_id.startswith("light."):
             continue
 
+        # Skip disabled entities
+        if entity.disabled_by is not None:
+            continue
+
         # Skip light groups (they have entity_id in state attributes)
         state = hass.states.get(entity.entity_id)
         if state and "entity_id" in state.attributes:
             continue
 
+        # Get area_id from entity, or from device if entity doesn't have one
+        area_id = entity.area_id
+        if not area_id and entity.device_id:
+            device = device_reg.async_get(entity.device_id)
+            if device:
+                area_id = device.area_id
+
         # Get area and floor info
-        area = area_reg.async_get_area(entity.area_id) if entity.area_id else None
+        area = area_reg.async_get_area(area_id) if area_id else None
         floor_id = area.floor_id if area else None
 
         # Get or create floor entry
@@ -57,10 +70,10 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
             }
 
         # Get or create area entry
-        area_id = area.id if area else None
-        if area_id not in floors_dict[floor_id]["areas"]:
-            floors_dict[floor_id]["areas"][area_id] = {
-                "area_id": area_id,
+        area_key = area.id if area else None
+        if area_key not in floors_dict[floor_id]["areas"]:
+            floors_dict[floor_id]["areas"][area_key] = {
+                "area_id": area_key,
                 "name": area.name if area else "No Area",
                 "lights": [],
             }
@@ -68,10 +81,17 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
         # Get light config from storage
         light_config = storage_data.get(entity.entity_id, {})
 
+        # Get friendly name: prefer state name, then entity original_name, then entity_id
+        friendly_name = None
+        if state:
+            friendly_name = state.attributes.get("friendly_name")
+        if not friendly_name:
+            friendly_name = entity.original_name or entity.name or entity.entity_id
+
         # Add light to area
-        floors_dict[floor_id]["areas"][area_id]["lights"].append({
+        floors_dict[floor_id]["areas"][area_key]["lights"].append({
             "entity_id": entity.entity_id,
-            "name": entity.name or entity.entity_id,
+            "name": friendly_name,
             "min_delay_ms": light_config.get("min_delay_ms"),
             "exclude": light_config.get("exclude", False),
             "use_native_transition": light_config.get("use_native_transition", True),

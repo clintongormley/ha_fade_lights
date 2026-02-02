@@ -31,13 +31,19 @@ def mock_registries(hass: HomeAssistant):
     entity_bedroom_light = MagicMock()
     entity_bedroom_light.entity_id = "light.bedroom_ceiling"
     entity_bedroom_light.name = "Bedroom Ceiling"
+    entity_bedroom_light.original_name = "Bedroom Ceiling"
     entity_bedroom_light.area_id = "bedroom"
+    entity_bedroom_light.device_id = None
+    entity_bedroom_light.disabled_by = None
     entity_bedroom_light.platform = "hue"
 
     entity_kitchen_light = MagicMock()
     entity_kitchen_light.entity_id = "light.kitchen_main"
     entity_kitchen_light.name = "Kitchen Main"
+    entity_kitchen_light.original_name = "Kitchen Main"
     entity_kitchen_light.area_id = "kitchen"
+    entity_kitchen_light.device_id = None
+    entity_kitchen_light.disabled_by = None
     entity_kitchen_light.platform = "hue"
 
     with patch(
@@ -56,6 +62,9 @@ def mock_registries(hass: HomeAssistant):
                 values=lambda: [entity_bedroom_light, entity_kitchen_light]
             )
         ),
+    ), patch(
+        "homeassistant.helpers.device_registry.async_get",
+        return_value=MagicMock(async_get=lambda did: None),
     ):
         yield
 
