@@ -620,3 +620,43 @@ async def test_service_filters_non_light_entities_from_device(
         called_entity_ids = {call[0][1] for call in mock_fade_light.call_args_list}
         assert light_id in called_entity_ids
         assert sensor_id not in called_entity_ids
+
+
+async def test_service_excludes_configured_lights(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    captured_calls: list,
+) -> None:
+    """Test that lights with exclude=True are filtered from service calls."""
+    # Set up two lights
+    hass.states.async_set(
+        "light.included",
+        STATE_ON,
+        {ATTR_BRIGHTNESS: 200, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+    )
+    hass.states.async_set(
+        "light.excluded",
+        STATE_ON,
+        {ATTR_BRIGHTNESS: 200, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+    )
+    await hass.async_block_till_done()
+
+    # Configure one light as excluded
+    hass.data[DOMAIN]["data"]["light.excluded"] = {"exclude": True}
+
+    # Call service targeting both
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            "entity_id": ["light.included", "light.excluded"],
+            ATTR_BRIGHTNESS_PCT: 50,
+            ATTR_TRANSITION: 0.1,
+        },
+        blocking=True,
+    )
+
+    # Only included light should have changed
+    assert hass.states.get("light.included").attributes[ATTR_BRIGHTNESS] == 127
+    # Excluded light unchanged
+    assert hass.states.get("light.excluded").attributes[ATTR_BRIGHTNESS] == 200

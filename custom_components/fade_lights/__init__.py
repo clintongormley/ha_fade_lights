@@ -464,6 +464,7 @@ def _expand_light_groups(hass: HomeAssistant, entity_ids: list[str]) -> list[str
 
     Light groups have an entity_id attribute containing member lights.
     Expands iteratively (not recursively) and deduplicates results.
+    Lights with exclude=True in their config are filtered out.
 
     Example:
         Input: ["light.living_room_group", "light.bedroom"]
@@ -492,7 +493,11 @@ def _expand_light_groups(hass: HomeAssistant, entity_ids: list[str]) -> list[str
         else:
             result.add(entity_id)
 
-    return list(result)
+    # Filter out excluded lights
+    return [
+        eid for eid in result
+        if not _get_light_config(hass, eid).get("exclude", False)
+    ]
 
 
 def _can_apply_fade_params(state: State, params: FadeParams) -> bool:
