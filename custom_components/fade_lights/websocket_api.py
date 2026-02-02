@@ -290,23 +290,45 @@ async def ws_autoconfigure(
         if not _get_light_config(hass, eid).get("exclude", False)
     ]
 
+    # Create cancellation event for unsubscribe support
+    cancel_event = asyncio.Event()
+
+    def cancel_subscription() -> None:
+        """Cancel the autoconfigure subscription."""
+        cancel_event.set()
+
+    # Register subscription so client can unsubscribe
+    connection.subscriptions[msg["id"]] = cancel_subscription
+
     # Create semaphore to limit parallel testing
     semaphore = asyncio.Semaphore(AUTOCONFIGURE_MAX_PARALLEL)
 
     async def test_light(entity_id: str) -> None:
         """Test a single light and send events."""
-        # Send started event immediately
-        connection.send_message(
-            websocket_api.event_message(
-                msg["id"],
-                {"type": "started", "entity_id": entity_id},
-            )
-        )
+        # Check if cancelled before waiting for semaphore
+        if cancel_event.is_set():
+            return
 
         # Acquire semaphore before testing
         async with semaphore:
+            # Check if cancelled after acquiring semaphore
+            if cancel_event.is_set():
+                return
+
+            # Send started event after acquiring semaphore (actual testing begins)
+            connection.send_message(
+                websocket_api.event_message(
+                    msg["id"],
+                    {"type": "started", "entity_id": entity_id},
+                )
+            )
+
             try:
                 result = await async_test_light_delay(hass, entity_id)
+
+                # Check if cancelled before sending result
+                if cancel_event.is_set():
+                    return
 
                 if "error" in result:
                     # Send error event
@@ -333,6 +355,9 @@ async def ws_autoconfigure(
                         )
                     )
             except Exception as err:  # noqa: BLE001
+                # Check if cancelled before sending error
+                if cancel_event.is_set():
+                    return
                 # Send error event for unexpected exceptions
                 connection.send_message(
                     websocket_api.event_message(
@@ -352,5 +377,6 @@ async def ws_autoconfigure(
     if tasks:
         await asyncio.gather(*tasks)
 
-    # Send final result to close the subscription
-    connection.send_result(msg["id"])
+    # Send final result to close the subscription (only if not cancelled)
+    if not cancel_event.is_set():
+        connection.send_result(msg["id"])
