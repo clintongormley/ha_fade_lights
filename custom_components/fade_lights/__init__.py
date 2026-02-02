@@ -58,6 +58,7 @@ from .const import (
 from .expected_state import ExpectedState, ExpectedValues
 from .fade_change import FadeChange, FadeStep
 from .fade_params import FadeParams
+from .websocket_api import async_register_websocket_api
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,6 +147,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     entry.async_on_unload(tracker.async_remove)
     entry.async_on_unload(entry.add_update_listener(async_update_options))
+
+    # Register WebSocket API
+    async_register_websocket_api(hass)
 
     return True
 
