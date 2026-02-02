@@ -10,7 +10,7 @@ from homeassistant.const import STATE_ON
 
 from custom_components.fade_lights import (
     DOMAIN,
-    LATEST_INTENDED_STATE,
+    INTENDED_STATE_QUEUE,
     _restore_intended_state,
 )
 
@@ -51,8 +51,8 @@ class TestRestoreIntendedColors:
         current_state.attributes = {ATTR_BRIGHTNESS: 80, HA_ATTR_HS_COLOR: (100.0, 40.0)}
         mock_hass.states.get.return_value = current_state
 
-        # Set up latest intended state (function reads from this dict)
-        LATEST_INTENDED_STATE[entity_id] = new_state
+        # Set up intended state queue: [old_state, intended_state]
+        INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
 
         try:
             with (
@@ -65,7 +65,7 @@ class TestRestoreIntendedColors:
                     new_callable=AsyncMock,
                 ),
             ):
-                await _restore_intended_state(mock_hass, entity_id, old_state)
+                await _restore_intended_state(mock_hass, entity_id)
 
             # Verify service call includes HS color
             mock_hass.services.async_call.assert_called()
@@ -75,7 +75,7 @@ class TestRestoreIntendedColors:
             assert service_data.get(ATTR_BRIGHTNESS) == 150
             assert service_data.get(HA_ATTR_HS_COLOR) == (200.0, 60.0)
         finally:
-            LATEST_INTENDED_STATE.pop(entity_id, None)
+            INTENDED_STATE_QUEUE.pop(entity_id, None)
 
     @pytest.mark.asyncio
     async def test_restore_includes_color_temp(self, mock_hass):
@@ -99,8 +99,8 @@ class TestRestoreIntendedColors:
         current_state.attributes = {ATTR_BRIGHTNESS: 80, HA_ATTR_COLOR_TEMP_KELVIN: 4000}
         mock_hass.states.get.return_value = current_state
 
-        # Set up latest intended state (function reads from this dict)
-        LATEST_INTENDED_STATE[entity_id] = new_state
+        # Set up intended state queue: [old_state, intended_state]
+        INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
 
         try:
             with (
@@ -113,7 +113,7 @@ class TestRestoreIntendedColors:
                     new_callable=AsyncMock,
                 ),
             ):
-                await _restore_intended_state(mock_hass, entity_id, old_state)
+                await _restore_intended_state(mock_hass, entity_id)
 
             # Verify service call includes color temp in kelvin
             mock_hass.services.async_call.assert_called()
@@ -123,7 +123,7 @@ class TestRestoreIntendedColors:
             assert service_data.get(ATTR_BRIGHTNESS) == 150
             assert service_data.get(HA_ATTR_COLOR_TEMP_KELVIN) == 2500
         finally:
-            LATEST_INTENDED_STATE.pop(entity_id, None)
+            INTENDED_STATE_QUEUE.pop(entity_id, None)
 
     @pytest.mark.asyncio
     async def test_no_restore_when_current_matches_intended(self, mock_hass):
@@ -145,8 +145,8 @@ class TestRestoreIntendedColors:
         current_state.attributes = {ATTR_BRIGHTNESS: 150, HA_ATTR_HS_COLOR: (200.0, 60.0)}
         mock_hass.states.get.return_value = current_state
 
-        # Set up latest intended state (function reads from this dict)
-        LATEST_INTENDED_STATE[entity_id] = new_state
+        # Set up intended state queue: [old_state, intended_state]
+        INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
 
         try:
             with (
@@ -159,9 +159,9 @@ class TestRestoreIntendedColors:
                     new_callable=AsyncMock,
                 ),
             ):
-                await _restore_intended_state(mock_hass, entity_id, old_state)
+                await _restore_intended_state(mock_hass, entity_id)
 
             # No restoration needed
             mock_hass.services.async_call.assert_not_called()
         finally:
-            LATEST_INTENDED_STATE.pop(entity_id, None)
+            INTENDED_STATE_QUEUE.pop(entity_id, None)

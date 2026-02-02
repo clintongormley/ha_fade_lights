@@ -84,9 +84,10 @@ FADE_EXPECTED_STATE: dict[str, ExpectedState] = {}
 # Waiters use this instead of polling to know when a cancelled fade has finished.
 FADE_COMPLETE_CONDITIONS: dict[str, asyncio.Condition] = {}
 
-# Maps entity_id -> latest intended State from manual intervention.
-# Updated by each manual event; read at restore time to get the final intended state.
-LATEST_INTENDED_STATE: dict[str, State] = {}
+# Maps entity_id -> queue of States from manual interventions.
+# First entry is the old_state when queue was created; subsequent entries are intended states.
+# Used to compare adjacent states when determining brightness transitions.
+INTENDED_STATE_QUEUE: dict[str, list[State]] = {}
 
 # Maps entity_id -> running restore Task to avoid spawning duplicates.
 # Only one restore task runs per entity; subsequent events update LATEST_INTENDED_STATE.
@@ -175,7 +176,7 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_STATE.clear()
     FADE_COMPLETE_CONDITIONS.clear()
-    LATEST_INTENDED_STATE.clear()
+    INTENDED_STATE_QUEUE.clear()
     RESTORE_TASKS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
@@ -548,21 +549,27 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChang
     is_during_fade = entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_STATE
     is_during_restore = entity_id in RESTORE_TASKS
     if is_during_fade or is_during_restore:
-        # Manual intervention detected - always update to latest intended state
+        # Manual intervention detected - add to intended state queue
         _LOGGER.info(
             "%s: Manual intervention detected (state=%s, brightness=%s)",
             entity_id,
             new_state.state,
             new_state.attributes.get(ATTR_BRIGHTNESS),
         )
-        LATEST_INTENDED_STATE[entity_id] = new_state
+
+        # Initialize queue with old_state if this is the first manual event
+        if entity_id not in INTENDED_STATE_QUEUE:
+            INTENDED_STATE_QUEUE[entity_id] = [old_state] if old_state else []
+
+        # Append the new intended state
+        INTENDED_STATE_QUEUE[entity_id].append(new_state)
 
         # Only spawn restore task if one isn't already running
         if entity_id not in RESTORE_TASKS:
-            task = hass.async_create_task(_restore_intended_state(hass, entity_id, old_state))
+            task = hass.async_create_task(_restore_intended_state(hass, entity_id))
             RESTORE_TASKS[entity_id] = task
         else:
-            _LOGGER.debug("%s: Restore task already running, updated intended state", entity_id)
+            _LOGGER.debug("%s: Restore task already running, queued intended state", entity_id)
         return
 
     # Normal state handling (no active fade)
@@ -685,24 +692,22 @@ async def _restore_original_brightness(
 async def _restore_intended_state(
     hass: HomeAssistant,
     entity_id: str,
-    old_state,
 ) -> None:
     """Restore intended state after manual intervention during fade.
 
     When manual intervention is detected during a fade, late fade events may
     overwrite the user's intended state. This function:
     1. Cancels the fade and waits for cleanup
-    2. Loops: reads LATEST intended state and restores if needed
+    2. Loops: reads most recent intended state from queue and restores if needed
     3. Continues until no more intended states are queued
 
-    The loop handles the case where another manual event arrives during restore.
+    The queue structure is: [old_state, intended_1, intended_2, ...]
+    - First entry is the state before the first manual intervention
+    - Subsequent entries are intended states from manual interventions
 
-    The intended brightness encodes both state and brightness:
-    - 0 means OFF
-    - >0 means ON at that brightness
-
-    Colors from the manual intervention are also restored.
-    Note: Only brightness is persisted to storage, not colors.
+    When processing, we compare adjacent states to determine transitions
+    (e.g., OFF->ON vs ON->ON) and only store original brightness when
+    the previous state had non-zero brightness.
     """
     try:
         if DOMAIN not in hass.data:
@@ -716,24 +721,52 @@ async def _restore_intended_state(
         # Loop until no more intended states are queued
         # (handles case where another manual event arrives during restore)
         while True:
-            # Read the LATEST intended state (may have been updated while waiting)
-            intended_state = LATEST_INTENDED_STATE.pop(entity_id, None)
-            if not intended_state:
-                _LOGGER.debug("%s: No more intended states, done", entity_id)
+            # Get the queue for this entity
+            queue = INTENDED_STATE_QUEUE.get(entity_id, [])
+
+            # Need at least 2 entries: previous state + intended state
+            if len(queue) < 2:
+                _LOGGER.debug("%s: No more intended states in queue, done", entity_id)
+                INTENDED_STATE_QUEUE.pop(entity_id, None)
                 break
 
+            # Get the most recent intended state (last in queue)
+            intended_state = queue[-1]
+            # Get the previous state (second to last) for comparison
+            previous_state = queue[-2]
+
+            # Remove intended_state and all previous states from queue
+            # Keep only the intended_state as the new "previous" for any future events
+            INTENDED_STATE_QUEUE[entity_id] = [intended_state]
+
             intended_brightness = _get_intended_brightness(
-                hass, entity_id, old_state, intended_state
+                hass, entity_id, previous_state, intended_state
             )
             _LOGGER.debug("%s: Got intended brightness (%s)", entity_id, intended_brightness)
             if intended_brightness is None:
                 break
 
-            # Store as new original brightness (for future OFF->ON restore)
-            # Note: We only store brightness, not colors
-            if intended_brightness > 0:
+            # Store as new original brightness only if:
+            # - Previous state had non-zero brightness (was ON, not coming from OFF)
+            # - Intended brightness is > 0 (not turning off)
+            # - Brightness is actually changing
+            # This ensures we track the user's intended brightness for OFF->ON restoration
+            previous_brightness = (
+                previous_state.attributes.get(ATTR_BRIGHTNESS, 0)
+                if previous_state and previous_state.state != STATE_OFF
+                else 0
+            )
+            if (
+                previous_brightness > 0
+                and intended_brightness > 0
+                and intended_brightness != previous_brightness
+            ):
                 _LOGGER.debug(
-                    "%s: Storing original brightness (%s)", entity_id, intended_brightness
+                    "%s: Storing original brightness (%s) from transition %s->%s",
+                    entity_id,
+                    intended_brightness,
+                    previous_brightness,
+                    intended_brightness,
                 )
                 _store_orig_brightness(hass, entity_id, intended_brightness)
 
