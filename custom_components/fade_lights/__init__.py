@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.components import panel_custom
+from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -353,6 +353,9 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
+
+    # Remove the panel
+    frontend.async_remove_panel(hass, "fade-lights")
 
     return True
 
