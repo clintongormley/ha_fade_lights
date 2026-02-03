@@ -41,6 +41,7 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import TrackStates, async_track_state_change_filtered
 from homeassistant.helpers.service import remove_entity_service_fields
 from homeassistant.helpers.storage import Store
@@ -156,6 +157,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     entry.async_on_unload(tracker.async_remove)
 
+    # Listen for entity registry changes to clean up deleted entities
+    async def handle_entity_registry_updated(
+        event: Event[er.EventEntityRegistryUpdatedData],
+    ) -> None:
+        """Handle entity registry updates."""
+        if event.data["action"] != "remove":
+            return
+
+        entity_id = event.data["entity_id"]
+        # Only handle light entities
+        if not entity_id.startswith(f"{LIGHT_DOMAIN}."):
+            return
+
+        await _cleanup_entity_data(hass, entity_id)
+
+    entry.async_on_unload(
+        hass.bus.async_listen(
+            er.EVENT_ENTITY_REGISTRY_UPDATED,
+            handle_entity_registry_updated,
+        )
+    )
+
     # Register WebSocket API
     async_register_websocket_api(hass)
 
@@ -209,6 +232,66 @@ async def _apply_stored_log_level(hass: HomeAssistant, entry: ConfigEntry) -> No
             "set_level",
             {f"custom_components.{DOMAIN}": python_level},
         )
+
+
+async def _cleanup_entity_data(hass: HomeAssistant, entity_id: str) -> None:
+    """Clean up all data associated with a deleted entity.
+
+    This is called when an entity is removed from the entity registry.
+    It cleans up:
+    - Active fade tasks and cancellation events
+    - Expected state tracking
+    - Completion conditions
+    - Intended state queues for brightness restoration
+    - Restore tasks
+    - Testing lights set (autoconfigure)
+    - Persistent storage data
+    """
+    _LOGGER.debug("%s: Cleaning up data for deleted entity", entity_id)
+
+    # Cancel active fade if any
+    if entity_id in ACTIVE_FADES:
+        task = ACTIVE_FADES.pop(entity_id)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    # Signal cancellation and remove event
+    if entity_id in FADE_CANCEL_EVENTS:
+        FADE_CANCEL_EVENTS[entity_id].set()
+        del FADE_CANCEL_EVENTS[entity_id]
+
+    # Clear expected state
+    if entity_id in FADE_EXPECTED_STATE:
+        FADE_EXPECTED_STATE[entity_id].values.clear()
+        del FADE_EXPECTED_STATE[entity_id]
+
+    # Remove completion condition
+    FADE_COMPLETE_CONDITIONS.pop(entity_id, None)
+
+    # Clear intended state queue
+    INTENDED_STATE_QUEUE.pop(entity_id, None)
+
+    # Cancel restore task if any
+    if entity_id in RESTORE_TASKS:
+        task = RESTORE_TASKS.pop(entity_id)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    # Remove from testing lights set
+    if DOMAIN in hass.data:
+        hass.data[DOMAIN].get("testing_lights", set()).discard(entity_id)
+
+        # Remove from persistent storage
+        storage_data = hass.data[DOMAIN].get("data", {})
+        if entity_id in storage_data:
+            del storage_data[entity_id]
+            # Save updated storage
+            store = hass.data[DOMAIN].get("store")
+            if store:
+                await store.async_save(storage_data)
+                _LOGGER.info("%s: Removed persistent data for deleted entity", entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
