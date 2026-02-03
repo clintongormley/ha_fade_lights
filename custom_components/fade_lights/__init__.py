@@ -150,11 +150,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Event handler wrapper."""
         _handle_light_state_change(hass, event)
 
+    # Valid easing curve names
+    valid_easing = [
+        "auto",
+        "linear",
+        "ease_in_quad",
+        "ease_in_cubic",
+        "ease_out_quad",
+        "ease_out_cubic",
+        "ease_in_out_sine",
+    ]
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_FADE_LIGHTS,
         handle_fade_lights,
-        schema=cv.make_entity_service_schema({}, extra=vol.ALLOW_EXTRA),
+        schema=cv.make_entity_service_schema(
+            {vol.Optional("easing", default="auto"): vol.In(valid_easing)},
+            extra=vol.ALLOW_EXTRA,
+        ),
     )
 
     # Track only light domain state changes (more efficient than listening to all events)
