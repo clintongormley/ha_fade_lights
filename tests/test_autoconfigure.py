@@ -137,10 +137,10 @@ class TestLightDelay:
 
         await async_test_light_delay(hass_with_storage, mock_light_on)
 
-        # Should have 10 iteration calls + 1 restore call = 11 calls
+        # Should have 1 init call + 10 iteration calls + 1 restore call = 12 calls
         turn_on_calls = [c for c in service_calls_with_state_update if c.service == "turn_on"]
-        # 10 measurement calls + 1 restore call
-        assert len(turn_on_calls) == AUTOCONFIGURE_ITERATIONS + 1
+        # 1 init + 10 measurement calls + 1 restore call
+        assert len(turn_on_calls) == AUTOCONFIGURE_ITERATIONS + 2
 
     async def test_alternating_brightness(
         self,
@@ -148,17 +148,21 @@ class TestLightDelay:
         mock_light_on: str,
         service_calls_with_state_update: list[ServiceCall],
     ) -> None:
-        """Test brightness alternates between 1 and 255."""
+        """Test brightness alternates between 10 and 255."""
         from custom_components.fade_lights.const import AUTOCONFIGURE_ITERATIONS
 
         await async_test_light_delay(hass_with_storage, mock_light_on)
 
         turn_on_calls = [c for c in service_calls_with_state_update if c.service == "turn_on"]
 
-        # Check the measurement calls (excluding the final restore call)
-        for i in range(AUTOCONFIGURE_ITERATIONS):
+        # First call is initialization to 255
+        assert turn_on_calls[0].data.get(ATTR_BRIGHTNESS) == 255
+
+        # Check the measurement calls (index 1 to ITERATIONS+1, excluding init and restore)
+        for i in range(1, AUTOCONFIGURE_ITERATIONS + 1):
             call = turn_on_calls[i]
-            expected_brightness = 1 if (i + 1) % 2 == 1 else 255
+            # Odd iterations (1, 3, 5...) set brightness to 10, even (2, 4, 6...) to 255
+            expected_brightness = 10 if i % 2 == 1 else 255
             assert call.data.get(ATTR_BRIGHTNESS) == expected_brightness
 
     async def test_restores_original_state_when_on(
@@ -346,10 +350,12 @@ class TestLightDelayCalculation:
         result = await async_test_light_delay(hass_with_storage, mock_light_on)
 
         assert "error" not in result
-        # With 25ms delay, result should be 30ms (rounded up to nearest 10)
-        # Allow for some timing variance
-        assert result["min_delay_ms"] >= 20
-        assert result["min_delay_ms"] <= 50
+        # With 25ms delay, the p90 would be around 25-35ms, which rounds up to 30-40ms
+        # However, the global minimum is 100ms (DEFAULT_MIN_STEP_DELAY_MS)
+        # So the result should be clamped to 100ms
+        from custom_components.fade_lights.const import DEFAULT_MIN_STEP_DELAY_MS
+
+        assert result["min_delay_ms"] == DEFAULT_MIN_STEP_DELAY_MS
 
     async def test_ceil_rounding(
         self,
