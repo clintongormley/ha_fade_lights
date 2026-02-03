@@ -709,7 +709,7 @@ async def test_fade_cancel_event_after_brightness_apply(
     # Create a mock for _apply_step that sets cancel event after first call
     call_count = 0
 
-    async def cancelling_apply(hass, eid, step):
+    async def cancelling_apply(hass, eid, step, *, use_transition=False):
         nonlocal call_count
         call_count += 1
         # After first apply, set the cancel event
@@ -792,3 +792,161 @@ async def test_per_light_min_delay_overrides_global(
     turn_off_calls = _get_turn_off_calls(service_calls)
     assert len(turn_on_calls) == 4  # Steps before turn_off (255->204->153->102->51)
     assert len(turn_off_calls) == 1  # Final turn_off to 0
+
+
+async def test_native_transitions_adds_transition_to_turn_on(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that transition: 0.1 is added when native_transitions is True."""
+    entity_id = "light.native_transition_light"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions=True
+    hass.data[DOMAIN]["data"][entity_id] = {"native_transitions": True}
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            "entity_id": entity_id,
+            ATTR_BRIGHTNESS_PCT: 50,
+            ATTR_TRANSITION: 0.5,  # Short transition for test speed
+        },
+        blocking=True,
+    )
+
+    turn_on_calls = _get_turn_on_calls(service_calls)
+    assert len(turn_on_calls) > 0
+
+    # All turn_on calls should have transition: 0.1
+    for call in turn_on_calls:
+        assert call.data.get("transition") == 0.1
+
+
+async def test_native_transitions_false_no_transition(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that transition is NOT added when native_transitions is False."""
+    entity_id = "light.no_native_transition"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions=False
+    hass.data[DOMAIN]["data"][entity_id] = {"native_transitions": False}
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            "entity_id": entity_id,
+            ATTR_BRIGHTNESS_PCT: 50,
+            ATTR_TRANSITION: 0.5,
+        },
+        blocking=True,
+    )
+
+    turn_on_calls = _get_turn_on_calls(service_calls)
+    assert len(turn_on_calls) > 0
+
+    # No turn_on calls should have transition
+    for call in turn_on_calls:
+        assert "transition" not in call.data
+
+
+async def test_native_transitions_skips_first_step_with_from(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that first step has no transition when 'from' is specified."""
+    from custom_components.fade_lights.const import ATTR_FROM
+
+    entity_id = "light.native_with_from"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 128,  # Starting at 50%
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions=True
+    hass.data[DOMAIN]["data"][entity_id] = {"native_transitions": True}
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            "entity_id": entity_id,
+            ATTR_BRIGHTNESS_PCT: 80,
+            ATTR_TRANSITION: 0.5,
+            ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 20},  # Start from 20%
+        },
+        blocking=True,
+    )
+
+    turn_on_calls = _get_turn_on_calls(service_calls)
+    assert len(turn_on_calls) >= 2
+
+    # First call should NOT have transition (jumping to "from" position)
+    assert "transition" not in turn_on_calls[0].data
+
+    # Subsequent calls should have transition: 0.1
+    for call in turn_on_calls[1:]:
+        assert call.data.get("transition") == 0.1
+
+
+async def test_native_transitions_first_step_has_transition_without_from(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that first step HAS transition when 'from' is NOT specified."""
+    entity_id = "light.native_no_from"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions=True
+    hass.data[DOMAIN]["data"][entity_id] = {"native_transitions": True}
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            "entity_id": entity_id,
+            ATTR_BRIGHTNESS_PCT: 50,
+            ATTR_TRANSITION: 0.5,
+        },
+        blocking=True,
+    )
+
+    turn_on_calls = _get_turn_on_calls(service_calls)
+    assert len(turn_on_calls) >= 1
+
+    # ALL calls should have transition: 0.1 (no "from" specified)
+    for call in turn_on_calls:
+        assert call.data.get("transition") == 0.1

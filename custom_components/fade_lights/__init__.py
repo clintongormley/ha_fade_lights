@@ -528,9 +528,18 @@ async def _execute_fade(
     total_steps = fade.step_count()
     delay_ms = fade.delay_ms()
 
+    # Check if light supports native transitions and if "from" was specified
+    light_config = _get_light_config(hass, entity_id)
+    native_transitions = light_config.get("native_transitions", False)
+    has_from = fade_params.has_from_target()
+
+    # Add 100ms to delay when using native transitions (to account for the 0.1s transition)
+    if native_transitions:
+        delay_ms += 100
+
     _LOGGER.info(
         "%s: Fading in %s steps, (brightness=%s->%s, hs=%s->%s, mireds=%s->%s, "
-        "easing=%s, hybrid=%s, crossover_step=%s, delay_ms=%s)",
+        "easing=%s, hybrid=%s, crossover_step=%s, delay_ms=%s, native_transitions=%s)",
         entity_id,
         total_steps,
         fade.start_brightness,
@@ -543,9 +552,11 @@ async def _execute_fade(
         fade._hybrid_direction,
         fade._crossover_step,
         delay_ms,
+        native_transitions,
     )
 
     # Execute fade steps
+    step_num = 0
     while fade.has_next():
         step_start = time.monotonic()
 
@@ -553,6 +564,7 @@ async def _execute_fade(
             return
 
         step = fade.next_step()
+        step_num += 1
 
         # Track expected values for manual intervention detection
         expected = ExpectedValues(
@@ -562,7 +574,11 @@ async def _execute_fade(
         )
         _add_expected_values(entity_id, expected)
 
-        await _apply_step(hass, entity_id, step)
+        # Use native transition unless this is the first step with "from" specified
+        # (first step should jump instantly to the starting position)
+        use_transition = native_transitions and not (step_num == 1 and has_from)
+
+        await _apply_step(hass, entity_id, step, use_transition=use_transition)
 
         if cancel_event.is_set():
             return
@@ -599,6 +615,8 @@ async def _apply_step(
     hass: HomeAssistant,
     entity_id: str,
     step: FadeStep,
+    *,
+    use_transition: bool = False,
 ) -> None:
     """Apply a fade step to a light.
 
@@ -609,6 +627,7 @@ async def _apply_step(
         hass: Home Assistant instance
         entity_id: Light entity ID
         step: The fade step to apply
+        use_transition: If True, add transition: 0.1 to smooth the step
     """
     # Build service data based on what's in the step
     service_data: dict = {ATTR_ENTITY_ID: entity_id}
@@ -630,6 +649,10 @@ async def _apply_step(
 
     if step.color_temp_kelvin is not None:
         service_data[HA_ATTR_COLOR_TEMP_KELVIN] = step.color_temp_kelvin
+
+    # Add short transition for smoother steps on lights that support native transitions
+    if use_transition:
+        service_data["transition"] = 0.1
 
     _LOGGER.debug("%s", service_data)
 
