@@ -370,6 +370,32 @@ class FadeLightsPanel extends LitElement {
       .light-row.excluded td.col-exclude {
         opacity: 1;
       }
+
+      .col-native-transitions {
+        width: 130px;
+        text-align: center;
+      }
+
+      .native-transitions-select {
+        padding: 4px 8px;
+        border: 1px solid var(--divider-color);
+        border-radius: 4px;
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+        font-size: 12px;
+        cursor: pointer;
+        min-width: 80px;
+      }
+
+      .native-transitions-select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .native-transitions-select:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
     `;
   }
 
@@ -898,8 +924,8 @@ class FadeLightsPanel extends LitElement {
       newTesting.delete(event.entity_id);
       this._testing = newTesting;
 
-      // Update local data with new min_delay_ms
-      this._updateLightDelay(event.entity_id, event.min_delay_ms);
+      // Update local data with new values
+      this._updateLightConfig(event.entity_id, event.min_delay_ms, event.native_transitions);
 
       // Uncheck from configure
       const newChecked = new Set(this._configureChecked);
@@ -932,7 +958,7 @@ class FadeLightsPanel extends LitElement {
     }
   }
 
-  _updateLightDelay(entityId, minDelayMs) {
+  _updateLightConfig(entityId, minDelayMs, nativeTransitions) {
     // Find and update the light in _data
     if (!this._data?.floors) return;
 
@@ -941,11 +967,37 @@ class FadeLightsPanel extends LitElement {
         const light = area.lights.find((l) => l.entity_id === entityId);
         if (light) {
           light.min_delay_ms = minDelayMs;
+          if (nativeTransitions !== undefined) {
+            light.native_transitions = nativeTransitions;
+          }
           this.requestUpdate(); // Trigger re-render
           return;
         }
       }
     }
+  }
+
+  async _handleNativeTransitionsChange(entityId, e) {
+    const value = e.target.value;
+    let nativeTransitions = null;
+    if (value === "true") {
+      nativeTransitions = true;
+    } else if (value === "false") {
+      nativeTransitions = false;
+    }
+
+    // Update local data
+    const light = this._findLight(entityId);
+    if (light) {
+      light.native_transitions = nativeTransitions;
+    }
+
+    // Save to backend
+    await this.hass.callWS({
+      type: "fade_lights/save_light_config",
+      entity_id: entityId,
+      native_transitions: nativeTransitions,
+    });
   }
 
   _renderHeader() {
@@ -1005,6 +1057,7 @@ class FadeLightsPanel extends LitElement {
           <tr>
             <th class="col-light"></th>
             <th class="col-delay">Min Delay (ms)</th>
+            <th class="col-native-transitions">Native Transitions</th>
             <th class="col-exclude">Exclude</th>
             <th class="col-configure">
               <ha-checkbox
@@ -1061,6 +1114,7 @@ class FadeLightsPanel extends LitElement {
             ${floor.name}
           </div>
         </td>
+        <td class="col-native-transitions"></td>
         <td class="col-exclude">
           <ha-checkbox
             .checked=${excludeState === "all"}
@@ -1099,6 +1153,7 @@ class FadeLightsPanel extends LitElement {
             ${area.name}
           </div>
         </td>
+        <td class="col-native-transitions"></td>
         <td class="col-exclude">
           <ha-checkbox
             .checked=${excludeState === "all"}
@@ -1120,7 +1175,7 @@ class FadeLightsPanel extends LitElement {
         ? ""
         : area.lights.length > 0
           ? area.lights.map((light) => this._renderLightRow(light, withFloor))
-          : html`<tr><td colspan="4" class="no-lights">No lights in this area</td></tr>`}
+          : html`<tr><td colspan="5" class="no-lights">No lights in this area</td></tr>`}
     `;
   }
 
@@ -1161,6 +1216,17 @@ class FadeLightsPanel extends LitElement {
                 ${errorMessage ? html`<div class="test-error">${errorMessage}</div>` : ""}
               `
           }
+        </td>
+        <td class="col-native-transitions">
+          <select
+            class="native-transitions-select"
+            ?disabled=${isExcluded}
+            @change=${(e) => this._handleNativeTransitionsChange(light.entity_id, e)}
+          >
+            <option value="" ?selected=${light.native_transitions === null || light.native_transitions === undefined}></option>
+            <option value="true" ?selected=${light.native_transitions === true}>Yes</option>
+            <option value="false" ?selected=${light.native_transitions === false}>No</option>
+          </select>
         </td>
         <td class="col-exclude">
           <ha-checkbox

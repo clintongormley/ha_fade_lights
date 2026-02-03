@@ -43,6 +43,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_lights)
     websocket_api.async_register_command(hass, ws_save_light_config)
     websocket_api.async_register_command(hass, ws_autoconfigure)
+    websocket_api.async_register_command(hass, ws_test_native_transitions)
     websocket_api.async_register_command(hass, ws_get_settings)
     websocket_api.async_register_command(hass, ws_save_settings)
 
@@ -129,6 +130,7 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
                 "icon": icon,
                 "min_delay_ms": light_config.get("min_delay_ms"),
                 "exclude": light_config.get("exclude", False),
+                "native_transitions": light_config.get("native_transitions"),
             }
         )
 
@@ -161,8 +163,10 @@ async def async_save_light_config(
     entity_id: str,
     min_delay_ms: int | None = None,
     exclude: bool | None = None,
+    native_transitions: bool | None = None,
     *,
     clear_min_delay: bool = False,
+    clear_native_transitions: bool = False,
 ) -> dict[str, bool]:
     """Save per-light configuration.
 
@@ -171,7 +175,9 @@ async def async_save_light_config(
         entity_id: The light entity ID
         min_delay_ms: Optional minimum delay in milliseconds (50-1000)
         exclude: Optional flag to exclude light from fades
+        native_transitions: Optional flag for native transition support
         clear_min_delay: If True and min_delay_ms is None, remove the setting
+        clear_native_transitions: If True and native_transitions is None, remove the setting
 
     Returns:
         Dict with success status
@@ -190,6 +196,11 @@ async def async_save_light_config(
     if exclude is not None:
         data[entity_id]["exclude"] = exclude
 
+    if native_transitions is not None:
+        data[entity_id]["native_transitions"] = native_transitions
+    elif clear_native_transitions:
+        data[entity_id].pop("native_transitions", None)
+
     # Save to disk
     store = hass.data[DOMAIN]["store"]
     await store.async_save(data)
@@ -206,6 +217,7 @@ async def async_save_light_config(
         vol.Required("entity_id"): str,
         vol.Optional("min_delay_ms"): vol.Any(None, vol.All(int, vol.Range(min=50, max=1000))),
         vol.Optional("exclude"): bool,
+        vol.Optional("native_transitions"): vol.Any(None, bool),
     }
 )
 @websocket_api.async_response
@@ -217,15 +229,18 @@ async def ws_save_light_config(
     """Handle save_light_config WebSocket command."""
     entity_id = msg["entity_id"]
 
-    # Determine if we should clear min_delay_ms
+    # Determine if we should clear fields
     clear_min_delay = "min_delay_ms" in msg and msg["min_delay_ms"] is None
+    clear_native_transitions = "native_transitions" in msg and msg["native_transitions"] is None
 
     result = await async_save_light_config(
         hass,
         entity_id,
         min_delay_ms=msg.get("min_delay_ms"),
         exclude=msg.get("exclude"),
+        native_transitions=msg.get("native_transitions"),
         clear_min_delay=clear_min_delay,
+        clear_native_transitions=clear_native_transitions,
     )
 
     connection.send_result(msg["id"], result)
@@ -300,9 +315,14 @@ async def ws_autoconfigure(
     - started: When a light test begins
     - result: When a light test completes successfully
     - error: When a light test fails
+
+    Both delay testing and native transitions testing are performed.
     """
     # Import here to avoid circular import (autoconfigure imports async_save_light_config)
-    from .autoconfigure import async_test_light_delay  # noqa: PLC0415
+    from .autoconfigure import (  # noqa: PLC0415
+        async_test_light_delay,
+        async_test_native_transitions,
+    )
 
     entity_ids = msg["entity_ids"]
 
@@ -353,13 +373,14 @@ async def ws_autoconfigure(
                     )
                 )
 
-                result = await async_test_light_delay(hass, entity_id)
+                # Run delay test
+                delay_result = await async_test_light_delay(hass, entity_id)
 
-                # Check if cancelled before sending result
+                # Check if cancelled before continuing
                 if cancel_event.is_set():
                     return
 
-                if "error" in result:
+                if "error" in delay_result:
                     # Send error event
                     connection.send_message(
                         websocket_api.event_message(
@@ -367,22 +388,40 @@ async def ws_autoconfigure(
                             {
                                 "type": "error",
                                 "entity_id": entity_id,
-                                "message": result["error"],
+                                "message": delay_result["error"],
                             },
                         )
                     )
-                else:
-                    # Send result event
-                    connection.send_message(
-                        websocket_api.event_message(
-                            msg["id"],
-                            {
-                                "type": "result",
-                                "entity_id": entity_id,
-                                "min_delay_ms": result["min_delay_ms"],
-                            },
-                        )
+                    return
+
+                # Run native transitions test
+                transition_result = await async_test_native_transitions(hass, entity_id)
+
+                # Check if cancelled before sending result
+                if cancel_event.is_set():
+                    return
+
+                # Determine native_transitions value (None if error)
+                native_transitions = None
+                if "error" not in transition_result:
+                    native_transitions = transition_result["supports_native_transitions"]
+                    # Save native_transitions to storage
+                    await async_save_light_config(
+                        hass, entity_id, native_transitions=native_transitions
                     )
+
+                # Send result event with both values
+                connection.send_message(
+                    websocket_api.event_message(
+                        msg["id"],
+                        {
+                            "type": "result",
+                            "entity_id": entity_id,
+                            "min_delay_ms": delay_result["min_delay_ms"],
+                            "native_transitions": native_transitions,
+                        },
+                    )
+                )
             except Exception as err:  # noqa: BLE001
                 # Check if cancelled before sending error
                 if cancel_event.is_set():
@@ -412,6 +451,37 @@ async def ws_autoconfigure(
     # Send final result to close the subscription (only if not cancelled)
     if not cancel_event.is_set():
         connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "fade_lights/test_native_transitions",
+        vol.Required("entity_id"): str,
+        vol.Optional("transition_s", default=2.0): vol.Coerce(float),
+    }
+)
+@websocket_api.async_response
+async def ws_test_native_transitions(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle test_native_transitions WebSocket command.
+
+    Tests if a light supports native transitions by sending a command
+    with a transition time and measuring how long until the state changes.
+    """
+    from .autoconfigure import async_test_native_transitions  # noqa: PLC0415
+
+    entity_id = msg["entity_id"]
+    transition_s = msg["transition_s"]
+
+    result = await async_test_native_transitions(hass, entity_id, transition_s)
+
+    if "error" in result:
+        connection.send_error(msg["id"], "test_failed", result["error"])
+    else:
+        connection.send_result(msg["id"], result)
 
 
 def _get_config_entry(hass: HomeAssistant):
