@@ -386,6 +386,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
 
     # Easing function for brightness interpolation (private)
     _easing_func: Callable[[float], float] = field(default=linear, repr=False)
+    _easing_name: str = field(default="linear", repr=False)
 
     @classmethod
     def resolve(
@@ -602,6 +603,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             _crossover_hs=crossover_hs,
             _crossover_mireds=crossover_mireds,
             _easing_func=easing_func,
+            _easing_name=easing_name,
         )
 
         # Calculate crossover step if hybrid

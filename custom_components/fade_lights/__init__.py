@@ -530,7 +530,7 @@ async def _execute_fade(
 
     _LOGGER.info(
         "%s: Fading in %s steps, (brightness=%s->%s, hs=%s->%s, mireds=%s->%s, "
-        "hybrid=%s, crossover_step=%s, delay_ms=%s)",
+        "easing=%s, hybrid=%s, crossover_step=%s, delay_ms=%s)",
         entity_id,
         total_steps,
         fade.start_brightness,
@@ -539,6 +539,7 @@ async def _execute_fade(
         fade.end_hs,
         fade.start_mireds,
         fade.end_mireds,
+        fade._easing_name,
         fade._hybrid_direction,
         fade._crossover_step,
         delay_ms,
