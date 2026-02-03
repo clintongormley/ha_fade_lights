@@ -308,3 +308,56 @@ class TestExpectedStateColorMatching:
         matched = expected_state.match_and_remove(actual)
         assert matched == expected
         assert len(expected_state.values) == 0  # Exact match, removed
+
+    def test_kelvin_range_match_intermediate_value(self) -> None:
+        """Test kelvin range matching accepts intermediate values."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 2700K -> 6500K
+        expected = ExpectedValues(
+            color_temp_kelvin=6500,
+            from_color_temp_kelvin=2700
+        )
+        expected_state.add(expected)
+
+        # Intermediate value
+        actual = ExpectedValues(color_temp_kelvin=4000)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 1  # Range match
+
+    def test_kelvin_range_match_final_value(self) -> None:
+        """Test kelvin range matching removes on target value."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 2700K -> 6500K
+        expected = ExpectedValues(
+            color_temp_kelvin=6500,
+            from_color_temp_kelvin=2700
+        )
+        expected_state.add(expected)
+
+        # Target value (within tolerance)
+        actual = ExpectedValues(color_temp_kelvin=6450)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 0  # Exact match, removed
+
+    def test_kelvin_range_match_outside_range(self) -> None:
+        """Test kelvin range matching rejects out of range values."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 2700K -> 6500K
+        expected = ExpectedValues(
+            color_temp_kelvin=6500,
+            from_color_temp_kelvin=2700
+        )
+        expected_state.add(expected)
+
+        # Out of range
+        actual = ExpectedValues(color_temp_kelvin=7000)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched is None

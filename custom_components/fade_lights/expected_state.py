@@ -312,12 +312,20 @@ class ExpectedState:
             return min_hue <= actual_hue <= max_hue
 
     def _kelvin_match(self, expected: ExpectedValues, actual: ExpectedValues) -> str | None:
-        """Check if color temp matches. Returns match type or None."""
+        """Check if color temp kelvin matches. Returns match type or None."""
         if actual.color_temp_kelvin is None or expected.color_temp_kelvin is None:
             return None
 
+        # Phase 1: Exact match with tolerance (prioritize target)
         if abs(expected.color_temp_kelvin - actual.color_temp_kelvin) <= KELVIN_TOLERANCE:
             return "exact"
+
+        # Phase 2: Range match (only if transitioning)
+        if expected.from_color_temp_kelvin is not None:
+            min_val = min(expected.from_color_temp_kelvin, expected.color_temp_kelvin)
+            max_val = max(expected.from_color_temp_kelvin, expected.color_temp_kelvin)
+            if min_val <= actual.color_temp_kelvin <= max_val:
+                return "range"
 
         return None
 
