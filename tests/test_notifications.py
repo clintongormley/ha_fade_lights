@@ -1,6 +1,7 @@
 """Tests for unconfigured lights notification."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
@@ -414,3 +415,32 @@ class TestEntityRegistryNotification:
             await hass.async_block_till_done()
 
             mock_notify.assert_not_called()
+
+
+class TestDailyNotificationTimer:
+    """Test daily notification timer."""
+
+    async def test_registers_daily_timer(self, hass: HomeAssistant) -> None:
+        """Test that setup registers a daily timer."""
+        mock_entry = MagicMock(spec=ConfigEntry)
+        mock_entry.entry_id = "test_entry"
+        mock_entry.options = {}
+        unload_callbacks = []
+        mock_entry.async_on_unload = lambda cb: unload_callbacks.append(cb)
+
+        with (
+            patch("custom_components.fade_lights.async_register_websocket_api"),
+            patch("custom_components.fade_lights._notify_unconfigured_lights"),
+            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch(
+                "custom_components.fade_lights.async_track_time_interval"
+            ) as mock_timer,
+        ):
+            hass.http = None
+            await async_setup_entry(hass, mock_entry)
+
+        # Verify timer was registered with 24 hour interval
+        mock_timer.assert_called_once()
+        call_args = mock_timer.call_args
+        assert call_args[0][0] is hass  # First arg is hass
+        assert call_args[0][2] == timedelta(hours=24)  # Third arg is interval

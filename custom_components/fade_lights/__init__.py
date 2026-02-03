@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,11 @@ from homeassistant.core import (
 )
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.event import TrackStates, async_track_state_change_filtered
+from homeassistant.helpers.event import (
+    TrackStates,
+    async_track_state_change_filtered,
+    async_track_time_interval,
+)
 from homeassistant.helpers.service import remove_entity_service_fields
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.target import (
@@ -63,6 +68,7 @@ from .const import (
     OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
+    UNCONFIGURED_CHECK_INTERVAL_HOURS,
 )
 from .expected_state import ExpectedState, ExpectedValues
 from .fade_change import FadeChange, FadeStep
@@ -185,6 +191,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED,
             handle_entity_registry_updated,
+        )
+    )
+
+    # Register daily timer to check for unconfigured lights
+    async def _daily_unconfigured_check(_now: datetime) -> None:
+        """Daily check for unconfigured lights."""
+        await _notify_unconfigured_lights(hass)
+
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass,
+            _daily_unconfigured_check,
+            timedelta(hours=UNCONFIGURED_CHECK_INTERVAL_HOURS),
         )
     )
 
