@@ -6,11 +6,12 @@ import asyncio
 import contextlib
 import logging
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.components import panel_custom
+from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -41,7 +42,12 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.event import TrackStates, async_track_state_change_filtered
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import (
+    TrackStates,
+    async_track_state_change_filtered,
+    async_track_time_interval,
+)
 from homeassistant.helpers.service import remove_entity_service_fields
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.target import (
@@ -62,10 +68,12 @@ from .const import (
     OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
+    UNCONFIGURED_CHECK_INTERVAL_HOURS,
 )
 from .expected_state import ExpectedState, ExpectedValues
 from .fade_change import FadeChange, FadeStep
 from .fade_params import FadeParams
+from .notifications import _notify_unconfigured_lights
 from .websocket_api import async_register_websocket_api
 
 _LOGGER = logging.getLogger(__name__)
@@ -156,6 +164,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     entry.async_on_unload(tracker.async_remove)
 
+    # Listen for entity registry changes to clean up deleted entities and check for new ones
+    async def handle_entity_registry_updated(
+        event: Event[er.EventEntityRegistryUpdatedData],
+    ) -> None:
+        """Handle entity registry updates."""
+        action = event.data["action"]
+        entity_id = event.data["entity_id"]
+
+        # Only handle light entities
+        if not entity_id.startswith(f"{LIGHT_DOMAIN}."):
+            return
+
+        if action == "remove":
+            await _cleanup_entity_data(hass, entity_id)
+            await _notify_unconfigured_lights(hass)
+        elif action == "create":
+            await _notify_unconfigured_lights(hass)
+        elif action == "update":
+            # Check if light was re-enabled (disabled_by changed)
+            changes = event.data.get("changes", {})
+            if "disabled_by" in changes:
+                await _notify_unconfigured_lights(hass)
+
+    entry.async_on_unload(
+        hass.bus.async_listen(
+            er.EVENT_ENTITY_REGISTRY_UPDATED,
+            handle_entity_registry_updated,
+        )
+    )
+
+    # Register daily timer to check for unconfigured lights
+    async def _daily_unconfigured_check(_now: datetime) -> None:
+        """Daily check for unconfigured lights."""
+        await _notify_unconfigured_lights(hass)
+
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass,
+            _daily_unconfigured_check,
+            timedelta(hours=UNCONFIGURED_CHECK_INTERVAL_HOURS),
+        )
+    )
+
     # Register WebSocket API
     async_register_websocket_api(hass)
 
@@ -186,6 +237,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Apply stored log level on startup
     await _apply_stored_log_level(hass, entry)
 
+    # Check for unconfigured lights and notify
+    await _notify_unconfigured_lights(hass)
+
     return True
 
 
@@ -209,6 +263,66 @@ async def _apply_stored_log_level(hass: HomeAssistant, entry: ConfigEntry) -> No
             "set_level",
             {f"custom_components.{DOMAIN}": python_level},
         )
+
+
+async def _cleanup_entity_data(hass: HomeAssistant, entity_id: str) -> None:
+    """Clean up all data associated with a deleted entity.
+
+    This is called when an entity is removed from the entity registry.
+    It cleans up:
+    - Active fade tasks and cancellation events
+    - Expected state tracking
+    - Completion conditions
+    - Intended state queues for brightness restoration
+    - Restore tasks
+    - Testing lights set (autoconfigure)
+    - Persistent storage data
+    """
+    _LOGGER.debug("%s: Cleaning up data for deleted entity", entity_id)
+
+    # Cancel active fade if any
+    if entity_id in ACTIVE_FADES:
+        task = ACTIVE_FADES.pop(entity_id)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    # Signal cancellation and remove event
+    if entity_id in FADE_CANCEL_EVENTS:
+        FADE_CANCEL_EVENTS[entity_id].set()
+        del FADE_CANCEL_EVENTS[entity_id]
+
+    # Clear expected state
+    if entity_id in FADE_EXPECTED_STATE:
+        FADE_EXPECTED_STATE[entity_id].values.clear()
+        del FADE_EXPECTED_STATE[entity_id]
+
+    # Remove completion condition
+    FADE_COMPLETE_CONDITIONS.pop(entity_id, None)
+
+    # Clear intended state queue
+    INTENDED_STATE_QUEUE.pop(entity_id, None)
+
+    # Cancel restore task if any
+    if entity_id in RESTORE_TASKS:
+        task = RESTORE_TASKS.pop(entity_id)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    # Remove from testing lights set
+    if DOMAIN in hass.data:
+        hass.data[DOMAIN].get("testing_lights", set()).discard(entity_id)
+
+        # Remove from persistent storage
+        storage_data = hass.data[DOMAIN].get("data", {})
+        if entity_id in storage_data:
+            del storage_data[entity_id]
+            # Save updated storage
+            store = hass.data[DOMAIN].get("store")
+            if store:
+                await store.async_save(storage_data)
+                _LOGGER.info("%s: Removed persistent data for deleted entity", entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
@@ -239,6 +353,9 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
+
+    # Remove the panel
+    frontend.async_remove_panel(hass, "fade-lights")
 
     return True
 
