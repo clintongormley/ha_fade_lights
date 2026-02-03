@@ -24,21 +24,43 @@ class ExpectedValues:
 
     Only includes dimensions being actively faded. None means
     that dimension is not being tracked for this fade.
+
+    When from_* fields are present, indicates a transition range
+    (used with native_transitions=True). Matching accepts values
+    between from_* and target. When from_* is None, uses point
+    matching with tolerance (existing behavior).
     """
 
+    # Target values (always present when tracking that dimension)
     brightness: int | None = None
     hs_color: tuple[float, float] | None = None
     color_temp_kelvin: int | None = None
+
+    # Source values for transitions (present when use_transition=True)
+    from_brightness: int | None = None
+    from_hs_color: tuple[float, float] | None = None
+    from_color_temp_kelvin: int | None = None
 
     def __str__(self) -> str:
         """Format without class name for cleaner logs."""
         parts = []
         if self.brightness is not None:
-            parts.append(f"brightness={self.brightness}")
+            if self.from_brightness is not None:
+                parts.append(f"brightness={self.from_brightness}->{self.brightness}")
+            else:
+                parts.append(f"brightness={self.brightness}")
         if self.hs_color is not None:
-            parts.append(f"hs_color={self.hs_color}")
+            if self.from_hs_color is not None:
+                parts.append(f"hs_color={self.from_hs_color}->{self.hs_color}")
+            else:
+                parts.append(f"hs_color={self.hs_color}")
         if self.color_temp_kelvin is not None:
-            parts.append(f"color_temp_kelvin={self.color_temp_kelvin}")
+            if self.from_color_temp_kelvin is not None:
+                parts.append(
+                    f"color_temp_kelvin={self.from_color_temp_kelvin}->{self.color_temp_kelvin}"
+                )
+            else:
+                parts.append(f"color_temp_kelvin={self.color_temp_kelvin}")
         return "(" + (", ".join(parts) if parts else "empty") + ")"
 
 
