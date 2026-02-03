@@ -68,6 +68,13 @@ KEY_CURR_BRIGHTNESS = "curr"
 
 # Option keys
 OPTION_MIN_STEP_DELAY_MS = "min_step_delay_ms"
+OPTION_LOG_LEVEL = "log_level"
+
+# Log levels (matching Python logging module)
+LOG_LEVEL_WARNING = "warning"
+LOG_LEVEL_INFO = "info"
+LOG_LEVEL_DEBUG = "debug"
+DEFAULT_LOG_LEVEL = LOG_LEVEL_WARNING
 
 # Defaults (used when options are not set)
 DEFAULT_TRANSITION = 3  # seconds

@@ -4,16 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
-from .const import (
-    DEFAULT_MIN_STEP_DELAY_MS,
-    DOMAIN,
-    MIN_STEP_DELAY_MS,
-    OPTION_MIN_STEP_DELAY_MS,
-)
+from .const import DOMAIN
 
 
 class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -45,33 +38,4 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title="Fade Lights",
             data={},
-        )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> FadeLightsOptionsFlow:
-        """Get the options flow for this handler."""
-        return FadeLightsOptionsFlow()
-
-
-class FadeLightsOptionsFlow(OptionsFlow):
-    """Handle options flow for Fade Lights."""
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        options = self.config_entry.options
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        OPTION_MIN_STEP_DELAY_MS,
-                        default=options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_STEP_DELAY_MS, max=1000)),
-                }
-            ),
         )

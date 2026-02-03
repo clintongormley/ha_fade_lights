@@ -10,20 +10,6 @@
       "single_instance_allowed": "Only a single instance is allowed."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Configure fade lights",
-        "description": "Customize how lights fade.",
-        "data": {
-          "min_step_delay_ms": "Minimum delay between steps"
-        },
-        "data_description": {
-          "min_step_delay_ms": "The lower this value (in milliseconds), the shorter the pause between each brightness step change and thus the smoother the transition, but too low values may cause transitions to last longer than expected and put unnecessary load on Home Assistant. (Default 100ms, minimum 50ms)"
-        }
-      }
-    }
-  },
   "services": {
     "fade_lights": {
       "name": "Fade lights",

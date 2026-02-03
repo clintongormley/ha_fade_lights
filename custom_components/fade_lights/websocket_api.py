@@ -12,12 +12,29 @@ from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar,
+)
+from homeassistant.helpers import (
     device_registry as dr,
+)
+from homeassistant.helpers import (
     entity_registry as er,
+)
+from homeassistant.helpers import (
     floor_registry as fr,
 )
 
-from .const import AUTOCONFIGURE_MAX_PARALLEL, DOMAIN
+from .const import (
+    AUTOCONFIGURE_MAX_PARALLEL,
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_MIN_STEP_DELAY_MS,
+    DOMAIN,
+    LOG_LEVEL_DEBUG,
+    LOG_LEVEL_INFO,
+    LOG_LEVEL_WARNING,
+    MIN_STEP_DELAY_MS,
+    OPTION_LOG_LEVEL,
+    OPTION_MIN_STEP_DELAY_MS,
+)
 
 
 def async_register_websocket_api(hass: HomeAssistant) -> None:
@@ -25,6 +42,8 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_lights)
     websocket_api.async_register_command(hass, ws_save_light_config)
     websocket_api.async_register_command(hass, ws_autoconfigure)
+    websocket_api.async_register_command(hass, ws_get_settings)
+    websocket_api.async_register_command(hass, ws_save_settings)
 
 
 async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
@@ -102,13 +121,15 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
             icon = entity.icon
 
         # Add light to area
-        floors_dict[floor_id]["areas"][area_key]["lights"].append({
-            "entity_id": entity.entity_id,
-            "name": friendly_name,
-            "icon": icon,
-            "min_delay_ms": light_config.get("min_delay_ms"),
-            "exclude": light_config.get("exclude", False),
-        })
+        floors_dict[floor_id]["areas"][area_key]["lights"].append(
+            {
+                "entity_id": entity.entity_id,
+                "name": friendly_name,
+                "icon": icon,
+                "min_delay_ms": light_config.get("min_delay_ms"),
+                "exclude": light_config.get("exclude", False),
+            }
+        )
 
     # Convert to list format
     result = []
@@ -286,8 +307,7 @@ async def ws_autoconfigure(
 
     # Filter out excluded lights
     filtered_entities = [
-        eid for eid in expanded_entities
-        if not _get_light_config(hass, eid).get("exclude", False)
+        eid for eid in expanded_entities if not _get_light_config(hass, eid).get("exclude", False)
     ]
 
     # Create cancellation event for unsubscribe support
@@ -303,6 +323,9 @@ async def ws_autoconfigure(
     # Create semaphore to limit parallel testing
     semaphore = asyncio.Semaphore(AUTOCONFIGURE_MAX_PARALLEL)
 
+    # Get testing_lights set for exclusion during autoconfigure
+    testing_lights: set[str] = hass.data.get(DOMAIN, {}).get("testing_lights", set())
+
     async def test_light(entity_id: str) -> None:
         """Test a single light and send events."""
         # Check if cancelled before waiting for semaphore
@@ -315,15 +338,17 @@ async def ws_autoconfigure(
             if cancel_event.is_set():
                 return
 
-            # Send started event after acquiring semaphore (actual testing begins)
-            connection.send_message(
-                websocket_api.event_message(
-                    msg["id"],
-                    {"type": "started", "entity_id": entity_id},
-                )
-            )
-
+            # Add to testing set to exclude from fades during test
+            testing_lights.add(entity_id)
             try:
+                # Send started event after acquiring semaphore (actual testing begins)
+                connection.send_message(
+                    websocket_api.event_message(
+                        msg["id"],
+                        {"type": "started", "entity_id": entity_id},
+                    )
+                )
+
                 result = await async_test_light_delay(hass, entity_id)
 
                 # Check if cancelled before sending result
@@ -369,6 +394,9 @@ async def ws_autoconfigure(
                         },
                     )
                 )
+            finally:
+                # Always remove from testing set when done
+                testing_lights.discard(entity_id)
 
     # Spawn tasks for all lights
     tasks = [test_light(entity_id) for entity_id in filtered_entities]
@@ -380,3 +408,91 @@ async def ws_autoconfigure(
     # Send final result to close the subscription (only if not cancelled)
     if not cancel_event.is_set():
         connection.send_result(msg["id"])
+
+
+def _get_config_entry(hass: HomeAssistant):
+    """Get the Fade Lights config entry."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    return entries[0] if entries else None
+
+
+@websocket_api.websocket_command({"type": "fade_lights/get_settings"})
+@websocket_api.async_response
+async def ws_get_settings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle get_settings WebSocket command."""
+    entry = _get_config_entry(hass)
+    if not entry:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    default_min_delay_ms = entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS)
+    log_level = entry.options.get(OPTION_LOG_LEVEL, DEFAULT_LOG_LEVEL)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "default_min_delay_ms": default_min_delay_ms,
+            "log_level": log_level,
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "fade_lights/save_settings",
+        vol.Optional("default_min_delay_ms"): vol.All(
+            int, vol.Range(min=MIN_STEP_DELAY_MS, max=1000)
+        ),
+        vol.Optional("log_level"): vol.In([LOG_LEVEL_WARNING, LOG_LEVEL_INFO, LOG_LEVEL_DEBUG]),
+    }
+)
+@websocket_api.async_response
+async def ws_save_settings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle save_settings WebSocket command."""
+    entry = _get_config_entry(hass)
+    if not entry:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    new_options = dict(entry.options)
+
+    if "default_min_delay_ms" in msg:
+        new_options[OPTION_MIN_STEP_DELAY_MS] = msg["default_min_delay_ms"]
+        # Update runtime data
+        if DOMAIN in hass.data and "min_step_delay_ms" in hass.data[DOMAIN]:
+            hass.data[DOMAIN]["min_step_delay_ms"] = msg["default_min_delay_ms"]
+
+    if "log_level" in msg:
+        new_options[OPTION_LOG_LEVEL] = msg["log_level"]
+        # Apply log level immediately via HA's logger service
+        await _apply_log_level(hass, msg["log_level"])
+
+    hass.config_entries.async_update_entry(entry, options=new_options)
+
+    connection.send_result(msg["id"], {"success": True})
+
+
+async def _apply_log_level(hass: HomeAssistant, level: str) -> None:
+    """Apply log level to Home Assistant's logger system."""
+    # Map our level names to Python logging level names
+    level_map = {
+        LOG_LEVEL_WARNING: "warning",
+        LOG_LEVEL_INFO: "info",
+        LOG_LEVEL_DEBUG: "debug",
+    }
+    python_level = level_map.get(level, "warning")
+
+    # Use HA's logger service to set the level
+    await hass.services.async_call(
+        "logger",
+        "set_level",
+        {f"custom_components.{DOMAIN}": python_level},
+    )
