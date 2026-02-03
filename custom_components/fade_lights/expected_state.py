@@ -250,22 +250,66 @@ class ExpectedState:
         if actual.hs_color is None or expected.hs_color is None:
             return None
 
-        expected_hue, expected_sat = expected.hs_color
-        actual_hue, actual_sat = actual.hs_color
+        # Phase 1: Exact match with tolerance (prioritize target)
+        if self._hs_exact_match(expected.hs_color, actual.hs_color):
+            return "exact"
+
+        # Phase 2: Range match (only if transitioning)
+        if expected.from_hs_color is not None:
+            if self._hs_range_match(expected.from_hs_color, expected.hs_color, actual.hs_color):
+                return "range"
+
+        return None
+
+    def _hs_exact_match(
+        self,
+        expected: tuple[float, float],
+        actual: tuple[float, float],
+    ) -> bool:
+        """Check if two HS colors match within tolerance, handling hue wraparound."""
+        expected_hue, expected_sat = expected
+        actual_hue, actual_sat = actual
 
         # Check saturation first (simple linear comparison)
         if abs(expected_sat - actual_sat) > SATURATION_TOLERANCE:
-            return None
+            return False
 
         # Check hue with wraparound (0 and 360 are the same)
         hue_diff = abs(expected_hue - actual_hue)
         if hue_diff > 180:
             hue_diff = 360 - hue_diff
 
-        if hue_diff <= HUE_TOLERANCE:
-            return "exact"
+        return hue_diff <= HUE_TOLERANCE
 
-        return None
+    def _hs_range_match(
+        self,
+        from_hs: tuple[float, float],
+        to_hs: tuple[float, float],
+        actual_hs: tuple[float, float],
+    ) -> bool:
+        """Check if actual HS is within transition range from_hs -> to_hs."""
+        from_hue, from_sat = from_hs
+        to_hue, to_sat = to_hs
+        actual_hue, actual_sat = actual_hs
+
+        # Check saturation (simple range)
+        min_sat = min(from_sat, to_sat)
+        max_sat = max(from_sat, to_sat)
+        if not (min_sat <= actual_sat <= max_sat):
+            return False
+
+        # Check hue (handle wraparound)
+        hue_diff = abs(from_hue - to_hue)
+        if hue_diff > 180:  # Wraparound case
+            # Accept if actual is in either range
+            min_hue = min(from_hue, to_hue)
+            max_hue = max(from_hue, to_hue)
+            # Accept values outside the "gap"
+            return actual_hue >= max_hue or actual_hue <= min_hue
+        else:  # No wraparound
+            min_hue = min(from_hue, to_hue)
+            max_hue = max(from_hue, to_hue)
+            return min_hue <= actual_hue <= max_hue
 
     def _kelvin_match(self, expected: ExpectedValues, actual: ExpectedValues) -> str | None:
         """Check if color temp matches. Returns match type or None."""

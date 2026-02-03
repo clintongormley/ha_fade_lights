@@ -231,3 +231,80 @@ class TestExpectedStateColorMatching:
         assert matched == expected
         # Should remove (exact match)
         assert len(expected_state.values) == 0
+
+    def test_hs_range_match_no_wraparound(self) -> None:
+        """Test HS range matching without hue wraparound."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from (100, 50) -> (150, 80)
+        expected = ExpectedValues(
+            hs_color=(150.0, 80.0),
+            from_hs_color=(100.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Intermediate value
+        actual = ExpectedValues(hs_color=(125.0, 65.0))
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 1  # Range match, not removed
+
+    def test_hs_range_match_with_wraparound(self) -> None:
+        """Test HS range matching with hue wraparound (350->10)."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from (350, 50) -> (10, 50)
+        expected = ExpectedValues(
+            hs_color=(10.0, 50.0),
+            from_hs_color=(350.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Intermediate values in wraparound range (not near target)
+        for test_hue in [355.0, 0.0]:
+            actual = ExpectedValues(hs_color=(test_hue, 50.0))
+            matched = expected_state.match_and_remove(actual)
+            assert matched == expected
+            assert len(expected_state.values) == 1  # Range match, not removed
+
+        # Value close to target (within tolerance) - should be exact match
+        actual = ExpectedValues(hs_color=(8.0, 50.0))
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 0  # Exact match, removed
+
+    def test_hs_range_match_wraparound_rejects_gap(self) -> None:
+        """Test HS range matching rejects values in the wraparound gap."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from (350, 50) -> (10, 50)
+        expected = ExpectedValues(
+            hs_color=(10.0, 50.0),
+            from_hs_color=(350.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Value in the gap (should be rejected)
+        actual = ExpectedValues(hs_color=(180.0, 50.0))
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched is None
+
+    def test_hs_exact_match_removes(self) -> None:
+        """Test HS exact match removes from queue."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition with range
+        expected = ExpectedValues(
+            hs_color=(150.0, 80.0),
+            from_hs_color=(100.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Target value (within tolerance)
+        actual = ExpectedValues(hs_color=(148.0, 79.0))
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 0  # Exact match, removed
