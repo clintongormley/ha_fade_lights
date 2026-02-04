@@ -58,6 +58,7 @@ from .const import (
     DOMAIN,
     FADE_CANCEL_TIMEOUT_S,
     OPTION_MIN_STEP_DELAY_MS,
+    PLANCKIAN_LOCUS_SATURATION_THRESHOLD,
     SERVICE_FADE_LIGHTS,
     STALE_THRESHOLD,
     STORAGE_KEY,
@@ -768,6 +769,24 @@ def _interpolate_hue(start: float, end: float, t: float) -> float:
 
     result = start + diff * t
     return result % 360
+
+
+def _is_on_planckian_locus(hs_color: tuple[float, float]) -> bool:
+    """Check if an HS color is on or near the Planckian locus.
+
+    The Planckian locus represents the colors of blackbody radiation
+    (color temperatures). Colors on the locus have low saturation
+    (white/off-white appearance).
+
+    Args:
+        hs_color: Tuple of (hue 0-360, saturation 0-100)
+
+    Returns:
+        True if the color is close enough to the locus to transition
+        directly to mireds-based fading.
+    """
+    _, saturation = hs_color
+    return saturation <= PLANCKIAN_LOCUS_SATURATION_THRESHOLD
 
 
 def _build_fade_steps(
