@@ -81,3 +81,71 @@ class TestHsToMireds:
         """Test that result is an integer."""
         mireds = _hs_to_mireds((35.0, 10.0))
         assert isinstance(mireds, int)
+
+
+from custom_components.fade_lights import _mireds_to_hs
+
+
+class TestMiredsToHs:
+    """Test conversion from mireds to HS using Planckian locus lookup."""
+
+    def test_cool_daylight_mireds(self) -> None:
+        """Test cool daylight mireds maps to cool hue."""
+        # 154 mireds = 6500K = cool daylight
+        hs = _mireds_to_hs(154)
+        hue, sat = hs
+        assert 200 <= hue <= 230  # Cool blue-ish hue
+        assert sat < 15  # Low saturation
+
+    def test_warm_white_mireds(self) -> None:
+        """Test warm white mireds maps to warm hue."""
+        # 333 mireds = 3000K = warm white
+        hs = _mireds_to_hs(333)
+        hue, sat = hs
+        assert 30 <= hue <= 45  # Warm amber hue
+        assert 10 <= sat <= 25
+
+    def test_neutral_white_mireds(self) -> None:
+        """Test neutral mireds maps to neutral hue."""
+        # 286 mireds = 3500K = neutral
+        hs = _mireds_to_hs(286)
+        hue, sat = hs
+        assert 35 <= hue <= 45
+        assert 8 <= sat <= 18
+
+    def test_candlelight_mireds(self) -> None:
+        """Test candlelight mireds maps to very warm hue."""
+        # 500 mireds = 2000K = candlelight
+        hs = _mireds_to_hs(500)
+        hue, sat = hs
+        assert 25 <= hue <= 35  # Very warm amber
+        assert sat >= 40  # Higher saturation
+
+    def test_interpolation_between_points(self) -> None:
+        """Test that values between lookup points are interpolated."""
+        # 310 is between 303 (36, 15) and 333 (35, 18)
+        hs = _mireds_to_hs(310)
+        hue, sat = hs
+        assert 35 <= hue <= 36
+        assert 15 <= sat <= 18
+
+    def test_extrapolation_below_range(self) -> None:
+        """Test mireds below lookup range returns coolest value."""
+        hs = _mireds_to_hs(100)  # Below 154
+        hue, _ = hs
+        assert 210 <= hue <= 230  # Should be cool
+
+    def test_extrapolation_above_range(self) -> None:
+        """Test mireds above lookup range returns warmest value."""
+        hs = _mireds_to_hs(600)  # Above 500
+        hue, sat = hs
+        assert 25 <= hue <= 30  # Very warm
+        assert sat >= 40
+
+    def test_returns_tuple(self) -> None:
+        """Test that result is a tuple of two floats."""
+        hs = _mireds_to_hs(300)
+        assert isinstance(hs, tuple)
+        assert len(hs) == 2
+        assert isinstance(hs[0], float)
+        assert isinstance(hs[1], float)
