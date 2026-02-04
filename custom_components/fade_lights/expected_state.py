@@ -114,7 +114,7 @@ class ExpectedState:
                 matched_value = expected
                 break
 
-        if matched_value is None:
+        if matched_index is None or matched_value is None:
             _LOGGER.debug(
                 "%s: ExpectedState.match_and_remove(%s) -> no match found",
                 self.entity_id,
@@ -122,8 +122,8 @@ class ExpectedState:
             )
             return None
 
-        # Remove matched value
-        del self.values[matched_index]
+        # Remove matched value and all older entries (handles event coalescing)
+        del self.values[: matched_index + 1]
         _LOGGER.debug(
             "%s: ExpectedState.match_and_remove(%s) matched=%s remaining=%d",
             self.entity_id,
@@ -205,6 +205,30 @@ class ExpectedState:
     def is_empty(self) -> bool:
         """Check if there are no expected values."""
         return not self.values
+
+    async def wait_and_clear(self, timeout: float = 0.5) -> None:
+        """Wait for pending events then clear all remaining entries.
+
+        Call this after a fade completes to allow late events to flush
+        before clearing stale entries.
+
+        Args:
+            timeout: Maximum seconds to wait for events (default 0.5s)
+        """
+        if self.values:
+            condition = self.get_condition()
+            try:
+                async with condition:
+                    await asyncio.wait_for(condition.wait(), timeout=timeout)
+            except TimeoutError:
+                pass  # Timeout is expected - just clear below
+
+        # Clear any remaining entries
+        self.values.clear()
+        _LOGGER.debug(
+            "%s: ExpectedState.wait_and_clear() completed",
+            self.entity_id,
+        )
 
     @staticmethod
     async def _notify(condition: asyncio.Condition) -> None:

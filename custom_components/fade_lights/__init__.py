@@ -314,11 +314,14 @@ async def _execute_fade(
         if fade.has_next():
             await _sleep_remaining_step_time(step_start, delay_ms)
 
+    # Wait for any late events and clear expected state
+    expected_state = FADE_EXPECTED_STATE.get(entity_id)
+    if expected_state:
+        await expected_state.wait_and_clear()
+
     # Store final brightness after successful fade completion
     if not cancel_event.is_set():
         final_brightness = fade.end_brightness
-        if final_brightness is None and fade_params.brightness_pct is not None:
-            final_brightness = int(fade_params.brightness_pct / 100 * 255)
 
         if final_brightness is not None and final_brightness > 0:
             _store_orig_brightness(hass, entity_id, final_brightness)
