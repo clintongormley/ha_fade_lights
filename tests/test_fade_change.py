@@ -504,3 +504,166 @@ class TestFadeChangeNextStepValues:
         )
         step = change.next_step()
         assert step.brightness != 100  # First step is not the start value
+
+
+class TestFadeChangeEasing:
+    """Test easing integration in FadeChange."""
+
+    def test_linear_easing_produces_uniform_steps(self) -> None:
+        """Test linear easing produces evenly spaced brightness values."""
+        from custom_components.fade_lights.easing import linear
+
+        change = FadeChange(
+            start_brightness=0,
+            end_brightness=100,
+            transition_ms=500,
+            min_step_delay_ms=100,
+            _easing_func=linear,
+        )
+        steps = []
+        while change.has_next():
+            steps.append(change.next_step())
+
+        # With 5 steps and linear easing: 20, 40, 60, 80, 100
+        # (brightness 1 is skipped -> 2)
+        brightnesses = [s.brightness for s in steps]
+        assert brightnesses[-1] == 100  # Final hits target
+
+        # Check roughly uniform spacing (within 1 due to rounding)
+        diffs = [brightnesses[i + 1] - brightnesses[i] for i in range(len(brightnesses) - 1)]
+        # All diffs should be roughly equal for linear
+        assert all(18 <= d <= 22 for d in diffs)
+
+    def test_ease_out_quad_faster_at_start(self) -> None:
+        """Test ease_out_quad produces larger steps at the start."""
+        from custom_components.fade_lights.easing import ease_out_quad
+
+        change = FadeChange(
+            start_brightness=0,
+            end_brightness=100,
+            transition_ms=500,
+            min_step_delay_ms=100,
+            _easing_func=ease_out_quad,
+        )
+        steps = []
+        while change.has_next():
+            steps.append(change.next_step())
+
+        brightnesses = [s.brightness for s in steps]
+        assert brightnesses[-1] == 100  # Final hits target
+
+        # First step should be larger than last step difference (ease_out = fast start)
+        # First diff: steps[0].brightness - 0 (start)
+        # Since brightness 1 is skipped to 2, first step is at eased position
+        first_step_brightness = brightnesses[0]
+        last_diff = brightnesses[-1] - brightnesses[-2]
+
+        # ease_out_quad at t=0.2 gives 0.36, so first step ~36 brightness
+        # Linear would give 20. So ease_out should have larger first step.
+        assert first_step_brightness > 30  # Faster at start
+
+    def test_ease_in_quad_slower_at_start(self) -> None:
+        """Test ease_in_quad produces smaller steps at the start."""
+        from custom_components.fade_lights.easing import ease_in_quad
+
+        change = FadeChange(
+            start_brightness=0,
+            end_brightness=100,
+            transition_ms=500,
+            min_step_delay_ms=100,
+            _easing_func=ease_in_quad,
+        )
+        steps = []
+        while change.has_next():
+            steps.append(change.next_step())
+
+        brightnesses = [s.brightness for s in steps]
+        assert brightnesses[-1] == 100  # Final hits target
+
+        # First step should be smaller than linear would produce
+        # ease_in_quad at t=0.2 gives 0.04, so first step ~4 brightness
+        # (but brightness 1 is skipped to 2)
+        first_step_brightness = brightnesses[0]
+        # Linear would give 20, ease_in should give much less
+        assert first_step_brightness < 10  # Slower at start
+
+    def test_easing_applied_only_to_brightness(self) -> None:
+        """Test that easing is applied to brightness but not to HS or mireds."""
+        from custom_components.fade_lights.easing import ease_out_quad
+
+        change = FadeChange(
+            start_brightness=0,
+            end_brightness=100,
+            start_hs=(0.0, 50.0),
+            end_hs=(100.0, 100.0),
+            transition_ms=500,
+            min_step_delay_ms=100,
+            _easing_func=ease_out_quad,
+        )
+        steps = []
+        while change.has_next():
+            steps.append(change.next_step())
+
+        # Check brightness uses easing (larger first step)
+        first_brightness = steps[0].brightness
+        assert first_brightness > 30  # Eased (ease_out = fast start)
+
+        # Check HS uses linear interpolation (not eased)
+        # At t=0.2 (first step), linear HS should be:
+        # hue: 0 + (100-0)*0.2 = 20
+        # sat: 50 + (100-50)*0.2 = 60
+        first_hs = steps[0].hs_color
+        assert first_hs is not None
+        assert 18 <= first_hs[0] <= 22  # Hue ~20 (linear)
+        assert 58 <= first_hs[1] <= 62  # Sat ~60 (linear)
+
+    def test_easing_final_step_hits_target(self) -> None:
+        """Test that final step always hits target exactly regardless of easing."""
+        from custom_components.fade_lights.easing import (
+            ease_in_cubic,
+            ease_in_out_sine,
+            ease_out_cubic,
+        )
+
+        for easing_func in [ease_in_cubic, ease_out_cubic, ease_in_out_sine]:
+            change = FadeChange(
+                start_brightness=50,
+                end_brightness=200,
+                transition_ms=500,
+                min_step_delay_ms=100,
+                _easing_func=easing_func,
+            )
+            steps = []
+            while change.has_next():
+                steps.append(change.next_step())
+
+            assert steps[-1].brightness == 200, f"Final step should hit target with {easing_func}"
+
+    def test_easing_mireds_uses_linear(self) -> None:
+        """Test that color temperature interpolation is always linear."""
+        from custom_components.fade_lights.easing import ease_out_quad
+
+        change = FadeChange(
+            start_mireds=200,  # 5000K
+            end_mireds=400,  # 2500K
+            transition_ms=500,
+            min_step_delay_ms=100,
+            _easing_func=ease_out_quad,  # Should not affect mireds
+        )
+        steps = []
+        while change.has_next():
+            steps.append(change.next_step())
+
+        # Check mireds uses linear interpolation
+        # With 5 steps: t = 0.2, 0.4, 0.6, 0.8, 1.0
+        # mireds should be: 240, 280, 320, 360, 400
+        # kelvin: 4166, 3571, 3125, 2777, 2500
+        kelvins = [s.color_temp_kelvin for s in steps]
+        assert kelvins[-1] == 2500  # Final hits target
+
+        # Linear spacing in mireds means roughly uniform kelvin diffs
+        # (mireds are linear, kelvin is 1/mireds so not perfectly uniform)
+        # But first diff should be similar to others, not affected by ease_out
+        # For linear mireds: 200->240 = 40 mireds change per step
+        # At step 1: mireds = 200 + 40 = 240 -> kelvin = 4166
+        assert 4100 <= kelvins[0] <= 4200  # Linear, not eased
