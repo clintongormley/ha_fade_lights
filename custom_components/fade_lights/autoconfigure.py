@@ -204,51 +204,37 @@ async def _async_test_light_delay(
             service_data_base["transition"] = NATIVE_TRANSITION_MS / 1000
 
         for i in range(1, AUTOCONFIGURE_ITERATIONS + 1):
-            state_changed_event.clear()
-            start_time = time.monotonic()
-
             # Alternate brightness: 10 for odd iterations, 255 for even
             target_brightness = 10 if i % 2 == 1 else 255
+            start_time = time.monotonic()
 
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
-                {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
-                blocking=True,
-            )
+            # Try up to 2 times (initial + one retry)
+            for attempt in range(2):
+                state_changed_event.clear()
+                start_time = time.monotonic()
 
-            # Wait for state_changed event with timeout
-            try:
-                await asyncio.wait_for(
-                    state_changed_event.wait(),
-                    timeout=AUTOCONFIGURE_TIMEOUT_S,
+                await hass.services.async_call(
+                    LIGHT_DOMAIN,
+                    SERVICE_TURN_ON,
+                    {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
+                    blocking=True,
                 )
-            except TimeoutError:
-                # Retry once on timeout
-                if retry_count == 0:
-                    retry_count += 1
-                    _LOGGER.warning(
-                        "%s: Timeout on iteration %d, retrying",
-                        entity_id,
-                        i,
-                    )
-                    state_changed_event.clear()
-                    start_time = time.monotonic()
-                    await hass.services.async_call(
-                        LIGHT_DOMAIN,
-                        SERVICE_TURN_ON,
-                        {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
-                        blocking=True,
-                    )
 
-                    try:
-                        await asyncio.wait_for(
-                            state_changed_event.wait(),
-                            timeout=AUTOCONFIGURE_TIMEOUT_S,
+                try:
+                    await asyncio.wait_for(
+                        state_changed_event.wait(),
+                        timeout=AUTOCONFIGURE_TIMEOUT_S,
+                    )
+                    break  # Success, exit retry loop
+                except TimeoutError:
+                    if attempt == 0 and retry_count == 0:
+                        retry_count += 1
+                        _LOGGER.warning(
+                            "%s: Timeout on iteration %d, retrying",
+                            entity_id,
+                            i,
                         )
-                    except TimeoutError:
-                        return {"entity_id": entity_id, "error": "Timeout after retry"}
-                else:
+                        continue  # Retry once
                     return {"entity_id": entity_id, "error": "Timeout after retry"}
 
             elapsed_ms = (time.monotonic() - start_time) * 1000
