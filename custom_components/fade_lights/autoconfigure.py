@@ -177,7 +177,8 @@ async def _async_test_light_delay(
 ) -> dict[str, Any]:
     """Test a light to determine optimal minimum delay between commands.
 
-    Internal function - does not capture/restore state or save to storage.
+    Internal function - assumes light is already at brightness 255.
+    Does not capture/restore state or save to storage.
     Use async_autoconfigure_light for the full workflow.
 
     Args:
@@ -380,6 +381,7 @@ async def async_test_light_delay(
     original_brightness = original_state.attributes.get(ATTR_BRIGHTNESS)
 
     try:
+        await _async_set_standard_state(hass, entity_id)
         result = await _async_test_light_delay(hass, entity_id)
         if "error" not in result:
             await async_save_light_config(hass, entity_id, min_delay_ms=result["min_delay_ms"])
