@@ -232,8 +232,14 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     for event in FADE_CANCEL_EVENTS.values():
         event.set()
-    for task in ACTIVE_FADES.values():
+
+    tasks = list(ACTIVE_FADES.values())
+    for task in tasks:
         task.cancel()
+
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     ACTIVE_FADES.clear()
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_BRIGHTNESS.clear()
@@ -364,7 +370,9 @@ def _track_expected_brightness(entity_id: str, new_level: int, delta: int) -> No
     the state change handler to detect manual changes even when events
     arrive delayed.
     """
-    expected_set = FADE_EXPECTED_BRIGHTNESS[entity_id]
+    expected_set = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    if expected_set is None:
+        return
     expected_set.add(new_level)
     if len(expected_set) > 2:
         # Remove oldest value (furthest from target based on direction)
@@ -519,11 +527,15 @@ def _get_orig_brightness(hass: HomeAssistant, entity_id: str) -> int:
 
 def _store_orig_brightness(hass: HomeAssistant, entity_id: str, level: int) -> None:
     """Store original brightness for an entity."""
+    if DOMAIN not in hass.data:
+        return
     hass.data[DOMAIN]["data"][entity_id] = level
 
 
 async def _save_storage(hass: HomeAssistant) -> None:
     """Save storage data to disk."""
+    if DOMAIN not in hass.data:
+        return
     store: Store = hass.data[DOMAIN]["store"]
     await store.async_save(hass.data[DOMAIN]["data"])
 
@@ -575,7 +587,9 @@ def _log_state_change(entity_id: str, new_state: State) -> None:
 
 def _is_expected_fade_state(entity_id: str, new_state: State) -> bool:
     """Check if state matches expected fade values (within tolerance)."""
-    expected_values = FADE_EXPECTED_BRIGHTNESS[entity_id]
+    expected_values = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    if expected_values is None:
+        return False
     new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
     tolerance = 3
 
@@ -612,6 +626,8 @@ def _is_brightness_change(old_state: State | None, new_state: State) -> bool:
 
 def _handle_off_to_on(hass: HomeAssistant, entity_id: str, new_state: State) -> None:
     """Handle OFF -> ON transition by restoring original brightness."""
+    if DOMAIN not in hass.data:
+        return
     _LOGGER.debug("(%s) -> Light turned OFF->ON", entity_id)
 
     # Non-dimmable lights can't have brightness restored
@@ -731,6 +747,9 @@ async def _restore_manual_state(
     - 0 means OFF
     - >0 means ON at that brightness
     """
+    if DOMAIN not in hass.data:
+        _clear_fade_interrupted(entity_id)
+        return
     _LOGGER.debug("(%s) -> in _restore_manual_state", entity_id)
     await _cancel_and_wait_for_fade(entity_id)
 
