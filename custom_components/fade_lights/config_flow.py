@@ -14,6 +14,7 @@ from .const import (
     DEFAULT_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
+    MIN_STEP_DELAY_MS,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
     OPTION_STEP_DELAY_MS,
@@ -89,7 +90,7 @@ class FadeLightsOptionsFlow(OptionsFlow):
                     vol.Optional(
                         OPTION_STEP_DELAY_MS,
                         default=options.get(OPTION_STEP_DELAY_MS, DEFAULT_STEP_DELAY_MS),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=1000)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_STEP_DELAY_MS, max=1000)),
                 }
             ),
         )

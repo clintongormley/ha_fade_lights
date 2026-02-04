@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
@@ -331,14 +332,29 @@ async def _execute_fade(
     # Store starting brightness as curr
     _store_curr_brightness(hass, entity_id, start_level)
 
-    # Calculate steps
+    # Calculate steps and timing
+    # Goal: complete the fade in exactly transition_ms, with each step taking at least step_delay_ms
     level_diff = abs(end_level - start_level)
-    delay_ms = round(transition_ms / level_diff) if level_diff > 0 else step_delay_ms
-    delay_ms = max(delay_ms, step_delay_ms)
+    if level_diff == 0:
+        return
 
-    num_steps = math.ceil(transition_ms / (delay_ms + 30)) or 1
+    # Maximum steps we can fit in the transition time (given minimum delay per step)
+    max_steps_by_time = max(1, int(transition_ms / step_delay_ms))
+
+    # We can't have more steps than brightness levels to change
+    num_steps = min(max_steps_by_time, level_diff)
+
+    # Calculate how much brightness changes per step (must be at least 1)
     delta = (end_level - start_level) / num_steps
     delta = math.ceil(delta) if delta > 0 else math.floor(delta)
+
+    # Recalculate actual steps needed based on rounded delta
+    # This ensures we don't overshoot or have extra steps
+    actual_steps = math.ceil(level_diff / abs(delta))
+
+    # Calculate delay to spread actual steps evenly across the transition time
+    delay_ms = transition_ms / actual_steps
+    num_steps = actual_steps
 
     _LOGGER.debug("Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps)
 

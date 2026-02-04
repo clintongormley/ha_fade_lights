@@ -211,3 +211,54 @@ async def test_options_flow_validates_transition_range(
                 OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
             },
         )
+
+
+async def test_options_flow_validates_step_delay_range(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test step_delay_ms validated with MIN_STEP_DELAY_MS (50) to 1000."""
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+
+    # Test invalid step delay below MIN_STEP_DELAY_MS (50)
+    with pytest.raises(vol.Invalid):
+        await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
+                OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
+                OPTION_STEP_DELAY_MS: 30,  # Invalid: < 50 (MIN_STEP_DELAY_MS)
+            },
+        )
+
+    # Start a new flow to test value above max
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+
+    with pytest.raises(vol.Invalid):
+        await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
+                OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
+                OPTION_STEP_DELAY_MS: 1500,  # Invalid: > 1000
+            },
+        )
+
+    # Start a new flow to test valid value at minimum (50)
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
+            OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
+            OPTION_STEP_DELAY_MS: 50,  # Valid: exactly MIN_STEP_DELAY_MS
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][OPTION_STEP_DELAY_MS] == 50

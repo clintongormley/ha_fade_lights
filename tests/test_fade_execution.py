@@ -466,3 +466,84 @@ async def test_fade_from_off_turns_on(
     # Verify light state is ON
     state = hass.states.get(entity_id)
     assert state.state == STATE_ON
+
+
+async def test_fade_step_count_limited_by_brightness_levels(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that number of steps doesn't exceed brightness levels to change.
+
+    When fading from brightness 200 to 190 (10 levels), even with a long
+    transition time, we should have at most 10 steps.
+    """
+    entity_id = "light.test_step_count"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 200,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Use a long transition but small brightness change
+    # 10 brightness levels, 10 second transition
+    # Without the fix, this would try to do many more steps
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            ATTR_ENTITY_ID: entity_id,
+            ATTR_BRIGHTNESS_PCT: 75,  # 75% = 191, so ~9 levels difference
+            ATTR_TRANSITION: 10,
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # Should have at most ~9 turn_on calls (one per brightness level)
+    turn_on_calls = _get_turn_on_calls(service_calls)
+    assert len(turn_on_calls) <= 10
+
+
+async def test_fade_steps_spread_across_transition_time(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that fade steps are spread evenly across the transition time.
+
+    With default step_delay_ms of 50ms and a 500ms transition,
+    we should get approximately 10 steps maximum.
+    """
+    entity_id = "light.test_transition_spread"
+    # 100 brightness levels to change (255 -> 0)
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            ATTR_ENTITY_ID: entity_id,
+            ATTR_BRIGHTNESS_PCT: 0,
+            ATTR_TRANSITION: 0.5,  # 500ms transition
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # With 500ms transition and 50ms step delay, max 10 steps
+    # But we have 255 brightness levels, so steps should be ~10
+    # Each step changes multiple brightness levels
+    total_calls = len(service_calls)
+    # Should have roughly 10 steps (500ms / 50ms)
+    assert total_calls <= 15  # Allow buffer for rounding
