@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_SUPPORTED_COLOR_MODES
 from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN
@@ -26,6 +26,7 @@ from .const import (
     PLANCKIAN_LOCUS_HS,
     PLANCKIAN_LOCUS_SATURATION_THRESHOLD,
 )
+from .easing import auto_select_easing, get_easing_func, linear
 
 if TYPE_CHECKING:
     from .fade_params import FadeParams
@@ -383,6 +384,9 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
     _current_step: int = field(default=0, repr=False)
     _step_count: int | None = field(default=None, repr=False)
 
+    # Easing function for brightness interpolation (private)
+    _easing_func: Callable[[float], float] = field(default=linear, repr=False)
+
     @classmethod
     def resolve(
         cls,
@@ -427,6 +431,16 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         # Resolve brightness values
         start_brightness = _resolve_start_brightness(params, state_attributes)
         end_brightness = _resolve_end_brightness(params)
+
+        # Resolve easing function for brightness
+        easing_name = params.easing
+        if easing_name == "auto":
+            # Auto-select based on fade direction
+            # Use resolved brightness values (start from state, end from params)
+            auto_start = start_brightness
+            auto_end = end_brightness if end_brightness is not None else start_brightness
+            easing_name = auto_select_easing(auto_start, auto_end)
+        easing_func = get_easing_func(easing_name)
 
         # Handle non-dimmable lights (on/off only)
         if not can_dim:
@@ -587,6 +601,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             _hybrid_direction=hybrid_direction,
             _crossover_hs=crossover_hs,
             _crossover_mireds=crossover_mireds,
+            _easing_func=easing_func,
         )
 
         # Calculate crossover step if hybrid
@@ -824,7 +839,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         return round(start + (end - start) * t)
 
     def _interpolate_brightness(self, t: float) -> int | None:
-        """Interpolate brightness at factor t.
+        """Interpolate brightness at factor t with easing applied.
 
         Args:
             t: Interpolation factor (0.0 = start, 1.0 = end)
@@ -835,8 +850,12 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         """
         if self.start_brightness is None or self.end_brightness is None:
             return None
+
+        # Apply easing to t for perceptually smooth brightness transitions
+        eased_t = self._easing_func(t)
+
         brightness = round(
-            self.start_brightness + (self.end_brightness - self.start_brightness) * t
+            self.start_brightness + (self.end_brightness - self.start_brightness) * eased_t
         )
         # Skip brightness level 1 (many lights behave oddly at this level)
         if brightness == 1:
