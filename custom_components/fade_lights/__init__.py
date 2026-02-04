@@ -84,7 +84,7 @@ FADE_EXPECTED_BRIGHTNESS: dict[str, set[int]] = {}
 FADE_INTERRUPTED: dict[str, bool] = {}
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
     """Set up the Fade Lights component."""
     if not hass.config_entries.async_entries(DOMAIN):
         hass.async_create_task(
@@ -293,7 +293,7 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     for event in FADE_CANCEL_EVENTS.values():
         event.set()
