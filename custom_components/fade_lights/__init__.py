@@ -798,10 +798,12 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChang
     is_during_restore = entity_id in RESTORE_TASKS
     if is_during_fade or is_during_restore:
         # Manual intervention detected - add to intended state queue
+        old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS) if old_state else None
         _LOGGER.info(
-            "%s: Manual intervention detected (state=%s, brightness=%s)",
+            "%s: Manual intervention detected (state=%s, brightness=%s->%s)",
             entity_id,
             new_state.state,
+            old_brightness,
             new_state.attributes.get(ATTR_BRIGHTNESS),
         )
 
