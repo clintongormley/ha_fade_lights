@@ -10,12 +10,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import (
-    DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
-    DEFAULT_TRANSITION,
     DOMAIN,
-    OPTION_DEFAULT_BRIGHTNESS_PCT,
-    OPTION_DEFAULT_TRANSITION,
     OPTION_MIN_STEP_DELAY_MS,
 )
 
@@ -86,22 +82,16 @@ async def test_options_flow_shows_defaults(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
 
-    # Verify the schema contains our option fields with correct defaults
+    # Verify the schema contains our option field with correct default
     schema = result["data_schema"]
     assert schema is not None
 
     schema_dict = {str(key): key for key in schema.schema}
-    assert OPTION_DEFAULT_BRIGHTNESS_PCT in schema_dict
-    assert OPTION_DEFAULT_TRANSITION in schema_dict
     assert OPTION_MIN_STEP_DELAY_MS in schema_dict
 
-    # Check defaults by accessing the schema key defaults
+    # Check default by accessing the schema key default
     for key in schema.schema:
-        if str(key) == OPTION_DEFAULT_BRIGHTNESS_PCT:
-            assert key.default() == DEFAULT_BRIGHTNESS_PCT
-        elif str(key) == OPTION_DEFAULT_TRANSITION:
-            assert key.default() == DEFAULT_TRANSITION
-        elif str(key) == OPTION_MIN_STEP_DELAY_MS:
+        if str(key) == OPTION_MIN_STEP_DELAY_MS:
             assert key.default() == DEFAULT_MIN_STEP_DELAY_MS
 
 
@@ -121,106 +111,14 @@ async def test_options_flow_updates_values(
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
-            OPTION_DEFAULT_BRIGHTNESS_PCT: 75,
-            OPTION_DEFAULT_TRANSITION: 10,
             OPTION_MIN_STEP_DELAY_MS: 200,
         },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
-        OPTION_DEFAULT_BRIGHTNESS_PCT: 75,
-        OPTION_DEFAULT_TRANSITION: 10,
         OPTION_MIN_STEP_DELAY_MS: 200,
     }
-
-
-async def test_options_flow_validates_brightness_range(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test brightness validated 0-100."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-
-    # Test invalid brightness above 100
-    with pytest.raises(vol.Invalid):
-        await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input={
-                OPTION_DEFAULT_BRIGHTNESS_PCT: 150,  # Invalid: > 100
-                OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
-            },
-        )
-
-    # Start a new flow to test negative value
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-
-    with pytest.raises(vol.Invalid):
-        await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input={
-                OPTION_DEFAULT_BRIGHTNESS_PCT: -10,  # Invalid: < 0
-                OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
-            },
-        )
-
-
-async def test_options_flow_validates_transition_range(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test transition validated 0-3600."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-
-    # Test invalid transition above 3600
-    with pytest.raises(vol.Invalid):
-        await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input={
-                OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
-                OPTION_DEFAULT_TRANSITION: 5000,  # Invalid: > 3600
-                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
-            },
-        )
-
-    # Start a new flow to test negative value
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-
-    with pytest.raises(vol.Invalid):
-        await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input={
-                OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
-                OPTION_DEFAULT_TRANSITION: -5,  # Invalid: < 0
-                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
-            },
-        )
-
-    # Start a new flow to test float value (should be valid)
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={
-            OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
-            OPTION_DEFAULT_TRANSITION: 0.5,  # Valid: float value for 500ms
-            OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
-        },
-    )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][OPTION_DEFAULT_TRANSITION] == 0.5
 
 
 async def test_options_flow_validates_step_delay_range(
@@ -240,8 +138,6 @@ async def test_options_flow_validates_step_delay_range(
         await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
-                OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
-                OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
                 OPTION_MIN_STEP_DELAY_MS: 30,  # Invalid: < 50 (MIN_STEP_DELAY_MS)
             },
         )
@@ -253,8 +149,6 @@ async def test_options_flow_validates_step_delay_range(
         await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
-                OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
-                OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
                 OPTION_MIN_STEP_DELAY_MS: 1500,  # Invalid: > 1000
             },
         )
@@ -265,8 +159,6 @@ async def test_options_flow_validates_step_delay_range(
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
-            OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
-            OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
             OPTION_MIN_STEP_DELAY_MS: 50,  # Valid: exactly MIN_STEP_DELAY_MS
         },
     )
