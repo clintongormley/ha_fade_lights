@@ -59,6 +59,32 @@ fade_lights:
           step: 0.1
           mode: box
           unit_of_measurement: "s"
+    easing:
+      name: Easing curve
+      description: >-
+        Controls how brightness changes over time. 'auto' selects based on fade
+        direction: ease_out for fading up, ease_in for fading down, ease_in_out
+        for mid-range transitions.
+      filter: *brightness_support
+      default: auto
+      example: "auto"
+      selector:
+        select:
+          options:
+            - label: Auto (recommended)
+              value: auto
+            - label: Linear (no easing)
+              value: linear
+            - label: Ease in (slow start)
+              value: ease_in_quad
+            - label: Ease in cubic (slower start)
+              value: ease_in_cubic
+            - label: Ease out (slow end)
+              value: ease_out_quad
+            - label: Ease out cubic (slower end)
+              value: ease_out_cubic
+            - label: Ease in-out sine (smooth S-curve)
+              value: ease_in_out_sine
     color_temp_kelvin:
       name: Color temperature
       description: Target color temperature in Kelvin.
