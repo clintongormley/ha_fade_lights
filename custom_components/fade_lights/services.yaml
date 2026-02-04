@@ -31,10 +31,3 @@ fade_lights:
       example: "3"
       selector:
         text:
-    force:
-      name: Force
-      description: Set to true to force changing the brightness even if it has been changed manually.
-      required: false
-      default: false
-      selector:
-        boolean:
