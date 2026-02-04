@@ -9,3 +9,4 @@ htmlcov/
 # Local files
 Release instructions.txt
 docs/plans/
+.worktrees/
