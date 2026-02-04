@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 
@@ -27,9 +26,7 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step."""
         # Only allow a single instance
         if self._async_current_entries():
@@ -64,9 +61,7 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
 class FadeLightsOptionsFlow(OptionsFlow):
     """Handle options flow for Fade Lights."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
@@ -79,9 +74,7 @@ class FadeLightsOptionsFlow(OptionsFlow):
                 {
                     vol.Optional(
                         OPTION_DEFAULT_BRIGHTNESS_PCT,
-                        default=options.get(
-                            OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT
-                        ),
+                        default=options.get(OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT),
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
                     vol.Optional(
                         OPTION_DEFAULT_TRANSITION,
