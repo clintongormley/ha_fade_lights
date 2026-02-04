@@ -22,7 +22,7 @@
         },
         "data_description": {
           "default_brightness_pct": "Default brightness level if not specified in the action call (0-100%).",
-          "default_transition": "Default time to transition to the new brightness level in seconds (0-3600, which is up to 1 hour).",
+          "default_transition": "Default time to transition to the new brightness level in seconds. Accepts decimal values, e.g., 0.5 for 500ms (0-3600, which is up to 1 hour).",
           "step_delay_ms": "The lower this value (in milliseconds), the shorter the pause between each brightness step change and thus the smoother the transition, but too low values may cause transitions to last longer than expected and put unnecessary load on Home Assistant. (Default and minimum 50ms)"
         }
       }
@@ -43,7 +43,7 @@
         },
         "transition": {
           "name": "Transition time",
-          "description": "Transition time for fading indicated in seconds (default 3)."
+          "description": "Transition time for fading in seconds. Accepts decimal values, e.g., 0.5 for 500ms (default 3)."
         }
       }
     }
