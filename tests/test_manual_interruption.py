@@ -102,10 +102,10 @@ async def test_manual_brightness_change_cancels_fade(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 20,  # Fade down to 51 brightness
                 ATTR_TRANSITION: 5,  # Long transition so we can interrupt
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
     )
@@ -161,10 +161,10 @@ async def test_manual_turn_off_cancels_fade(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 5,
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
     )
@@ -221,10 +221,10 @@ async def test_manual_turn_off_preserves_orig_brightness(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 10,  # Fade to 10%
                 ATTR_TRANSITION: 5,
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
     )
@@ -284,10 +284,10 @@ async def test_new_fade_cancels_previous(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
     )
@@ -304,10 +304,10 @@ async def test_new_fade_cancels_previous(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_TRANSITION: 0.5,
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
     )
@@ -352,10 +352,10 @@ async def test_manual_change_during_fade_updates_orig(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                ATTR_ENTITY_ID: entity_id,
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
             },
+            target={"entity_id": entity_id},
             blocking=True,
         )
     )

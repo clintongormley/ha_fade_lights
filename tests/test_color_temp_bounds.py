@@ -259,7 +259,9 @@ class TestExecuteFadeWithBounds:
         cancel_event = MagicMock()
         cancel_event.is_set.return_value = False
 
-        with patch("custom_components.fade_lights._apply_step", new_callable=AsyncMock) as mock_apply:
+        with patch(
+            "custom_components.fade_lights._apply_step", new_callable=AsyncMock
+        ) as mock_apply:
             await _execute_fade(mock_hass, "light.test", params, 50, cancel_event)
 
             # Verify _apply_step was called
@@ -294,7 +296,9 @@ class TestExecuteFadeWithBounds:
         cancel_event = MagicMock()
         cancel_event.is_set.return_value = False
 
-        with patch("custom_components.fade_lights._apply_step", new_callable=AsyncMock) as mock_apply:
+        with patch(
+            "custom_components.fade_lights._apply_step", new_callable=AsyncMock
+        ) as mock_apply:
             await _execute_fade(mock_hass, "light.test", params, 50, cancel_event)
 
             # Verify _apply_step was called

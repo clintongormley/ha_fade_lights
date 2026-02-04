@@ -157,10 +157,10 @@ class TestServiceHandlerFiltering:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": entity_id,
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_TRANSITION: 0.1,
                 },
+                target={"entity_id": entity_id},
                 blocking=True,
             )
 
@@ -186,10 +186,10 @@ class TestServiceHandlerFiltering:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": entity_id,
                     ATTR_COLOR_TEMP_KELVIN: 4000,
                     ATTR_TRANSITION: 0.1,
                 },
+                target={"entity_id": entity_id},
                 blocking=True,
             )
 
@@ -215,10 +215,10 @@ class TestServiceHandlerFiltering:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": entity_id,
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_TRANSITION: 0.1,
                 },
+                target={"entity_id": entity_id},
                 blocking=True,
             )
 
@@ -260,10 +260,10 @@ class TestServiceHandlerFiltering:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": group_id,
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_TRANSITION: 0.1,
                 },
+                target={"entity_id": group_id},
                 blocking=True,
             )
 
@@ -289,10 +289,10 @@ class TestServiceHandlerFiltering:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": entity_id,
                     ATTR_BRIGHTNESS_PCT: 50,
                     ATTR_TRANSITION: 0.1,
                 },
+                target={"entity_id": entity_id},
                 blocking=True,
             )
 

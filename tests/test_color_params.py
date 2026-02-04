@@ -36,10 +36,10 @@ class TestColorParameterValidation:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_COLOR_TEMP_KELVIN: 4000,
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -55,10 +55,10 @@ class TestColorParameterValidation:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_RGB_COLOR: [255, 128, 0],
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -74,10 +74,10 @@ class TestColorParameterValidation:
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                "entity_id": mock_light_entity,
                 ATTR_HS_COLOR: [200, 80],
                 ATTR_TRANSITION: 0.1,
             },
+            target={"entity_id": mock_light_entity},
             blocking=True,
         )
 
@@ -92,10 +92,10 @@ class TestColorParameterValidation:
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                "entity_id": mock_light_entity,
                 ATTR_COLOR_TEMP_KELVIN: 4000,
                 ATTR_TRANSITION: 0.1,
             },
+            target={"entity_id": mock_light_entity},
             blocking=True,
         )
 
@@ -110,11 +110,11 @@ class TestColorParameterValidation:
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                "entity_id": mock_light_entity,
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_HS_COLOR: [200, 80],
                 ATTR_TRANSITION: 0.1,
             },
+            target={"entity_id": mock_light_entity},
             blocking=True,
         )
 
@@ -323,13 +323,13 @@ class TestFromParameter:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_HS_COLOR: [200, 80],
                     "from": {
                         ATTR_HS_COLOR: [0, 0],
                         ATTR_COLOR_TEMP_KELVIN: 2700,
                     },
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -349,9 +349,9 @@ class TestValueRangeValidation:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_HS_COLOR: [400, 50],  # Invalid hue
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -367,9 +367,9 @@ class TestValueRangeValidation:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_HS_COLOR: [200, 150],  # Invalid saturation
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -385,9 +385,9 @@ class TestValueRangeValidation:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_RGB_COLOR: [300, 128, 0],  # Invalid R
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -403,9 +403,9 @@ class TestValueRangeValidation:
                 DOMAIN,
                 SERVICE_FADE_LIGHTS,
                 {
-                    "entity_id": mock_light_entity,
                     ATTR_COLOR_TEMP_KELVIN: 500,  # Too low
                 },
+                target={"entity_id": mock_light_entity},
                 blocking=True,
             )
 
@@ -421,9 +421,9 @@ class TestValueRangeValidation:
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
-                "entity_id": mock_light_entity,
                 ATTR_HS_COLOR: [360, 100],  # Max valid values
                 ATTR_TRANSITION: 0.1,
             },
+            target={"entity_id": mock_light_entity},
             blocking=True,
         )

@@ -133,7 +133,9 @@ class TestColorTempToHsFade:
             )
 
     @pytest.mark.asyncio
-    async def test_color_temp_to_color_temp_uses_standard_fade(self, mock_hass, color_temp_light_state):
+    async def test_color_temp_to_color_temp_uses_standard_fade(
+        self, mock_hass, color_temp_light_state
+    ):
         """Test that COLOR_TEMP to color temp uses standard fade (no mode switch needed)."""
         mock_hass.states.get = MagicMock(return_value=color_temp_light_state)
 

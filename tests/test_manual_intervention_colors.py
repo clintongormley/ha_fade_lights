@@ -55,9 +55,7 @@ class TestManualInterventionColors:
         """Test state change matches when both brightness and HS color match."""
         entity_id = "light.test"
         FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
-        FADE_EXPECTED_STATE[entity_id].add(
-            ExpectedValues(brightness=200, hs_color=(180.0, 50.0))
-        )
+        FADE_EXPECTED_STATE[entity_id].add(ExpectedValues(brightness=200, hs_color=(180.0, 50.0)))
 
         result = _match_and_remove_expected(entity_id, mock_state_on_with_color)
         assert result is True  # Expected, should not trigger intervention
@@ -67,9 +65,7 @@ class TestManualInterventionColors:
         entity_id = "light.test"
         FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
         # Expecting different color (hue 100 vs actual 180 - outside tolerance)
-        FADE_EXPECTED_STATE[entity_id].add(
-            ExpectedValues(brightness=200, hs_color=(100.0, 50.0))
-        )
+        FADE_EXPECTED_STATE[entity_id].add(ExpectedValues(brightness=200, hs_color=(100.0, 50.0)))
 
         result = _match_and_remove_expected(entity_id, mock_state_on_with_color)
         assert result is False  # Unexpected - should trigger intervention
@@ -78,9 +74,7 @@ class TestManualInterventionColors:
         """Test state change matches when both brightness and kelvin match."""
         entity_id = "light.test"
         FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
-        FADE_EXPECTED_STATE[entity_id].add(
-            ExpectedValues(brightness=200, color_temp_kelvin=3003)
-        )
+        FADE_EXPECTED_STATE[entity_id].add(ExpectedValues(brightness=200, color_temp_kelvin=3003))
 
         result = _match_and_remove_expected(entity_id, mock_state_on_with_kelvin)
         assert result is True  # Expected
@@ -90,9 +84,7 @@ class TestManualInterventionColors:
         entity_id = "light.test"
         FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
         # Expecting different kelvin (4000 vs actual 3003 - outside tolerance of 100)
-        FADE_EXPECTED_STATE[entity_id].add(
-            ExpectedValues(brightness=200, color_temp_kelvin=4000)
-        )
+        FADE_EXPECTED_STATE[entity_id].add(ExpectedValues(brightness=200, color_temp_kelvin=4000))
 
         result = _match_and_remove_expected(entity_id, mock_state_on_with_kelvin)
         assert result is False  # Unexpected - should trigger intervention

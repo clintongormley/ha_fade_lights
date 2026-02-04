@@ -29,10 +29,6 @@
       "name": "Fade lights",
       "description": "Fades lights to a desired brightness and/or color over a specified transition period.",
       "fields": {
-        "entity_id": {
-          "name": "Entity ID",
-          "description": "Entity ID of a light or light group."
-        },
         "brightness_pct": {
           "name": "Brightness percentage",
           "description": "Target brightness level as a percentage (0-100)."
