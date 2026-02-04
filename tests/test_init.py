@@ -252,3 +252,49 @@ async def test_handle_off_to_on_when_domain_not_in_hass(
 
     # Verify no tasks were created (no restoration attempt)
     # This is implicitly tested by not raising and no side effects
+
+
+async def test_fade_lights_skips_unavailable_entities(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+) -> None:
+    """Test that fade_lights service skips unavailable entities."""
+    from homeassistant.const import STATE_UNAVAILABLE
+
+    # Create two lights - one available, one unavailable
+    hass.states.async_set(
+        "light.available",
+        "on",
+        {"brightness": 200, "supported_color_modes": ["brightness"]},
+    )
+    hass.states.async_set(
+        "light.unavailable",
+        STATE_UNAVAILABLE,
+        {"brightness": 200, "supported_color_modes": ["brightness"]},
+    )
+
+    # Track which entities were faded
+    faded_entities = []
+
+    async def mock_execute_fade(hass, entity_id, *args, **kwargs):
+        faded_entities.append(entity_id)
+
+    with patch(
+        "custom_components.fade_lights._execute_fade",
+        side_effect=mock_execute_fade,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                "entity_id": ["light.available", "light.unavailable"],
+                "brightness_pct": 50,
+                "transition": 1,
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    # Only the available entity should be faded
+    assert "light.available" in faded_entities
+    assert "light.unavailable" not in faded_entities

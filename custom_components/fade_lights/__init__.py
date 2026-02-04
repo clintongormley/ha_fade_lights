@@ -32,6 +32,7 @@ from homeassistant.const import (
     SERVICE_TURN_ON,
     STATE_OFF,
     STATE_ON,
+    STATE_UNAVAILABLE,
 )
 from homeassistant.core import (
     Event,
@@ -396,7 +397,10 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     tasks = []
     for entity_id in expanded_entities:
         state = hass.states.get(entity_id)
-        if state and not _can_apply_fade_params(state, fade_params):
+        if not state or state.state == STATE_UNAVAILABLE:
+            _LOGGER.debug("%s: Skipping - entity unavailable", entity_id)
+            continue
+        if not _can_apply_fade_params(state, fade_params):
             _LOGGER.info(
                 "%s: Skipping - light cannot apply any requested fade parameters",
                 entity_id,
