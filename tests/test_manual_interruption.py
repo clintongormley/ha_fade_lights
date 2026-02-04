@@ -973,3 +973,162 @@ async def test_get_intended_brightness_returns_none_when_integration_unloaded(
     assert result is None
 
 
+async def test_cancel_and_wait_for_fade_timeout(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+) -> None:
+    """Test _cancel_and_wait_for_fade handles timeout waiting for cleanup.
+
+    This tests lines 768-769 where TimeoutError is caught.
+    """
+    from unittest.mock import patch
+
+    from custom_components.fade_lights import (
+        FADE_COMPLETE_CONDITIONS,
+        _cancel_and_wait_for_fade,
+    )
+
+    entity_id = "light.test_timeout"
+
+    # Create a task that will never complete naturally
+    task_completed = asyncio.Event()
+
+    async def hanging_task() -> None:
+        await task_completed.wait()
+
+    task = hass.async_create_task(hanging_task())
+
+    ACTIVE_FADES[entity_id] = task
+    cancel_event = asyncio.Event()
+    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+
+    # Create condition but make wait_for always time out
+    condition = asyncio.Condition()
+    FADE_COMPLETE_CONDITIONS[entity_id] = condition
+
+    try:
+        # Patch the FADE_CANCEL_TIMEOUT_S to be very short for the test
+        with patch("custom_components.fade_lights.FADE_CANCEL_TIMEOUT_S", 0.05):
+            # Call should timeout but not raise
+            await _cancel_and_wait_for_fade(entity_id)
+
+        # Should complete without raising - timeout is caught and logged
+
+    finally:
+        # Clean up
+        task_completed.set()
+        ACTIVE_FADES.pop(entity_id, None)
+        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        FADE_COMPLETE_CONDITIONS.pop(entity_id, None)
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+async def test_restore_intended_state_when_domain_not_in_hass(
+    hass: HomeAssistant,
+) -> None:
+    """Test _restore_intended_state returns early when DOMAIN not in hass.data.
+
+    This tests line 823 where DOMAIN not in hass.data.
+    """
+    from unittest.mock import MagicMock
+
+    from custom_components.fade_lights import _restore_intended_state
+
+    # Ensure DOMAIN is not in hass.data
+    hass.data.pop(DOMAIN, None)
+
+    entity_id = "light.test_entity"
+    old_state = MagicMock()
+    new_state = MagicMock()
+
+    # Should return early without raising
+    await _restore_intended_state(hass, entity_id, old_state, new_state)
+
+
+async def test_restore_intended_state_when_intended_is_none(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+) -> None:
+    """Test _restore_intended_state returns early when intended brightness is None.
+
+    This tests line 830 where intended is None.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from custom_components.fade_lights import _restore_intended_state
+
+    entity_id = "light.test_entity"
+
+    # Set up the light
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 150,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    old_state = MagicMock()
+    old_state.state = STATE_ON
+    new_state = MagicMock()
+    new_state.state = STATE_ON
+    new_state.attributes = {ATTR_BRIGHTNESS: 150}
+
+    # Make _get_intended_brightness return None
+    with patch(
+        "custom_components.fade_lights._get_intended_brightness", return_value=None
+    ):
+        # Should return early without raising
+        await _restore_intended_state(hass, entity_id, old_state, new_state)
+
+
+async def test_restore_intended_state_when_entity_removed(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test _restore_intended_state returns early when entity is removed.
+
+    This tests lines 840-841 where current_state is None.
+    """
+    from unittest.mock import MagicMock
+
+    from custom_components.fade_lights import _restore_intended_state
+
+    entity_id = "light.test_removed"
+
+    # Set up then remove the entity
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 150,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    hass.states.async_remove(entity_id)
+    await hass.async_block_till_done()
+
+    # Store original brightness
+    hass.data[DOMAIN]["data"][entity_id] = 200
+
+    old_state = MagicMock()
+    old_state.state = STATE_ON
+    old_state.attributes = {ATTR_BRIGHTNESS: 150}
+
+    new_state = MagicMock()
+    new_state.state = STATE_ON
+    new_state.attributes = {ATTR_BRIGHTNESS: 150}
+
+    # Should return early when current_state is None (entity was removed)
+    await _restore_intended_state(hass, entity_id, old_state, new_state)
+
+    # No service calls should have been made
+    turn_on_calls = [c for c in service_calls if c.service == "turn_on"]
+    turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
+    assert len(turn_on_calls) == 0
+    assert len(turn_off_calls) == 0
+
+

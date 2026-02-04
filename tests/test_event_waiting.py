@@ -297,3 +297,31 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
 
     # Clean up
     FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+
+
+async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+) -> None:
+    """Test _match_and_remove_expected returns False when ON state has no brightness."""
+    entity_id = "light.test_no_brightness"
+
+    # Create state with ON but no brightness attribute
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
+    )
+
+    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(values={100: time.monotonic()})
+
+    state = hass.states.get(entity_id)
+    result = _match_and_remove_expected(entity_id, state)
+
+    # Should return False since brightness is None for ON state
+    assert result is False
+    # Expected value should remain unchanged
+    assert 100 in FADE_EXPECTED_BRIGHTNESS[entity_id].values
+
+    # Clean up
+    FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)

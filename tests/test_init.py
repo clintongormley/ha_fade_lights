@@ -200,3 +200,55 @@ async def test_async_setup_no_auto_import_when_entry_exists(
     assert result is True
     await hass.async_block_till_done()
     assert not flow_init_called, "Config flow should NOT be initiated when entries exist"
+
+
+async def test_store_orig_brightness_when_domain_not_in_hass(
+    hass: HomeAssistant,
+) -> None:
+    """Test _store_orig_brightness returns early when DOMAIN not in hass.data."""
+    from custom_components.fade_lights import _store_orig_brightness
+
+    # Ensure DOMAIN is not in hass.data
+    hass.data.pop(DOMAIN, None)
+
+    # Should not raise - just return early
+    _store_orig_brightness(hass, "light.test", 100)
+
+    # Verify nothing was stored
+    assert DOMAIN not in hass.data
+
+
+async def test_save_storage_when_domain_not_in_hass(
+    hass: HomeAssistant,
+) -> None:
+    """Test _save_storage returns early when DOMAIN not in hass.data."""
+    from custom_components.fade_lights import _save_storage
+
+    # Ensure DOMAIN is not in hass.data
+    hass.data.pop(DOMAIN, None)
+
+    # Should not raise - just return early
+    await _save_storage(hass)
+
+    # Verify domain was not created
+    assert DOMAIN not in hass.data
+
+
+async def test_handle_off_to_on_when_domain_not_in_hass(
+    hass: HomeAssistant,
+    mock_light_entity: str,
+) -> None:
+    """Test _handle_off_to_on returns early when DOMAIN not in hass.data."""
+    from custom_components.fade_lights import _handle_off_to_on
+
+    # Ensure DOMAIN is not in hass.data
+    hass.data.pop(DOMAIN, None)
+
+    # Get the state
+    state = hass.states.get(mock_light_entity)
+
+    # Should not raise - just return early
+    _handle_off_to_on(hass, mock_light_entity, state)
+
+    # Verify no tasks were created (no restoration attempt)
+    # This is implicitly tested by not raising and no side effects
