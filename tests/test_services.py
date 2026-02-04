@@ -15,7 +15,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
-    DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_TRANSITION,
     DOMAIN,
     SERVICE_FADE_LIGHTS,
@@ -178,12 +177,12 @@ async def test_service_rejects_non_light_entity(
         )
 
 
-async def test_service_uses_default_brightness(
+async def test_service_accepts_missing_brightness(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     mock_light_entity: str,
 ) -> None:
-    """Test service uses default brightness when brightness_pct is not provided."""
+    """Test service accepts missing brightness_pct (passes None to fade)."""
     with patch(
         "custom_components.fade_lights._fade_light",
         new_callable=AsyncMock,
@@ -200,11 +199,11 @@ async def test_service_uses_default_brightness(
         )
         await hass.async_block_till_done()
 
-        # Verify _fade_light was called with default brightness
+        # Verify _fade_light was called with None brightness
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        # fade_params.brightness_pct
-        assert call_args[0][2].brightness_pct == DEFAULT_BRIGHTNESS_PCT
+        # fade_params.brightness_pct should be None when not provided
+        assert call_args[0][2].brightness_pct is None
 
 
 async def test_service_uses_default_transition(

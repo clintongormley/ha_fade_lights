@@ -41,7 +41,6 @@ KEY_CURR_BRIGHTNESS = "curr"
 OPTION_MIN_STEP_DELAY_MS = "min_step_delay_ms"
 
 # Defaults (used when options are not set)
-DEFAULT_BRIGHTNESS_PCT = 40
 DEFAULT_TRANSITION = 3  # seconds
 DEFAULT_MIN_STEP_DELAY_MS = 100  # milliseconds
 

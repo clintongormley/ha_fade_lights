@@ -56,7 +56,6 @@ from .const import (
     ATTR_TRANSITION,
     ATTR_XY_COLOR,
     COLOR_PARAMS,
-    DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
@@ -393,10 +392,6 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
     if not expanded_entities:
         return
-
-    # Apply default brightness if not specified
-    if fade_params.brightness_pct is None:
-        fade_params.brightness_pct = DEFAULT_BRIGHTNESS_PCT
 
     tasks = []
     for entity_id in expanded_entities:
