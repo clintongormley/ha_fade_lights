@@ -401,9 +401,9 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     tasks = []
     for entity_id in expanded_entities:
         state = hass.states.get(entity_id)
-        if state and not _can_fade_color(state, fade_params):
+        if state and not _can_apply_fade_params(state, fade_params):
             _LOGGER.info(
-                "%s: Skipping - does not support requested color mode",
+                "%s: Skipping - light cannot apply any requested fade parameters",
                 entity_id,
             )
             continue
@@ -1158,33 +1158,41 @@ def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | No
     return list(result)
 
 
-def _can_fade_color(state: State, params: FadeParams) -> bool:
-    """Check if a light supports the color mode needed for this fade.
+def _can_apply_fade_params(state: State, params: FadeParams) -> bool:
+    """Check if a light can perform at least one of the requested fade operations.
 
-    Returns True if:
-    - No color target specified (brightness-only fade)
-    - HS target and light supports any color mode (HS/RGB/RGBW/RGBWW/XY)
-    - Color temp target and light supports COLOR_TEMP mode
+    Returns True if the light can do ANY of:
+    - Brightness fade (any light, including on/off only)
+    - HS color fade (if requested and light supports HS/RGB/RGBW/RGBWW/XY)
+    - Color temp fade (if requested and light supports COLOR_TEMP)
     """
-    if params.hs_color is None and params.color_temp_mireds is None:
-        return True
-
     modes = set(state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []))
 
-    if params.hs_color is not None:
-        hs_capable = modes & {
-            ColorMode.HS,
-            ColorMode.RGB,
-            ColorMode.RGBW,
-            ColorMode.RGBWW,
-            ColorMode.XY,
-        }
-        return bool(hs_capable)
+    # Check if brightness is requested - any light can handle it
+    # (on/off lights get turned on/off, dimmable lights get faded)
+    brightness_requested = (
+        params.brightness_pct is not None or params.from_brightness_pct is not None
+    )
+    if brightness_requested:
+        return True
 
-    if params.color_temp_mireds is not None:
-        return ColorMode.COLOR_TEMP in modes
+    # Check if HS color is requested and light supports it
+    hs_requested = params.hs_color is not None or params.from_hs_color is not None
+    hs_capable = modes & {
+        ColorMode.HS,
+        ColorMode.RGB,
+        ColorMode.RGBW,
+        ColorMode.RGBWW,
+        ColorMode.XY,
+    }
+    if hs_requested and hs_capable:
+        return True
 
-    return True
+    # Check if color temp is requested and light supports it
+    color_temp_requested = (
+        params.color_temp_mireds is not None or params.from_color_temp_mireds is not None
+    )
+    return color_temp_requested and ColorMode.COLOR_TEMP in modes
 
 
 # =============================================================================
