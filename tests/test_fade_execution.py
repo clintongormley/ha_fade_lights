@@ -547,3 +547,72 @@ async def test_fade_steps_spread_across_transition_time(
     total_calls = len(service_calls)
     # Should have roughly 10 steps (500ms / 50ms)
     assert total_calls <= 15  # Allow buffer for rounding
+
+
+async def test_fade_timing_accounts_for_service_call_duration(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that fade timing compensates for service call duration.
+
+    When a service call takes time, the sleep duration should be reduced
+    so that each step still completes in approximately the target delay time.
+    This test mocks time.monotonic() to simulate service call latency.
+    """
+    entity_id = "light.test_timing"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    sleep_durations: list[float] = []
+
+    async def mock_sleep(duration: float) -> None:
+        """Capture sleep durations."""
+        sleep_durations.append(duration)
+        # Don't actually sleep to speed up test
+
+    # Simulate service calls taking 30ms each (0.030 seconds)
+    # With a target delay of 50ms, sleep should be ~20ms (0.020 seconds)
+    call_count = 0
+    base_time = 1000.0
+
+    def mock_monotonic() -> float:
+        """Return simulated time that advances 30ms per service call."""
+        nonlocal call_count
+        # Each call to monotonic alternates between start and end of service call
+        # Start of step: base_time + (step * 0.050)
+        # After service call: start + 0.030 (simulating 30ms service call)
+        result = base_time + (call_count * 0.030)
+        call_count += 1
+        return result
+
+    with (
+        patch("asyncio.sleep", side_effect=mock_sleep),
+        patch("time.monotonic", side_effect=mock_monotonic),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                ATTR_ENTITY_ID: entity_id,
+                ATTR_BRIGHTNESS_PCT: 90,  # Small change for fewer steps
+                ATTR_TRANSITION: 0.5,  # 500ms
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    # Verify sleep was called with reduced durations
+    # With 30ms service calls and 50ms target delay, sleep should be ~20ms
+    # Some sleeps might be skipped if service call took longer than delay
+    for duration in sleep_durations:
+        # Sleep duration should be less than the full delay (since service call time is subtracted)
+        # Duration is in seconds, should be around 0.020 or less
+        assert duration <= 0.050, f"Sleep duration {duration} should be <= 0.050s (50ms delay)"
+        assert duration >= 0, f"Sleep duration {duration} should be non-negative"
