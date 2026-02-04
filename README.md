@@ -1,6 +1,15 @@
 # Fade Lights Custom Integration
 
+[![HACS Default](https://img.shields.io/badge/HACS-Default-blue.svg)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/v/release/clintongormley/ha_fade_lights)](https://github.com/clintongormley/ha_fade_lights/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Home Assistant custom integration that provides smooth light fading with automatic brightness restoration.
+
+## Compatibility
+
+- **Home Assistant:** 2024.1.0 or newer
+- **Python:** 3.12 or newer
 
 ## Features
 
@@ -174,11 +183,30 @@ If you manually adjust a light's brightness while it's on (and no fade is active
 
 Lights that do not support brightness will turn off when brightness is set to 0, or turn on when brightness is greater than 0.
 
+## Troubleshooting
+
+### Enable Debug Logging
+
+1. Go to **Settings** > **Devices & Services** > **Fade Lights**
+2. Click **Enable debug logging**
+3. Reproduce the issue
+4. Click **Disable debug logging** to download the log file
+
+Alternatively, go to **Settings** > **System** > **Logs**, click the three-dot menu, and select **Load full logs** to see detailed output.
+
+### Reporting Issues
+
+If you encounter a bug, please [open an issue](https://github.com/clintongormley/ha_fade_lights/issues/new/choose) with:
+- Your Home Assistant version
+- The integration version
+- Debug logs showing the problem
+- Steps to reproduce
+
 ## Development
 
 ### Running Tests
 
-The integration includes a comprehensive test suite with 51 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
+The integration includes a comprehensive test suite with 70 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
 
 #### Prerequisites
 

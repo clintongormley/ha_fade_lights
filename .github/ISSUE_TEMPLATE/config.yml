@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/clintongormley/ha_fade_lights#readme
+    about: Read the documentation before opening an issue

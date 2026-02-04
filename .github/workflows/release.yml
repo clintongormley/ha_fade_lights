@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: tag_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Get version from manifest
+        id: manifest_version
+        run: |
+          VERSION=$(jq -r '.version' custom_components/fade_lights/manifest.json)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify versions match
+        run: |
+          if [ "${{ steps.tag_version.outputs.VERSION }}" != "${{ steps.manifest_version.outputs.VERSION }}" ]; then
+            echo "Error: Tag version (${{ steps.tag_version.outputs.VERSION }}) does not match manifest version (${{ steps.manifest_version.outputs.VERSION }})"
+            exit 1
+          fi
+          echo "Versions match: ${{ steps.tag_version.outputs.VERSION }}"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ startsWith(steps.tag_version.outputs.VERSION, '0.') }}

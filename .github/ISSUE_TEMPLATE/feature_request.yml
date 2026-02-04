@@ -1,0 +1,41 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe what you'd like to see added.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the problem you're trying to solve or the use case for this feature.
+      placeholder: "I want to be able to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How do you think this should work? (Optional but helpful)
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any workarounds or alternative approaches?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context, screenshots, or examples here.
+    validations:
+      required: false

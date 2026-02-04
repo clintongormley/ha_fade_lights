@@ -1,0 +1,87 @@
+name: Bug Report
+description: Report a bug with the Fade Lights integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us investigate.
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: What version of Home Assistant are you running?
+      placeholder: "2024.12.0"
+    validations:
+      required: true
+
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: What version of Fade Lights are you using? (Settings > Devices & Services > Fade Lights)
+      placeholder: "0.0.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Call service fade_lights.fade_lights with...
+        2. Wait for...
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: lights
+    attributes:
+      label: Light entities involved
+      description: What lights are you using? Include brand/model if known.
+      placeholder: |
+        - light.living_room (Philips Hue bulb)
+        - light.bedroom_group (group of IKEA Tradfri)
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug logs
+      description: |
+        Please include debug logs. To enable debug logging:
+        1. Go to Settings > Devices & Services > Fade Lights
+        2. Click "Enable debug logging"
+        3. Reproduce the issue
+        4. Click "Disable debug logging" to download the log file
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here (screenshots, automation YAML, etc.)
+    validations:
+      required: false
