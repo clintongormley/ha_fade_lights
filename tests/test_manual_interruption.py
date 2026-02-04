@@ -12,11 +12,10 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
-from homeassistant.core import Context, HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights import (
-    ACTIVE_CONTEXTS,
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_EXPECTED_BRIGHTNESS,
@@ -489,12 +488,10 @@ async def test_brightness_tolerance_allows_rounding(
     init_integration: MockConfigEntry,
     service_calls: list[ServiceCall],
 ) -> None:
-    """Test that +-5 tolerance is allowed for device rounding.
+    """Test that +-3 tolerance is allowed for device rounding.
 
     When a fade is active and the light reports a brightness that's within
-    5 of the expected value (due to device rounding), the fade should continue.
-    This test verifies the tolerance mechanism by checking that state updates
-    with our context and within-tolerance brightness don't cancel the fade.
+    3 of the expected value (due to device rounding), the fade should continue.
     """
     entity_id = "light.test_tolerance"
     hass.states.async_set(
@@ -506,21 +503,17 @@ async def test_brightness_tolerance_allows_rounding(
         },
     )
 
-    # Create a context and add it to ACTIVE_CONTEXTS to simulate our fade context
-    our_context = Context()
-    ACTIVE_CONTEXTS.add(our_context.id)
-
     # Simulate that we're expecting brightness 100
     FADE_EXPECTED_BRIGHTNESS[entity_id] = 100
 
-    # Create a simple mock task that we can track (not registered with hass)
+    # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
     ACTIVE_FADES[entity_id] = fake_task  # type: ignore[assignment]
     cancel_event = asyncio.Event()
     FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
     try:
-        # Simulate a state update from our context with brightness within tolerance
+        # Simulate a state update with brightness within tolerance
         # (expected is 100, so 97-103 should be within tolerance of 3)
         hass.states.async_set(
             entity_id,
@@ -529,7 +522,6 @@ async def test_brightness_tolerance_allows_rounding(
                 ATTR_BRIGHTNESS: 102,  # Within tolerance (100 + 2)
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
-            context=our_context,
         )
         await hass.async_block_till_done()
 
@@ -544,7 +536,6 @@ async def test_brightness_tolerance_allows_rounding(
                 ATTR_BRIGHTNESS: 103,  # At boundary (100 + 3)
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
-            context=our_context,
         )
         await hass.async_block_till_done()
 
@@ -553,27 +544,24 @@ async def test_brightness_tolerance_allows_rounding(
 
     finally:
         # Clean up
-        ACTIVE_CONTEXTS.discard(our_context.id)
         FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
-        # Complete the future if not already done
         if not fake_task.done():
             fake_task.cancel()
 
 
-async def test_inherited_context_detected_by_brightness(
+async def test_brightness_outside_tolerance_cancels_fade(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     service_calls: list[ServiceCall],
 ) -> None:
-    """Test that manual change with inherited context is detected via brightness mismatch.
+    """Test that brightness change outside tolerance cancels the fade.
 
-    When a state change has our context (due to context inheritance) but the brightness
-    is wildly different from what we expected (outside tolerance), the change should
-    be treated as manual and cancel the fade.
+    When a state change has brightness outside the +-3 tolerance, the change
+    should be treated as manual intervention and cancel the fade.
     """
-    entity_id = "light.test_inherited_context"
+    entity_id = "light.test_outside_tolerance"
     hass.states.async_set(
         entity_id,
         STATE_ON,
@@ -582,10 +570,6 @@ async def test_inherited_context_detected_by_brightness(
             ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
         },
     )
-
-    # Create a context and add it to ACTIVE_CONTEXTS to simulate our fade context
-    our_context = Context()
-    ACTIVE_CONTEXTS.add(our_context.id)
 
     # Simulate that we're expecting brightness 100
     FADE_EXPECTED_BRIGHTNESS[entity_id] = 100
@@ -602,9 +586,7 @@ async def test_inherited_context_detected_by_brightness(
     FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
     try:
-        # Simulate a state update from "our" context but with brightness
-        # way outside tolerance - this indicates manual intervention that
-        # inherited our context
+        # Simulate a state update with brightness way outside tolerance
         hass.states.async_set(
             entity_id,
             STATE_ON,
@@ -612,38 +594,34 @@ async def test_inherited_context_detected_by_brightness(
                 ATTR_BRIGHTNESS: 150,  # Way outside tolerance (100 + 50)
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
-            context=our_context,
         )
         await hass.async_block_till_done()
         await asyncio.sleep(0.1)  # Allow event handler to complete
 
-        # Despite having our context, the fade should be cancelled because
-        # brightness is outside tolerance
+        # The fade should be cancelled because brightness is outside tolerance
         assert cancel_event.is_set(), "Cancel event should be set for out-of-tolerance change"
 
     finally:
         # Clean up - signal the fake task to stop
         stop_fake_fade.set()
-        ACTIVE_CONTEXTS.discard(our_context.id)
         FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
-        # Wait for the fake task to complete (may already be cancelled)
         with contextlib.suppress(asyncio.CancelledError):
             await fake_task
 
 
-async def test_our_context_changes_ignored(
+async def test_expected_brightness_changes_ignored(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     service_calls: list[ServiceCall],
 ) -> None:
-    """Test that changes from our own context (within tolerance) don't cancel the fade.
+    """Test that changes matching expected brightness don't cancel the fade.
 
-    When a state change comes from our context AND the brightness matches what we
-    expected (within tolerance), the change should be ignored and not cancel the fade.
+    When a state change has brightness matching what we expected (within tolerance),
+    it's from our own fade operation and should be ignored.
     """
-    entity_id = "light.test_our_context"
+    entity_id = "light.test_expected"
     hass.states.async_set(
         entity_id,
         STATE_ON,
@@ -653,21 +631,17 @@ async def test_our_context_changes_ignored(
         },
     )
 
-    # Create a context and add it to ACTIVE_CONTEXTS to simulate our fade context
-    our_context = Context()
-    ACTIVE_CONTEXTS.add(our_context.id)
-
     # Simulate that we're expecting brightness 100
     FADE_EXPECTED_BRIGHTNESS[entity_id] = 100
 
-    # Create a simple mock task that we can track (not registered with hass)
+    # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
     ACTIVE_FADES[entity_id] = fake_task  # type: ignore[assignment]
     cancel_event = asyncio.Event()
     FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
     try:
-        # Simulate a state update from our context with exact expected brightness
+        # Simulate a state update with exact expected brightness
         hass.states.async_set(
             entity_id,
             STATE_ON,
@@ -675,12 +649,11 @@ async def test_our_context_changes_ignored(
                 ATTR_BRIGHTNESS: 100,  # Exact expected value
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
-            context=our_context,
         )
         await hass.async_block_till_done()
 
-        # Fade should still be active - change was from our context and within tolerance
-        assert not cancel_event.is_set(), "Cancel event should not be set for our own context"
+        # Fade should still be active - change matches expected
+        assert not cancel_event.is_set(), "Cancel event should not be set for expected brightness"
 
         # Also verify with brightness slightly different but within tolerance
         hass.states.async_set(
@@ -690,7 +663,6 @@ async def test_our_context_changes_ignored(
                 ATTR_BRIGHTNESS: 98,  # Within tolerance (100 - 2)
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
-            context=our_context,
         )
         await hass.async_block_till_done()
 
@@ -699,10 +671,8 @@ async def test_our_context_changes_ignored(
 
     finally:
         # Clean up
-        ACTIVE_CONTEXTS.discard(our_context.id)
         FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
-        # Complete the future if not already done
         if not fake_task.done():
             fake_task.cancel()

@@ -11,10 +11,10 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights import (
-    ACTIVE_CONTEXTS,
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_EXPECTED_BRIGHTNESS,
+    USER_INTENDED_BRIGHTNESS,
 )
 from custom_components.fade_lights.const import DOMAIN, SERVICE_FADE_LIGHTS
 
@@ -88,7 +88,7 @@ async def test_unload_entry_clears_tracking_dicts(
     ACTIVE_FADES["light.test_light"] = test_task
     FADE_CANCEL_EVENTS["light.test_light"] = test_event
     FADE_EXPECTED_BRIGHTNESS["light.test_light"] = 128
-    ACTIVE_CONTEXTS.add("test_context_id")
+    USER_INTENDED_BRIGHTNESS["light.test_light"] = 200
 
     # Unload the integration
     await hass.config_entries.async_unload(init_integration.entry_id)
@@ -98,7 +98,7 @@ async def test_unload_entry_clears_tracking_dicts(
     assert len(ACTIVE_FADES) == 0
     assert len(FADE_CANCEL_EVENTS) == 0
     assert len(FADE_EXPECTED_BRIGHTNESS) == 0
-    assert len(ACTIVE_CONTEXTS) == 0
+    assert len(USER_INTENDED_BRIGHTNESS) == 0
 
     # Verify the cancel event was set (to stop any active fades)
     assert test_event.is_set()

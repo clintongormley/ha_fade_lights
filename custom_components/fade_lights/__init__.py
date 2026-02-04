@@ -24,7 +24,6 @@ from homeassistant.const import (
     STATE_ON,
 )
 from homeassistant.core import (
-    Context,
     Event,
     HomeAssistant,
     ServiceCall,
@@ -73,20 +72,14 @@ FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 # even if the event has our context ID (which can happen with some integrations).
 FADE_EXPECTED_BRIGHTNESS: dict[str, int] = {}
 
-# Set of context IDs created by this integration's service calls.
-# When we call light.turn_on/turn_off, Home Assistant creates state change events
-# with the context we provided. By tracking our context IDs, we can identify
-# which state changes are from our own operations vs external sources.
-ACTIVE_CONTEXTS: set[str] = set()
-
-# Set of entity_ids that had fades recently cancelled (not completed normally).
-# This handles a race condition: when a fade is cancelled, its task cleanup may
-# remove the entity from ACTIVE_FADES before all pending state change events
-# from the fade's service calls have been processed. Without this set, those
-# late-arriving events would trigger the "store new brightness as original" logic
-# in Case 3, overwriting the pre-fade original brightness we want to preserve.
-# Entities are added when cancelled and removed on next OFF->ON transition.
-RECENTLY_CANCELLED_FADES: set[str] = set()
+# Maps entity_id -> user's intended brightness (0 = off).
+# When a user manually changes a light during a fade, we store their intended state.
+# If a late-arriving fade service call reverts their change, we detect the mismatch
+# and restore to the intended state. Entries are cleared:
+# 1. Immediately after restoring (in Step 1)
+# 2. When a new fade starts for that entity
+# 3. After a 500ms timeout fallback (in case no late call arrives)
+USER_INTENDED_BRIGHTNESS: dict[str, int] = {}
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -131,29 +124,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         transition_ms = int(transition * 1000)
 
-        # Create a context for this fade operation
-        context = Context()
-        ACTIVE_CONTEXTS.add(context.id)
+        # Clear any intended state for entities we're about to fade.
+        # This prevents stale intended states from interfering with the new fade.
+        for eid in expanded_entities:
+            USER_INTENDED_BRIGHTNESS.pop(eid, None)
 
-        try:
-            tasks = [
-                asyncio.create_task(
-                    _fade_light(
-                        hass,
-                        entity_id,
-                        brightness_pct,
-                        transition_ms,
-                        context,
-                        min_step_delay_ms,
-                    )
+        tasks = [
+            asyncio.create_task(
+                _fade_light(
+                    hass,
+                    entity_id,
+                    brightness_pct,
+                    transition_ms,
+                    min_step_delay_ms,
                 )
-                for entity_id in expanded_entities
-            ]
+            )
+            for entity_id in expanded_entities
+        ]
 
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-        finally:
-            ACTIVE_CONTEXTS.discard(context.id)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     hass.services.async_register(
         DOMAIN,
@@ -166,14 +156,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # State Change Handler
     # =========================================================================
     # This callback fires for EVERY state change in Home Assistant that affects
-    # lights. It handles three main scenarios:
+    # lights. It uses a three-step approach:
     #
-    # 1. Light turned ON from OFF -> Possibly restore original brightness
-    # 2. Light turned OFF -> Cancel any active fade, mark for no-restore
-    # 3. Brightness changed while ON -> Cancel fade and/or update orig brightness
-    #
-    # The tricky part is distinguishing OUR changes (from fade operations) from
-    # EXTERNAL changes (user via app, physical switch, automations, etc.)
+    # Step 1: Check USER_INTENDED_BRIGHTNESS - restore if late fade call reverted user's change
+    # Step 2: Check FADE_EXPECTED_BRIGHTNESS - detect manual intervention during fade
+    # Step 3: Normal handling - OFF->ON restore, ON->ON store new brightness
     @callback
     def handle_light_state_change(event: Event) -> None:
         """Handle all light state changes."""
@@ -194,96 +181,144 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entity_id = new_state.entity_id
         new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
         is_fading = entity_id in ACTIVE_FADES
-
-        # First pass: check if this event came from our own service calls.
-        # We track our context IDs in ACTIVE_CONTEXTS when making calls.
-        is_our_context = event.context.id in ACTIVE_CONTEXTS
+        old_state = event.data.get("old_state")
 
         _LOGGER.debug(
-            "(%s) -> state=%s, brightness=%s, is_fading=%s, is_our_context=%s, context_id=%s, active=%s",
+            "(%s) -> state=%s, brightness=%s, is_fading=%s",
             entity_id,
             new_state.state,
             new_brightness,
             is_fading,
-            is_our_context,
-            event.context.id,
-            ACTIVE_CONTEXTS,
         )
 
-        # Track if second-pass detection overrode is_our_context. This indicates
-        # the event came from our context but had unexpected brightness, which
-        # happens with late-arriving fade events or physical switch changes that
-        # inherited our context. In these cases, we should NOT store the brightness.
-        detected_via_brightness_mismatch = False
+        # =====================================================================
+        # Step 1: Check for late fade calls (intended state restoration)
+        # =====================================================================
+        # When a user manually changes a light during a fade, we store their
+        # intended state. If a late-arriving fade service call then reverts
+        # their change, we detect the mismatch here and restore to intended.
+        if entity_id in USER_INTENDED_BRIGHTNESS:
+            intended = USER_INTENDED_BRIGHTNESS.pop(entity_id)  # Clear immediately
 
-        # Second pass: detect physical switch changes during active fades.
-        #
-        # Problem: Physical switches (and some integrations) don't create new
-        # contexts - they may inherit or use the existing context. So we can't
-        # rely solely on context.id to detect manual changes.
-        #
-        # Solution: During a fade, we track what brightness we EXPECT the light
-        # to be at (FADE_EXPECTED_BRIGHTNESS). If the actual brightness differs
-        # by more than the tolerance (±3 for device rounding), someone changed
-        # it manually - even if the context ID matches ours.
+            actual_off = new_state.state == STATE_OFF
+            intended_off = intended == 0
+
+            # Check if actual state differs from intent
+            if actual_off != intended_off:
+                # Late call changed on/off state - restore
+                _LOGGER.debug(
+                    "(%s) -> Late call detected (on/off mismatch): intended=%s, actual_off=%s",
+                    entity_id,
+                    intended,
+                    actual_off,
+                )
+                if intended_off:
+                    hass.async_create_task(
+                        hass.services.async_call(
+                            LIGHT_DOMAIN,
+                            SERVICE_TURN_OFF,
+                            {ATTR_ENTITY_ID: entity_id},
+                        )
+                    )
+                else:
+                    hass.async_create_task(
+                        hass.services.async_call(
+                            LIGHT_DOMAIN,
+                            SERVICE_TURN_ON,
+                            {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: intended},
+                        )
+                    )
+                return
+
+            if not actual_off and new_brightness is not None and new_brightness != intended:
+                # Late call changed brightness - restore
+                _LOGGER.debug(
+                    "(%s) -> Late call detected (brightness mismatch): intended=%s, actual=%s",
+                    entity_id,
+                    intended,
+                    new_brightness,
+                )
+                hass.async_create_task(
+                    hass.services.async_call(
+                        LIGHT_DOMAIN,
+                        SERVICE_TURN_ON,
+                        {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: intended},
+                    )
+                )
+                return
+
+            # State matches intent - no restoration needed, continue to normal handling
+            _LOGGER.debug("(%s) -> State matches intended, continuing", entity_id)
+
+        # =====================================================================
+        # Step 2: Detect manual intervention during fade
+        # =====================================================================
+        # During a fade, we track what brightness we EXPECT. If actual differs,
+        # someone changed it manually. We cancel the fade and store their intent.
         if is_fading and entity_id in FADE_EXPECTED_BRIGHTNESS:
             expected = FADE_EXPECTED_BRIGHTNESS[entity_id]
             tolerance = 3
 
-            # Two cases indicate manual intervention:
-            # 1. Light turned OFF unexpectedly (and we weren't fading to 0)
-            # 2. Brightness differs from expected by more than tolerance
-            if (new_state.state == STATE_OFF and expected != 0) or (
-                new_brightness is not None and abs(new_brightness - expected) > tolerance
-            ):
+            # Manual intervention detected if:
+            # - Unexpected OFF (we expected brightness > 0)
+            # - Unexpected ON (we expected off / brightness = 0)
+            # - Unexpected brightness change beyond tolerance
+            is_manual = (
+                (new_state.state == STATE_OFF and expected > 0)
+                or (new_state.state == STATE_ON and expected == 0)
+                or (new_brightness is not None and abs(new_brightness - expected) > tolerance)
+            )
+
+            if is_manual:
                 _LOGGER.debug(
-                    "(%s) -> Unexpected state during fade: expected=%s, got=%s, manual",
+                    "(%s) -> Manual intervention during fade: expected=%s, got=%s/%s",
                     entity_id,
                     expected,
+                    new_state.state,
                     new_brightness,
                 )
-                detected_via_brightness_mismatch = is_our_context
-                is_our_context = False  # Treat as external change
 
-        # If this is definitely our own change, ignore it - no action needed
+                # Cancel the fade
+                if entity_id in FADE_CANCEL_EVENTS:
+                    FADE_CANCEL_EVENTS[entity_id].set()
+                ACTIVE_FADES[entity_id].cancel()
 
-        if is_our_context:
+                # Store user's intended state (0 = off) for late call recovery
+                if new_state.state == STATE_OFF:
+                    USER_INTENDED_BRIGHTNESS[entity_id] = 0
+                else:
+                    USER_INTENDED_BRIGHTNESS[entity_id] = new_brightness or 255
+                    # Also store as original brightness (user's new intended level)
+                    _store_orig_brightness(hass, entity_id, new_brightness or 255)
+
+                # Schedule cleanup timeout (500ms fallback in case no late call arrives)
+                async def cleanup_intended(eid: str) -> None:
+                    await asyncio.sleep(0.5)
+                    USER_INTENDED_BRIGHTNESS.pop(eid, None)
+
+                hass.async_create_task(cleanup_intended(entity_id))
+                return
+
+            # State matches expected - this is from our fade, ignore it
             _LOGGER.debug(
-                "(%s) -> Ignoring (our context), state: %s, brightness: %s",
+                "(%s) -> State matches expected during fade, ignoring",
                 entity_id,
-                new_state.state,
-                new_brightness,
             )
             return
 
         # =====================================================================
-        # Case 1: Light turned ON from OFF - possibly restore brightness
+        # Step 3: Normal state handling (no active fade)
         # =====================================================================
-        old_state = event.data.get("old_state")
+
+        # OFF -> ON: Restore to stored original brightness
         if old_state and old_state.state == STATE_OFF and new_state.state == STATE_ON:
             _LOGGER.debug("(%s) -> Light turned OFF->ON", entity_id)
-
-            # Skip restoration if this is a late-arriving event from a cancelled fade.
-            # When the user turns off a light during a fade, there may be in-flight
-            # service calls that complete after cancellation, causing spurious ON events.
-            if entity_id in RECENTLY_CANCELLED_FADES:
-                _LOGGER.debug("(%s) -> Skipping restore (recently cancelled fade)", entity_id)
-                RECENTLY_CANCELLED_FADES.discard(entity_id)
-                return
-
-            # Clear the recently-cancelled flag now that the light is back on.
-            # This allows future manual brightness changes to be stored as new
-            # original brightness values (until the next fade).
-            RECENTLY_CANCELLED_FADES.discard(entity_id)
 
             # Non-dimmable lights can't have brightness restored
             if ColorMode.BRIGHTNESS not in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
                 return
 
-            # Restore to the stored original brightness if we have one.
-            # The orig_brightness is set at the START of a fade and preserved even
-            # if the fade is interrupted. This ensures turning the light back on
-            # restores to pre-fade brightness, not some intermediate value.
+            # Restore to the stored original brightness if we have one
             orig_brightness = _get_orig_brightness(hass, entity_id)
             _LOGGER.debug(
                 "(%s) -> orig_brightness=%s, current_brightness=%s",
@@ -293,9 +328,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             if orig_brightness > 0:
                 current_brightness = new_state.attributes.get(ATTR_BRIGHTNESS, 0)
-                # Only restore if current brightness differs from original.
-                # Note: We can't distinguish "turn on only" from "turn on with brightness"
-                # so we always restore. This is a known limitation documented in README.
                 if current_brightness != orig_brightness:
                     _LOGGER.debug("(%s) -> Restoring to brightness %s", entity_id, orig_brightness)
                     hass.async_create_task(
@@ -310,66 +342,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     )
             return
 
-        # =====================================================================
-        # Case 2: Light turned OFF - cancel fade
-        # =====================================================================
-        if new_state.state == STATE_OFF:
-            if entity_id in ACTIVE_FADES:
-                _LOGGER.debug("(%s) -> Cancelling fade due to manual turn off", entity_id)
-
-                # Mark as recently cancelled. This prevents late-arriving state change
-                # events from the fade's own service calls from being stored as orig
-                # brightness in Case 3. Cleared when light turns back on in Case 1.
-                RECENTLY_CANCELLED_FADES.add(entity_id)
-
-                # Signal the fade loop to stop and cancel the task
-                if entity_id in FADE_CANCEL_EVENTS:
-                    FADE_CANCEL_EVENTS[entity_id].set()
-                ACTIVE_FADES[entity_id].cancel()
-
-                # Race condition protection: The fade loop might be mid-service-call
-                # when we cancel it. If it's calling turn_on with low brightness,
-                # that call might complete AFTER we detect the manual turn-off.
-                # Sending an explicit turn_off ensures the light ends up off.
-                hass.async_create_task(
-                    hass.services.async_call(
-                        LIGHT_DOMAIN,
-                        SERVICE_TURN_OFF,
-                        {ATTR_ENTITY_ID: entity_id},
-                    )
-                )
-            return
-
-        # =====================================================================
-        # Case 3: Brightness changed while light is ON - update orig or cancel
-        # =====================================================================
+        # ON -> ON with brightness change: Store new brightness as original
         if old_state and old_state.state == STATE_ON and new_state.state == STATE_ON:
             old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS)
 
             if new_brightness != old_brightness and new_brightness is not None:
-                # Cancel active fade if any
-                if is_fading:
-                    _LOGGER.debug("(%s) -> Cancelling fade due to manual change", entity_id)
-
-                    if entity_id in FADE_CANCEL_EVENTS:
-                        FADE_CANCEL_EVENTS[entity_id].set()
-                    ACTIVE_FADES[entity_id].cancel()
-
-                # Store new brightness as original - but only if this is a genuine
-                # user action, not a late-arriving event from our fade.
-                #
-                # Skip storing if:
-                # 1. detected_via_brightness_mismatch: Event came from our context
-                #    but had unexpected brightness (late fade event or physical switch
-                #    that inherited our context)
-                # 2. RECENTLY_CANCELLED_FADES: Catch late events that arrive after
-                #    the fade task cleaned up but before we clear the flag
-                should_skip = (
-                    detected_via_brightness_mismatch
-                    or entity_id in RECENTLY_CANCELLED_FADES
+                _LOGGER.debug(
+                    "(%s) -> Storing new brightness as original: %s", entity_id, new_brightness
                 )
-                if not should_skip:
-                    _store_orig_brightness(hass, entity_id, new_brightness)
+                _store_orig_brightness(hass, entity_id, new_brightness)
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change))
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -391,8 +372,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ACTIVE_FADES.clear()
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_BRIGHTNESS.clear()
-    ACTIVE_CONTEXTS.clear()
-    RECENTLY_CANCELLED_FADES.clear()
+    USER_INTENDED_BRIGHTNESS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
@@ -410,7 +390,6 @@ async def _fade_light(
     entity_id: str,
     brightness_pct: int,
     transition_ms: int,
-    context: Context,
     min_step_delay_ms: int,
 ) -> None:
     """Fade a single light to the specified brightness.
@@ -443,7 +422,7 @@ async def _fade_light(
 
     try:
         await _execute_fade(
-            hass, entity_id, brightness_pct, transition_ms, context, min_step_delay_ms, cancel_event
+            hass, entity_id, brightness_pct, transition_ms, min_step_delay_ms, cancel_event
         )
     except asyncio.CancelledError:
         pass  # Normal cancellation, not an error
@@ -459,7 +438,6 @@ async def _execute_fade(
     entity_id: str,
     brightness_pct: int,
     transition_ms: int,
-    context: Context,
     min_step_delay_ms: int,
     cancel_event: asyncio.Event,
 ) -> None:
@@ -483,7 +461,6 @@ async def _execute_fade(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_OFF,
                 {ATTR_ENTITY_ID: entity_id},
-                context=context,
                 blocking=True,
             )
         else:
@@ -491,7 +468,6 @@ async def _execute_fade(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
                 {ATTR_ENTITY_ID: entity_id},
-                context=context,
                 blocking=True,
             )
         return
@@ -611,7 +587,6 @@ async def _execute_fade(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_OFF,
                 {ATTR_ENTITY_ID: entity_id},
-                context=context,
                 blocking=True,
             )
         else:
@@ -622,7 +597,6 @@ async def _execute_fade(
                     ATTR_ENTITY_ID: entity_id,
                     ATTR_BRIGHTNESS: int(new_level),
                 },
-                context=context,
                 blocking=True,
             )
 
@@ -648,7 +622,7 @@ async def _execute_fade(
     #
     # If we faded to 0 (off), we keep the previous orig_brightness so that
     # turning the light back on restores to where it was before the fade.
-    if end_level > 0:
+    if end_level > 0 and not cancel_event.is_set():
         _store_orig_brightness(hass, entity_id, end_level)
         await _save_storage(hass)
 

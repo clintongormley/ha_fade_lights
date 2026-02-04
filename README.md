@@ -143,11 +143,9 @@ When you fade a light to off, the original brightness is preserved. When the lig
 
 ### Manual Change Detection
 
-The integration detects manual changes using two methods:
+The integration detects manual changes by comparing actual brightness to expected brightness during fades. If the brightness differs by more than ±3 (tolerance for device rounding), the change is treated as manual intervention and the fade is cancelled.
 
-1. **Context tracking**: Home Assistant's context system identifies whether a change came from the fade service or an external source.
-
-2. **Brightness comparison**: During an active fade, the integration compares the actual brightness to the expected brightness. If they differ by more than ±3 (tolerance for device rounding), the change is treated as manual intervention.
+When a fade is cancelled due to manual intervention, the integration stores the user's intended state. If a late-arriving fade service call reverts the user's change, the integration automatically restores the user's intended state.
 
 #### Behavior During Fades
 
