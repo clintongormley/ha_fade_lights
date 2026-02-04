@@ -201,11 +201,11 @@ class FadeParams:
         Raises:
             ServiceValidationError: If both brightness params are provided.
         """
-        cls._validate_brightness_mutual_exclusion(data, "")
+        cls._validate_brightness_mutual_exclusion(data)
 
         from_data = data.get(ATTR_FROM, {})
         if from_data:
-            cls._validate_brightness_mutual_exclusion(from_data, "in 'from:' ")
+            cls._validate_brightness_mutual_exclusion(from_data, "in 'from:'")
 
     @staticmethod
     def _validate_brightness_mutual_exclusion(data: dict, context: str = "") -> None:
@@ -213,14 +213,15 @@ class FadeParams:
 
         Args:
             data: Dictionary to check for brightness parameters.
-            context: Optional context string for error message.
+            context: Optional context string for error message (e.g., "in 'from:'").
 
         Raises:
             ServiceValidationError: If both brightness parameters are provided.
         """
         if ATTR_BRIGHTNESS_PCT in data and ATTR_BRIGHTNESS in data:
+            ctx = f" {context}" if context else ""
             raise ServiceValidationError(
-                f"Cannot specify both brightness_pct and brightness{context}"
+                f"Cannot specify both brightness_pct and brightness{ctx}"
             )
 
     @classmethod

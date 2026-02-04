@@ -50,7 +50,8 @@ class TestBrightnessAndBrightnessPctMutualExclusion:
     ) -> None:
         """Test service rejects from: with both brightness and brightness_pct."""
         with pytest.raises(
-            ServiceValidationError, match="Cannot specify both brightness_pct and brightness"
+            ServiceValidationError,
+            match="Cannot specify both brightness_pct and brightness in 'from:'",
         ):
             await hass.services.async_call(
                 DOMAIN,
@@ -81,7 +82,8 @@ class TestBrightnessAndBrightnessPctMutualExclusion:
     def test_rejects_both_in_from_via_from_service_data(self) -> None:
         """Test from_service_data rejects both brightness params in from:."""
         with pytest.raises(
-            ServiceValidationError, match="Cannot specify both brightness_pct and brightness"
+            ServiceValidationError,
+            match="Cannot specify both brightness_pct and brightness in 'from:'",
         ):
             FadeParams.from_service_data(
                 {
