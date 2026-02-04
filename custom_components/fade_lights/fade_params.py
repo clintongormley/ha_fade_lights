@@ -13,6 +13,7 @@ from homeassistant.util.color import (
 )
 
 from .const import (
+    ATTR_BRIGHTNESS,
     ATTR_BRIGHTNESS_PCT,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EASING,
@@ -37,9 +38,15 @@ class FadeParams:
     All color inputs are converted to internal representations:
     - RGB/RGBW/RGBWW/XY colors -> hs_color (hue 0-360, saturation 0-100)
     - color_temp_kelvin is stored directly (no conversion)
+
+    Brightness can be specified as:
+    - brightness_pct: 0-100 percentage value
+    - brightness: 1-255 raw value (advanced)
+    Only one can be specified at a time.
     """
 
     brightness_pct: int | None = None
+    brightness: int | None = None  # Raw brightness value (1-255)
     hs_color: tuple[float, float] | None = None  # (hue, saturation)
     color_temp_kelvin: int | None = None
     transition_ms: int = DEFAULT_TRANSITION * 1000
@@ -47,6 +54,7 @@ class FadeParams:
 
     # Starting values (from: parameter)
     from_brightness_pct: int | None = None
+    from_brightness: int | None = None  # Raw brightness starting value (1-255)
     from_hs_color: tuple[float, float] | None = None
     from_color_temp_kelvin: int | None = None
 
@@ -54,6 +62,7 @@ class FadeParams:
         """Check if any fade target values are specified."""
         return (
             self.brightness_pct is not None
+            or self.brightness is not None
             or self.hs_color is not None
             or self.color_temp_kelvin is not None
         )
@@ -62,6 +71,7 @@ class FadeParams:
         """Check if any from values are specified."""
         return (
             self.from_brightness_pct is not None
+            or self.from_brightness is not None
             or self.from_hs_color is not None
             or self.from_color_temp_kelvin is not None
         )
@@ -90,12 +100,14 @@ class FadeParams:
             ServiceValidationError: If validation fails
         """
         cls._validate_known_params(data)
+        cls._validate_brightness_params(data)
         cls._validate_color_params(data)
         cls._validate_color_ranges(data)
 
-        brightness_pct, hs_color, color_temp_kelvin = cls._extract_fade_values(data)
+        brightness_pct, brightness, hs_color, color_temp_kelvin = cls._extract_fade_values(data)
 
         from_brightness_pct = None
+        from_brightness = None
         from_hs_color = None
         from_color_temp_kelvin = None
 
@@ -103,6 +115,7 @@ class FadeParams:
         if from_data:
             (
                 from_brightness_pct,
+                from_brightness,
                 from_hs_color,
                 from_color_temp_kelvin,
             ) = cls._extract_fade_values(from_data)
@@ -112,11 +125,13 @@ class FadeParams:
 
         return cls(
             brightness_pct=brightness_pct,
+            brightness=brightness,
             hs_color=hs_color,
             color_temp_kelvin=color_temp_kelvin,
             transition_ms=transition_ms,
             easing=easing,
             from_brightness_pct=from_brightness_pct,
+            from_brightness=from_brightness,
             from_hs_color=from_hs_color,
             from_color_temp_kelvin=from_color_temp_kelvin,
         )
@@ -178,6 +193,37 @@ class FadeParams:
                 )
 
     @classmethod
+    def _validate_brightness_params(cls, data: dict) -> None:
+        """Validate that brightness_pct and brightness are not both specified.
+
+        Also validates the from: parameter if present.
+
+        Raises:
+            ServiceValidationError: If both brightness params are provided.
+        """
+        cls._validate_brightness_mutual_exclusion(data, "")
+
+        from_data = data.get(ATTR_FROM, {})
+        if from_data:
+            cls._validate_brightness_mutual_exclusion(from_data, "in 'from:' ")
+
+    @staticmethod
+    def _validate_brightness_mutual_exclusion(data: dict, context: str = "") -> None:
+        """Validate that brightness_pct and brightness are not both specified.
+
+        Args:
+            data: Dictionary to check for brightness parameters.
+            context: Optional context string for error message.
+
+        Raises:
+            ServiceValidationError: If both brightness parameters are provided.
+        """
+        if ATTR_BRIGHTNESS_PCT in data and ATTR_BRIGHTNESS in data:
+            raise ServiceValidationError(
+                f"Cannot specify both brightness_pct and brightness{context}"
+            )
+
+    @classmethod
     def _validate_color_ranges(cls, data: dict) -> None:
         """Validate color parameter value ranges.
 
@@ -194,10 +240,17 @@ class FadeParams:
     def _validate_color_ranges_dict(data: dict, prefix: str) -> None:
         """Validate color and brightness ranges in a single dict."""
         if ATTR_BRIGHTNESS_PCT in data:
-            brightness = data[ATTR_BRIGHTNESS_PCT]
-            if not 0 <= brightness <= 100:
+            brightness_pct = data[ATTR_BRIGHTNESS_PCT]
+            if not 0 <= brightness_pct <= 100:
                 raise ServiceValidationError(
-                    f"{prefix}Brightness must be between 0 and 100, got {brightness}"
+                    f"{prefix}Brightness must be between 0 and 100, got {brightness_pct}"
+                )
+
+        if ATTR_BRIGHTNESS in data:
+            brightness = data[ATTR_BRIGHTNESS]
+            if not 1 <= brightness <= 255:
+                raise ServiceValidationError(
+                    f"{prefix}Brightness must be between 1 and 255, got {brightness}"
                 )
 
         if ATTR_HS_COLOR in data:
@@ -251,15 +304,16 @@ class FadeParams:
     @classmethod
     def _extract_fade_values(
         cls, data: dict
-    ) -> tuple[int | None, tuple[float, float] | None, int | None]:
-        """Extract brightness, HS color, and color temp from data dict.
+    ) -> tuple[int | None, int | None, tuple[float, float] | None, int | None]:
+        """Extract brightness values, HS color, and color temp from data dict.
 
         Returns:
-            Tuple of (brightness_pct, hs_color, color_temp_kelvin)
+            Tuple of (brightness_pct, brightness, hs_color, color_temp_kelvin)
         """
         brightness_pct = int(data[ATTR_BRIGHTNESS_PCT]) if ATTR_BRIGHTNESS_PCT in data else None
+        brightness = int(data[ATTR_BRIGHTNESS]) if ATTR_BRIGHTNESS in data else None
         hs, kelvin = cls._extract_color(data)
-        return brightness_pct, hs, kelvin
+        return brightness_pct, brightness, hs, kelvin
 
     @staticmethod
     def _extract_color(data: dict) -> tuple[tuple[float, float] | None, int | None]:

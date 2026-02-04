@@ -6,6 +6,7 @@ DOMAIN = "fade_lights"
 SERVICE_FADE_LIGHTS = "fade_lights"
 
 # Service attributes
+ATTR_BRIGHTNESS = "brightness"
 ATTR_BRIGHTNESS_PCT = "brightness_pct"
 ATTR_TRANSITION = "transition"
 ATTR_EASING = "easing"
@@ -34,6 +35,7 @@ COLOR_PARAMS = frozenset(
 # Valid parameters for from: block
 FROM_PARAMS = frozenset(
     {
+        ATTR_BRIGHTNESS,
         ATTR_BRIGHTNESS_PCT,
         ATTR_COLOR_TEMP_KELVIN,
         ATTR_HS_COLOR,
@@ -48,6 +50,7 @@ FROM_PARAMS = frozenset(
 MAIN_PARAMS = frozenset(
     {
         "entity_id",
+        ATTR_BRIGHTNESS,
         ATTR_BRIGHTNESS_PCT,
         ATTR_TRANSITION,
         ATTR_EASING,
