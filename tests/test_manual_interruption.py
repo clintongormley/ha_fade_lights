@@ -28,6 +28,7 @@ from custom_components.fade_lights.const import (
     DOMAIN,
     SERVICE_FADE_LIGHTS,
 )
+from custom_components.fade_lights.models import ExpectedValues
 
 
 @pytest.fixture
@@ -505,9 +506,10 @@ async def test_brightness_tolerance_allows_rounding(
         },
     )
 
-    # Simulate that we're expecting brightness 100 (now a dict mapping brightness to timestamp)
+    # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
     FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        entity_id=entity_id, values={100: time.monotonic()}
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     # Create a simple mock task that we can track
@@ -534,7 +536,8 @@ async def test_brightness_tolerance_allows_rounding(
 
         # Re-add expected brightness since the previous match removed it from tracking
         FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-            entity_id=entity_id, values={100: time.monotonic()}
+            entity_id=entity_id,
+            values=[(ExpectedValues(brightness=100), time.monotonic())],
         )
 
         # Now test with brightness AT the tolerance boundary
@@ -580,9 +583,10 @@ async def test_brightness_outside_tolerance_cancels_fade(
         },
     )
 
-    # Simulate that we're expecting brightness 100 (now a dict mapping brightness to timestamp)
+    # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
     FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        entity_id=entity_id, values={100: time.monotonic()}
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     # Use an event to control the fake fade task
@@ -642,9 +646,10 @@ async def test_expected_brightness_changes_ignored(
         },
     )
 
-    # Simulate that we're expecting brightness 100 (now a dict mapping brightness to timestamp)
+    # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
     FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        entity_id=entity_id, values={100: time.monotonic()}
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     # Create a simple mock task that we can track
@@ -670,7 +675,8 @@ async def test_expected_brightness_changes_ignored(
 
         # Re-add expected brightness since the previous match removed it from tracking
         FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-            entity_id=entity_id, values={100: time.monotonic()}
+            entity_id=entity_id,
+            values=[(ExpectedValues(brightness=100), time.monotonic())],
         )
 
         # Also verify with brightness slightly different but within tolerance
@@ -775,7 +781,8 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
 
     # Simulate that we're expecting brightness 100 (mid-fade) but user set 150
     FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        entity_id=entity_id, values={100: time.monotonic()}
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     # Use an event to control the fake fade task
@@ -851,7 +858,8 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
 
     # Simulate that we're expecting brightness 50 (near end of fade to 0%)
     FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
-        entity_id=entity_id, values={50: time.monotonic()}
+        entity_id=entity_id,
+        values=[(ExpectedValues(brightness=50), time.monotonic())],
     )
 
     # Use an event to control the fake fade task
