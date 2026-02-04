@@ -604,3 +604,133 @@ async def test_fade_timing_accounts_for_service_call_duration(
         # Duration is in seconds, should be around 0.020 or less
         assert duration <= 0.050, f"Sleep duration {duration} should be <= 0.050s (50ms delay)"
         assert duration >= 0, f"Sleep duration {duration} should be non-negative"
+
+
+async def test_fade_entity_not_found_logs_warning(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that _execute_fade logs warning when entity doesn't exist.
+
+    This tests lines 514-515 where state is None.
+    """
+    import asyncio
+
+    from custom_components.fade_lights import _execute_fade
+
+    entity_id = "light.missing_entity"
+    cancel_event = asyncio.Event()
+
+    with caplog.at_level(logging.WARNING):
+        await _execute_fade(
+            hass,
+            entity_id,
+            50,  # brightness_pct
+            1000,  # transition_ms
+            50,  # min_step_delay_ms
+            cancel_event,
+        )
+
+    assert f"Entity {entity_id} not found" in caplog.text
+    assert len(service_calls) == 0
+
+
+async def test_fade_cancel_event_before_brightness_apply(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that cancel event stops fade before applying brightness.
+
+    This tests line 552 where cancel_event.is_set() at start of loop.
+    """
+    import asyncio
+
+    from custom_components.fade_lights import _execute_fade
+
+    entity_id = "light.test_cancel_before"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 200,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    cancel_event = asyncio.Event()
+    # Set cancel event BEFORE starting fade
+    cancel_event.set()
+
+    await _execute_fade(
+        hass,
+        entity_id,
+        50,  # brightness_pct
+        5000,  # long transition
+        50,  # min_step_delay_ms
+        cancel_event,
+    )
+
+    # No service calls should have been made since cancel was set
+    assert len(service_calls) == 0
+
+
+async def test_fade_cancel_event_after_brightness_apply(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that cancel event stops fade after applying brightness.
+
+    This tests line 562 where cancel_event.is_set() after _apply_brightness.
+    """
+    import asyncio
+
+    from custom_components.fade_lights import _execute_fade
+
+    entity_id = "light.test_cancel_after"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 200,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    cancel_event = asyncio.Event()
+
+    # Create a mock for _apply_brightness that sets cancel event after first call
+    original_apply = None
+    call_count = 0
+
+    async def cancelling_apply(hass, eid, level):
+        nonlocal call_count, original_apply
+        call_count += 1
+        # After first apply, set the cancel event
+        if call_count == 1:
+            cancel_event.set()
+        # Actually apply the brightness
+        if level == 0:
+            await hass.services.async_call(
+                "light", "turn_off", {ATTR_ENTITY_ID: eid}, blocking=True
+            )
+        else:
+            await hass.services.async_call(
+                "light", "turn_on", {ATTR_ENTITY_ID: eid, ATTR_BRIGHTNESS: level}, blocking=True
+            )
+
+    with patch("custom_components.fade_lights._apply_brightness", side_effect=cancelling_apply):
+        await _execute_fade(
+            hass,
+            entity_id,
+            10,  # brightness_pct - need big change for multiple steps
+            5000,  # long transition
+            50,  # min_step_delay_ms
+            cancel_event,
+        )
+
+    # Should have only made 1 service call before cancel took effect
+    assert len(service_calls) == 1

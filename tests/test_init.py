@@ -148,3 +148,55 @@ async def test_options_update_reloads_entry(
 
     # Verify the service is still available (entry was reloaded, not just unloaded)
     assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
+
+
+async def test_async_setup_auto_import_when_no_entries(
+    hass: HomeAssistant,
+) -> None:
+    """Test async_setup triggers config flow when no entries exist."""
+    from custom_components.fade_lights import async_setup
+
+    # Track if flow was initiated
+    flow_init_called = False
+    original_async_init = hass.config_entries.flow.async_init
+
+    async def mock_async_init(domain, *, context=None):
+        nonlocal flow_init_called
+        if domain == DOMAIN and context and context.get("source") == "import":
+            flow_init_called = True
+        return await original_async_init(domain, context=context)
+
+    with patch.object(hass.config_entries.flow, "async_init", side_effect=mock_async_init):
+        result = await async_setup(hass, {})
+
+    assert result is True
+    # Wait for the task to complete
+    await hass.async_block_till_done()
+    assert flow_init_called, "Config flow should be initiated when no entries exist"
+
+
+async def test_async_setup_no_auto_import_when_entry_exists(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test async_setup does not trigger config flow when entries exist."""
+    from custom_components.fade_lights import async_setup
+
+    # Add entry to hass before calling async_setup
+    mock_config_entry.add_to_hass(hass)
+
+    flow_init_called = False
+    original_async_init = hass.config_entries.flow.async_init
+
+    async def mock_async_init(domain, *, context=None):
+        nonlocal flow_init_called
+        if domain == DOMAIN and context and context.get("source") == "import":
+            flow_init_called = True
+        return await original_async_init(domain, context=context)
+
+    with patch.object(hass.config_entries.flow, "async_init", side_effect=mock_async_init):
+        result = await async_setup(hass, {})
+
+    assert result is True
+    await hass.async_block_till_done()
+    assert not flow_init_called, "Config flow should NOT be initiated when entries exist"
