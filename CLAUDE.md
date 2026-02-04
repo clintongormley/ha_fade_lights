@@ -2,6 +2,7 @@
 
 ## Git Workflow
 
+- All changes should be made via a PR (do not push directly to main)
 - Always ask before merging a PR
 - When merging a PR, delete the branch that the PR was on
 
