@@ -47,3 +47,170 @@ class TestInterpolateHue:
         """Test result is always in 0-360 range."""
         result = _interpolate_hue(350, 20, 0.9)
         assert 0 <= result < 360
+
+
+from custom_components.fade_lights import _build_fade_steps
+from custom_components.fade_lights.models import FadeStep
+
+
+class TestBuildFadeSteps:
+    """Test fade step generation."""
+
+    def test_brightness_only_fade(self) -> None:
+        """Test generating steps for brightness-only fade."""
+        steps = _build_fade_steps(
+            start_brightness=100,
+            end_brightness=200,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert len(steps) == 10
+        assert steps[0].brightness is not None
+        assert steps[0].hs_color is None
+        assert steps[-1].brightness == 200
+        brightnesses = [s.brightness for s in steps]
+        assert brightnesses == sorted(brightnesses)
+
+    def test_brightness_fade_down(self) -> None:
+        """Test generating steps for brightness fade down."""
+        steps = _build_fade_steps(
+            start_brightness=200,
+            end_brightness=50,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert steps[-1].brightness == 50
+        brightnesses = [s.brightness for s in steps]
+        assert brightnesses == sorted(brightnesses, reverse=True)
+
+    def test_hs_color_fade(self) -> None:
+        """Test generating steps for HS color fade."""
+        steps = _build_fade_steps(
+            start_brightness=None,
+            end_brightness=None,
+            start_hs=(100.0, 50.0),
+            end_hs=(200.0, 80.0),
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert len(steps) == 10
+        assert steps[0].hs_color is not None
+        assert steps[-1].hs_color == (200.0, 80.0)
+        assert steps[0].brightness is None
+
+    def test_hs_color_short_path(self) -> None:
+        """Test HS fade uses short path for hue."""
+        steps = _build_fade_steps(
+            start_brightness=None,
+            end_brightness=None,
+            start_hs=(350.0, 50.0),
+            end_hs=(20.0, 50.0),
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        mid_step = steps[len(steps) // 2]
+        assert mid_step.hs_color is not None
+        mid_hue = mid_step.hs_color[0]
+        assert mid_hue < 30 or mid_hue > 340
+
+    def test_color_temp_fade(self) -> None:
+        """Test generating steps for color temperature fade."""
+        steps = _build_fade_steps(
+            start_brightness=None,
+            end_brightness=None,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=250,
+            end_mireds=400,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert len(steps) == 10
+        assert steps[0].color_temp_mireds is not None
+        assert steps[-1].color_temp_mireds == 400
+
+    def test_combined_brightness_and_hs(self) -> None:
+        """Test fading both brightness and HS together."""
+        steps = _build_fade_steps(
+            start_brightness=100,
+            end_brightness=200,
+            start_hs=(0.0, 50.0),
+            end_hs=(100.0, 80.0),
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert steps[0].brightness is not None
+        assert steps[0].hs_color is not None
+        assert steps[-1].brightness == 200
+        assert steps[-1].hs_color == (100.0, 80.0)
+
+    def test_step_count_limited_by_time(self) -> None:
+        """Test step count is limited by transition_ms / min_step_delay_ms."""
+        steps = _build_fade_steps(
+            start_brightness=0,
+            end_brightness=255,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=500,
+            min_step_delay_ms=100,
+        )
+        assert len(steps) <= 5
+
+    def test_step_count_limited_by_change(self) -> None:
+        """Test step count limited by actual change magnitude."""
+        steps = _build_fade_steps(
+            start_brightness=100,
+            end_brightness=105,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=10000,
+            min_step_delay_ms=100,
+        )
+        assert len(steps) <= 10
+
+    def test_minimum_one_step(self) -> None:
+        """Test at least one step is generated."""
+        steps = _build_fade_steps(
+            start_brightness=100,
+            end_brightness=100,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert len(steps) >= 1
+        assert steps[-1].brightness == 100
+
+    def test_no_start_equals_end_in_steps(self) -> None:
+        """Test that start value is not included in steps."""
+        steps = _build_fade_steps(
+            start_brightness=100,
+            end_brightness=200,
+            start_hs=None,
+            end_hs=None,
+            start_mireds=None,
+            end_mireds=None,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+        assert steps[0].brightness != 100
