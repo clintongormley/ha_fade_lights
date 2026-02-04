@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_components.fade_lights import _interpolate_hue
+from custom_components.fade_lights import _build_fade_steps, _interpolate_hue
 
 
 class TestInterpolateHue:
@@ -47,10 +47,6 @@ class TestInterpolateHue:
         """Test result is always in 0-360 range."""
         result = _interpolate_hue(350, 20, 0.9)
         assert 0 <= result < 360
-
-
-from custom_components.fade_lights import _build_fade_steps
-from custom_components.fade_lights.models import FadeStep
 
 
 class TestBuildFadeSteps:

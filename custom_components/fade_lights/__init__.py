@@ -62,7 +62,7 @@ from .const import (
     STALE_THRESHOLD,
     STORAGE_KEY,
 )
-from .models import FadeParams
+from .models import FadeParams, FadeStep
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -768,6 +768,60 @@ def _interpolate_hue(start: float, end: float, t: float) -> float:
 
     result = start + diff * t
     return result % 360
+
+
+def _build_fade_steps(
+    start_brightness: int | None,
+    end_brightness: int | None,
+    start_hs: tuple[float, float] | None,
+    end_hs: tuple[float, float] | None,
+    start_mireds: int | None,
+    end_mireds: int | None,
+    transition_ms: int,
+    min_step_delay_ms: int,
+) -> list[FadeStep]:
+    """Build array of interpolated fade steps.
+
+    Calculates optimal step count based on the largest change dimension,
+    constrained by transition time and minimum step delay.
+    """
+    max_steps = max(1, transition_ms // min_step_delay_ms)
+
+    changes = []
+    if start_brightness is not None and end_brightness is not None:
+        changes.append(abs(end_brightness - start_brightness))
+    if start_hs is not None and end_hs is not None:
+        hue_diff = abs(end_hs[0] - start_hs[0])
+        if hue_diff > 180:
+            hue_diff = 360 - hue_diff
+        sat_diff = abs(end_hs[1] - start_hs[1])
+        changes.append(max(hue_diff, sat_diff))
+    if start_mireds is not None and end_mireds is not None:
+        changes.append(abs(end_mireds - start_mireds))
+
+    max_change = max(changes) if changes else 1
+    optimal_steps = max(1, int(max_change))
+    num_steps = min(max_steps, optimal_steps)
+
+    steps = []
+    for i in range(1, num_steps + 1):
+        t = i / num_steps
+        step = FadeStep()
+
+        if start_brightness is not None and end_brightness is not None:
+            step.brightness = round(start_brightness + (end_brightness - start_brightness) * t)
+
+        if start_hs is not None and end_hs is not None:
+            hue = _interpolate_hue(start_hs[0], end_hs[0], t)
+            sat = start_hs[1] + (end_hs[1] - start_hs[1]) * t
+            step.hs_color = (round(hue, 2), round(sat, 2))
+
+        if start_mireds is not None and end_mireds is not None:
+            step.color_temp_mireds = round(start_mireds + (end_mireds - start_mireds) * t)
+
+        steps.append(step)
+
+    return steps
 
 
 def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | None) -> list[str]:
