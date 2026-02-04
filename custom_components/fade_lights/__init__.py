@@ -1113,23 +1113,33 @@ def _build_fade_steps(
     Calculates optimal step count based on the largest change dimension,
     constrained by transition time and minimum step delay.
     """
-    max_steps = max(1, transition_ms // min_step_delay_ms)
+    # Calculate changes for each dimension
+    brightness_change: int | None = None
+    hue_change: float | None = None
+    sat_change: float | None = None
+    mireds_change: int | None = None
 
-    changes = []
     if start_brightness is not None and end_brightness is not None:
-        changes.append(abs(end_brightness - start_brightness))
+        brightness_change = abs(end_brightness - start_brightness)
+
     if start_hs is not None and end_hs is not None:
         hue_diff = abs(end_hs[0] - start_hs[0])
         if hue_diff > 180:
             hue_diff = 360 - hue_diff
-        sat_diff = abs(end_hs[1] - start_hs[1])
-        changes.append(max(hue_diff, sat_diff))
-    if start_mireds is not None and end_mireds is not None:
-        changes.append(abs(end_mireds - start_mireds))
+        hue_change = hue_diff
+        sat_change = abs(end_hs[1] - start_hs[1])
 
-    max_change = max(changes) if changes else 1
-    optimal_steps = max(1, int(max_change))
-    num_steps = min(max_steps, optimal_steps)
+    if start_mireds is not None and end_mireds is not None:
+        mireds_change = abs(end_mireds - start_mireds)
+
+    num_steps = _calculate_step_count(
+        brightness_change=brightness_change,
+        hue_change=hue_change,
+        sat_change=sat_change,
+        mireds_change=mireds_change,
+        transition_ms=transition_ms,
+        min_step_delay_ms=min_step_delay_ms,
+    )
 
     steps = []
     for i in range(1, num_steps + 1):
