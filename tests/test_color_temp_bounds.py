@@ -14,11 +14,8 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import ColorMode
 
-from custom_components.fade_lights import (
-    DOMAIN,
-    _clamp_mireds,
-    _resolve_fade,
-)
+from custom_components.fade_lights import DOMAIN
+from custom_components.fade_lights.fade_change import FadeChange, _clamp_mireds
 from custom_components.fade_lights.fade_params import FadeParams
 
 
@@ -77,7 +74,7 @@ class TestResolveFadeWithBounds:
 
         # min_mireds = 1_000_000 / 6500 = 153
         # max_mireds = 1_000_000 / 2000 = 500
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # End mireds should be clamped to max_mireds (500) = 2000K
@@ -102,7 +99,7 @@ class TestResolveFadeWithBounds:
 
         # min_mireds = 1_000_000 / 6500 = 153
         # max_mireds = 1_000_000 / 2000 = 500
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # End mireds should be clamped to min_mireds (153) = 6500K
@@ -125,7 +122,7 @@ class TestResolveFadeWithBounds:
 
         # min_mireds = 1_000_000 / 6500 = 153
         # max_mireds = 1_000_000 / 2000 = 500
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # 4000K = 250 mireds, should be unchanged
@@ -148,7 +145,7 @@ class TestResolveFadeWithBounds:
 
         # min_mireds = 1_000_000 / 6500 = 153
         # max_mireds = 1_000_000 / 2000 = 500
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # Start mireds should be clamped to max_mireds (500) = 2000K
@@ -168,7 +165,7 @@ class TestResolveFadeWithBounds:
             # No min/max bounds
         }
 
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # 1500K = 666 mireds, should NOT be clamped
@@ -192,7 +189,7 @@ class TestHybridTransitionsWithBounds:
             ATTR_SUPPORTED_COLOR_MODES: [ColorMode.HS, ColorMode.COLOR_TEMP],
         }
 
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # Should be hybrid transition
@@ -215,7 +212,7 @@ class TestHybridTransitionsWithBounds:
             ATTR_SUPPORTED_COLOR_MODES: [ColorMode.HS, ColorMode.COLOR_TEMP],
         }
 
-        change = _resolve_fade(params, state, min_step_delay_ms=100)
+        change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
         # Should be hybrid transition
