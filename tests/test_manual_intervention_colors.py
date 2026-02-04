@@ -8,7 +8,7 @@ from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 from homeassistant.const import STATE_ON
 
 from custom_components.fade_lights import (
-    FADE_EXPECTED_BRIGHTNESS,
+    FADE_EXPECTED_STATE,
     ExpectedState,
     _match_and_remove_expected,
 )
@@ -48,13 +48,13 @@ class TestManualInterventionColors:
 
     def setup_method(self):
         """Clear tracking state before each test."""
-        FADE_EXPECTED_BRIGHTNESS.clear()
+        FADE_EXPECTED_STATE.clear()
 
     def test_state_matches_expected_brightness_and_hs_color(self, mock_state_on_with_color):
         """Test state change matches when both brightness and HS color match."""
         entity_id = "light.test"
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
-        FADE_EXPECTED_BRIGHTNESS[entity_id].add(
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
+        FADE_EXPECTED_STATE[entity_id].add(
             ExpectedValues(brightness=200, hs_color=(180.0, 50.0))
         )
 
@@ -64,9 +64,9 @@ class TestManualInterventionColors:
     def test_state_mismatch_wrong_hs_color_triggers_intervention(self, mock_state_on_with_color):
         """Test state mismatch when HS color is wrong triggers intervention."""
         entity_id = "light.test"
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
         # Expecting different color (hue 100 vs actual 180 - outside tolerance)
-        FADE_EXPECTED_BRIGHTNESS[entity_id].add(
+        FADE_EXPECTED_STATE[entity_id].add(
             ExpectedValues(brightness=200, hs_color=(100.0, 50.0))
         )
 
@@ -76,8 +76,8 @@ class TestManualInterventionColors:
     def test_state_matches_expected_brightness_and_mireds(self, mock_state_on_with_mireds):
         """Test state change matches when both brightness and mireds match."""
         entity_id = "light.test"
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
-        FADE_EXPECTED_BRIGHTNESS[entity_id].add(
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
+        FADE_EXPECTED_STATE[entity_id].add(
             ExpectedValues(brightness=200, color_temp_mireds=333)
         )
 
@@ -87,9 +87,9 @@ class TestManualInterventionColors:
     def test_state_mismatch_wrong_mireds_triggers_intervention(self, mock_state_on_with_mireds):
         """Test state mismatch when mireds is wrong triggers intervention."""
         entity_id = "light.test"
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
         # Expecting different mireds (250 vs actual 333 - outside tolerance)
-        FADE_EXPECTED_BRIGHTNESS[entity_id].add(
+        FADE_EXPECTED_STATE[entity_id].add(
             ExpectedValues(brightness=200, color_temp_mireds=250)
         )
 
@@ -99,9 +99,9 @@ class TestManualInterventionColors:
     def test_brightness_only_fade_ignores_color_changes(self, mock_state_on_with_color):
         """Test brightness-only fade doesn't care about color changes."""
         entity_id = "light.test"
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
         # Only tracking brightness (not color)
-        FADE_EXPECTED_BRIGHTNESS[entity_id].add(ExpectedValues(brightness=200))
+        FADE_EXPECTED_STATE[entity_id].add(ExpectedValues(brightness=200))
 
         # State has color but we weren't tracking it
         result = _match_and_remove_expected(entity_id, mock_state_on_with_color)

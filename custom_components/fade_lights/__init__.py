@@ -88,9 +88,9 @@ ACTIVE_FADES: dict[str, asyncio.Task] = {}
 FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
 
 
-# Maps entity_id -> ExpectedState for tracking expected brightness during fades
+# Maps entity_id -> ExpectedState for tracking expected state during fades
 # and waiting for state change events after service calls.
-FADE_EXPECTED_BRIGHTNESS: dict[str, ExpectedState] = {}
+FADE_EXPECTED_STATE: dict[str, ExpectedState] = {}
 
 # Maps entity_id -> asyncio.Condition to signal when fade cleanup completes.
 # Waiters use this instead of polling to know when a cancelled fade has finished.
@@ -342,7 +342,7 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
 
     ACTIVE_FADES.clear()
     FADE_CANCEL_EVENTS.clear()
-    FADE_EXPECTED_BRIGHTNESS.clear()
+    FADE_EXPECTED_STATE.clear()
     FADE_COMPLETE_CONDITIONS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
@@ -447,7 +447,7 @@ async def _fade_light(
         # Clean up tracking state regardless of how the fade ended
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
-        # Note: FADE_EXPECTED_BRIGHTNESS is NOT cleared here - values persist
+        # Note: FADE_EXPECTED_STATE is NOT cleared here - values persist
         # for event matching and are pruned when next fade starts
 
         # Notify any waiters that cleanup is complete
@@ -1195,7 +1195,7 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event) -> None:
         return
 
     # During fade: if we get here, state didn't match expected - manual intervention
-    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_BRIGHTNESS:
+    if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_STATE:
         # Manual intervention detected
         _LOGGER.info(
             "%s: Manual intervention detected (state=%s, brightness=%s)",
@@ -1243,7 +1243,7 @@ def _match_and_remove_expected(entity_id: str, new_state: State) -> bool:
 
     Returns True if this was an expected state change (caller should ignore it).
     """
-    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    expected_state = FADE_EXPECTED_STATE.get(entity_id)
     if not expected_state or expected_state.is_empty:
         return False
 
@@ -1542,9 +1542,9 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
 
 def _add_expected_values(entity_id: str, values: ExpectedValues) -> None:
     """Register expected values before making a service call."""
-    if entity_id not in FADE_EXPECTED_BRIGHTNESS:
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
-    FADE_EXPECTED_BRIGHTNESS[entity_id].add(values)
+    if entity_id not in FADE_EXPECTED_STATE:
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(entity_id=entity_id)
+    FADE_EXPECTED_STATE[entity_id].add(values)
 
 
 def _add_expected_brightness(entity_id: str, brightness: int) -> None:
@@ -1557,7 +1557,7 @@ async def _wait_until_stale_events_flushed(
     timeout: float = 5.0,
 ) -> None:
     """Wait until all expected brightness values have been confirmed via state changes."""
-    expected_state = FADE_EXPECTED_BRIGHTNESS.get(entity_id)
+    expected_state = FADE_EXPECTED_STATE.get(entity_id)
     if not expected_state or expected_state.is_empty:
         return
 

@@ -19,7 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.fade_lights import (
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
-    FADE_EXPECTED_BRIGHTNESS,
+    FADE_EXPECTED_STATE,
     ExpectedState,
 )
 from custom_components.fade_lights.const import (
@@ -507,7 +507,7 @@ async def test_brightness_tolerance_allows_rounding(
     )
 
     # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
@@ -535,7 +535,7 @@ async def test_brightness_tolerance_allows_rounding(
         assert not cancel_event.is_set(), "Cancel should not be set for within-tolerance"
 
         # Re-add expected brightness since the previous match removed it from tracking
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(
             entity_id=entity_id,
             values=[(ExpectedValues(brightness=100), time.monotonic())],
         )
@@ -556,7 +556,7 @@ async def test_brightness_tolerance_allows_rounding(
 
     finally:
         # Clean up
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+        FADE_EXPECTED_STATE.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         if not fake_task.done():
@@ -584,7 +584,7 @@ async def test_brightness_outside_tolerance_cancels_fade(
     )
 
     # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
@@ -619,7 +619,7 @@ async def test_brightness_outside_tolerance_cancels_fade(
     finally:
         # Clean up - signal the fake task to stop
         stop_fake_fade.set()
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+        FADE_EXPECTED_STATE.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         with contextlib.suppress(asyncio.CancelledError):
@@ -647,7 +647,7 @@ async def test_expected_brightness_changes_ignored(
     )
 
     # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
@@ -674,7 +674,7 @@ async def test_expected_brightness_changes_ignored(
         assert not cancel_event.is_set(), "Cancel event should not be set for expected brightness"
 
         # Re-add expected brightness since the previous match removed it from tracking
-        FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+        FADE_EXPECTED_STATE[entity_id] = ExpectedState(
             entity_id=entity_id,
             values=[(ExpectedValues(brightness=100), time.monotonic())],
         )
@@ -695,7 +695,7 @@ async def test_expected_brightness_changes_ignored(
 
     finally:
         # Clean up
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+        FADE_EXPECTED_STATE.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         if not fake_task.done():
@@ -780,7 +780,7 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
     hass.data[DOMAIN]["data"][entity_id] = initial_brightness
 
     # Simulate that we're expecting brightness 100 (mid-fade) but user set 150
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
@@ -821,7 +821,7 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
 
     finally:
         # Clean up
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+        FADE_EXPECTED_STATE.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         if not fake_task.done():
@@ -857,7 +857,7 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
     hass.data[DOMAIN]["data"][entity_id] = original_brightness
 
     # Simulate that we're expecting brightness 50 (near end of fade to 0%)
-    FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(
+    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=50), time.monotonic())],
     )
@@ -899,7 +899,7 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
 
     finally:
         # Clean up
-        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+        FADE_EXPECTED_STATE.pop(entity_id, None)
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         if not fake_task.done():
