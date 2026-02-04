@@ -9,8 +9,8 @@ import pytest
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
-    ColorMode,
 )
+from homeassistant.components.light.const import ColorMode
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -454,6 +454,7 @@ async def test_fade_from_off_turns_on(
 
     # Verify light state is ON
     state = hass.states.get(entity_id)
+    assert state is not None
     assert state.state == STATE_ON
 
 

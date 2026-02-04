@@ -12,9 +12,7 @@ from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
 )
-from homeassistant.components.light import (
-    DOMAIN as LIGHT_DOMAIN,
-)
+from homeassistant.components.light.const import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.light.const import ColorMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -92,16 +90,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_fade_lights(call: ServiceCall) -> None:
         """Handle the fade_lights service call."""
-        entity_ids = call.data.get(ATTR_ENTITY_ID)
+        entity_ids_raw = call.data.get(ATTR_ENTITY_ID)
         brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
         transition = float(call.data.get(ATTR_TRANSITION, default_transition))
 
-        if isinstance(entity_ids, str):
-            entity_ids = [e.strip() for e in entity_ids.split(",")]
+        if entity_ids_raw is None:
+            return
+
+        if isinstance(entity_ids_raw, str):
+            entity_ids = [e.strip() for e in entity_ids_raw.split(",")]
+        else:
+            entity_ids = list(entity_ids_raw)
 
         expanded_entities = await _expand_entity_ids(hass, entity_ids)
 
-        transition_ms = transition * 1000
+        transition_ms = int(transition * 1000)
 
         # Create a context for this fade operation
         context = Context()
