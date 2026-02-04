@@ -61,12 +61,12 @@ class TestExecuteFadeWithColors:
             hs_color=(120.0, 80.0),  # Target green
         )
 
+        params.transition_ms = 1000
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
                 params,
-                1000,  # transition_ms
                 100,  # min_step_delay_ms
                 cancel_event,
             )
@@ -91,12 +91,12 @@ class TestExecuteFadeWithColors:
             color_temp_mireds=400,  # Target warm white
         )
 
+        params.transition_ms = 1000
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
                 params,
-                1000,  # transition_ms
                 100,  # min_step_delay_ms
                 cancel_event,
             )
@@ -122,12 +122,12 @@ class TestExecuteFadeWithColors:
             hs_color=(240.0, 100.0),  # Target blue
         )
 
+        params.transition_ms = 1000
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
                 params,
-                1000,  # transition_ms
                 100,  # min_step_delay_ms
                 cancel_event,
             )
@@ -151,6 +151,7 @@ class TestExecuteFadeWithColors:
 
         params = FadeParams(
             brightness_pct=100,  # No color params
+            transition_ms=500,
         )
 
         with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
@@ -158,8 +159,7 @@ class TestExecuteFadeWithColors:
                 mock_hass,
                 "light.test",
                 params,
-                500,
-                100,
+                100,  # min_step_delay_ms
                 cancel_event,
             )
 

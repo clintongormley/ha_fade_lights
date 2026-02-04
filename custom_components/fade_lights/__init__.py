@@ -39,9 +39,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
-    ATTR_TRANSITION,
     DEFAULT_MIN_STEP_DELAY_MS,
-    DEFAULT_TRANSITION,
     DOMAIN,
     FADE_CANCEL_TIMEOUT_S,
     MIN_BRIGHTNESS_DELTA,
@@ -178,8 +176,6 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
         _LOGGER.debug("No fade parameters specified, nothing to do")
         return
 
-    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, DEFAULT_TRANSITION)))
-
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
     if not expanded_entities:
         return
@@ -199,7 +195,6 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
                     hass,
                     entity_id,
                     fade_params,
-                    transition_ms,
                     min_step_delay_ms,
                 )
             )
@@ -213,7 +208,6 @@ async def _fade_light(
     hass: HomeAssistant,
     entity_id: str,
     fade_params: FadeParams,
-    transition_ms: int,
     min_step_delay_ms: int,
 ) -> None:
     """Fade a single light to the specified brightness and/or color.
@@ -244,7 +238,7 @@ async def _fade_light(
 
     try:
         await _execute_fade(
-            hass, entity_id, fade_params, transition_ms, min_step_delay_ms, cancel_event
+            hass, entity_id, fade_params, min_step_delay_ms, cancel_event
         )
     except asyncio.CancelledError:
         pass  # Normal cancellation, not an error
@@ -266,7 +260,6 @@ async def _execute_fade(
     hass: HomeAssistant,
     entity_id: str,
     fade_params: FadeParams,
-    transition_ms: int,
     min_step_delay_ms: int,
     cancel_event: asyncio.Event,
 ) -> None:
@@ -344,9 +337,6 @@ async def _execute_fade(
     if not brightness_changing and not hs_changing and not mireds_changing:
         _LOGGER.debug("%s: Nothing to fade", entity_id)
         return
-
-    # Set transition_ms in params for _calculate_changes
-    fade_params.transition_ms = transition_ms
 
     # Calculate changes (returns list of FadeChange phases)
     phases = _calculate_changes(fade_params, state.attributes, min_step_delay_ms)

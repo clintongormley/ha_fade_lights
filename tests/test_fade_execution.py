@@ -623,14 +623,13 @@ async def test_fade_entity_not_found_logs_warning(
 
     entity_id = "light.missing_entity"
     cancel_event = asyncio.Event()
-    fade_params = FadeParams(brightness_pct=50)
+    fade_params = FadeParams(brightness_pct=50, transition_ms=1000)
 
     with caplog.at_level(logging.WARNING):
         await _execute_fade(
             hass,
             entity_id,
             fade_params,
-            1000,  # transition_ms
             50,  # min_step_delay_ms
             cancel_event,
         )
@@ -666,13 +665,12 @@ async def test_fade_cancel_event_before_brightness_apply(
     cancel_event = asyncio.Event()
     # Set cancel event BEFORE starting fade
     cancel_event.set()
-    fade_params = FadeParams(brightness_pct=50)
+    fade_params = FadeParams(brightness_pct=50, transition_ms=5000)
 
     await _execute_fade(
         hass,
         entity_id,
         fade_params,
-        5000,  # long transition
         50,  # min_step_delay_ms
         cancel_event,
     )
@@ -706,7 +704,7 @@ async def test_fade_cancel_event_after_brightness_apply(
     )
 
     cancel_event = asyncio.Event()
-    fade_params = FadeParams(brightness_pct=10)
+    fade_params = FadeParams(brightness_pct=10, transition_ms=5000)
 
     # Create a mock for _apply_step that sets cancel event after first call
     call_count = 0
@@ -736,7 +734,6 @@ async def test_fade_cancel_event_after_brightness_apply(
             hass,
             entity_id,
             fade_params,
-            5000,  # long transition
             50,  # min_step_delay_ms
             cancel_event,
         )
