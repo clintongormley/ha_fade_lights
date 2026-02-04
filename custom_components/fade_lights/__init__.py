@@ -364,9 +364,7 @@ async def _execute_fade(
         )
         _add_expected_values(entity_id, expected)
 
-        await _apply_step(
-            hass, entity_id, step, use_native_transition=fade.should_add_native_transition()
-        )
+        await _apply_step(hass, entity_id, step)
 
         if cancel_event.is_set():
             return
@@ -403,8 +401,6 @@ async def _apply_step(
     hass: HomeAssistant,
     entity_id: str,
     step: FadeStep,
-    *,
-    use_native_transition: bool = True,
 ) -> None:
     """Apply a fade step to a light.
 
@@ -415,7 +411,6 @@ async def _apply_step(
         hass: Home Assistant instance
         entity_id: Light entity ID
         step: The fade step to apply
-        use_native_transition: If True, use transition=0.1 for native smoothing
     """
     # Build service data based on what's in the step
     service_data: dict = {ATTR_ENTITY_ID: entity_id}
@@ -438,10 +433,6 @@ async def _apply_step(
     if step.color_temp_kelvin is not None:
         service_data[HA_ATTR_COLOR_TEMP_KELVIN] = step.color_temp_kelvin
 
-    # Use native transitions to smooth out each step, if supported
-    # use_native_transition=False means instant move (first step with "from" override)
-    if use_native_transition:
-        service_data["transition"] = 0.1
     _LOGGER.debug("%s", service_data)
 
     # Only call service if there's something to set (beyond entity_id)

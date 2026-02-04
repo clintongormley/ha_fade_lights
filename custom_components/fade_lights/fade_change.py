@@ -370,9 +370,6 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
     transition_ms: int = 0
     min_step_delay_ms: int = 100
 
-    # When True, first step should use transition=0 (instant move to "from" state)
-    skip_first_transition: bool = False
-
     # Hybrid transition tracking (private)
     # "hs_to_mireds" | "mireds_to_hs" | None
     _hybrid_direction: str | None = field(default=None, repr=False)
@@ -383,19 +380,6 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
     # Iterator state (private)
     _current_step: int = field(default=0, repr=False)
     _step_count: int | None = field(default=None, repr=False)
-
-    def is_first_step(self) -> bool:
-        """Check if we just generated the first step."""
-        return self._current_step == 1
-
-    def should_add_native_transition(self) -> bool:
-        """Check if current step should use native smoothing transition.
-
-        Returns True when the step should use transition=0.1 (native smoothing).
-        Returns False for first step when 'from' parameters were specified,
-        allowing the light to instantly move to the starting state before fading.
-        """
-        return not (self.skip_first_transition and self.is_first_step())
 
     @classmethod
     def resolve(
@@ -454,7 +438,6 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
                 end_brightness=target,
                 transition_ms=0,
                 min_step_delay_ms=min_step_delay_ms,
-                skip_first_transition=params.has_from_target(),
             )
 
         # Resolve color values
@@ -603,7 +586,6 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             end_mireds=end_mireds if (mireds_changing or hybrid_direction) else None,
             transition_ms=params.transition_ms,
             min_step_delay_ms=min_step_delay_ms,
-            skip_first_transition=params.has_from_target(),
             _hybrid_direction=hybrid_direction,
             _crossover_hs=crossover_hs,
             _crossover_mireds=crossover_mireds,
