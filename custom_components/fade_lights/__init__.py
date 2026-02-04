@@ -450,16 +450,9 @@ async def _fade_light(
     - Delegating to _execute_fade for the actual work
     - Cleaning up tracking state when done (success, cancel, or error)
     """
-    # Get per-light config and determine effective delay
+    # Get per-light delay config
     light_config = _get_light_config(hass, entity_id)
-    native_transitions = light_config.get("native_transitions", False)
-
-    # Calculate effective delay - lights with native_transitions need extra time
-    # to account for the native transition duration
-    effective_delay = light_config.get("min_delay_ms") or min_step_delay_ms
-    if native_transitions:
-        min_with_transition = min_step_delay_ms + NATIVE_TRANSITION_MS
-        effective_delay = max(effective_delay, min_with_transition)
+    delay_ms = light_config.get("min_delay_ms") or min_step_delay_ms
 
     # Cancel any existing fade for this entity - only one fade per light at a time
     await _cancel_and_wait_for_fade(entity_id)
@@ -480,7 +473,7 @@ async def _fade_light(
         ACTIVE_FADES[entity_id] = current_task
 
     try:
-        await _execute_fade(hass, entity_id, fade_params, effective_delay, cancel_event)
+        await _execute_fade(hass, entity_id, fade_params, delay_ms, cancel_event)
     except asyncio.CancelledError:
         pass  # Normal cancellation, not an error
     finally:
