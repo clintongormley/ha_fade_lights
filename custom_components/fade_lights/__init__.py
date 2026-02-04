@@ -45,13 +45,17 @@ from .const import (
     OPTION_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
-    STORAGE_VERSION,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-# Track active fade tasks
+# Track active fade tasks and their cancellation events
 ACTIVE_FADES: dict[str, asyncio.Task] = {}
+FADE_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
+
+# Track the expected brightness for each light during fading
+# This helps detect manual changes even when context is inherited
+FADE_EXPECTED_BRIGHTNESS: dict[str, int] = {}
 
 # Track contexts created by this integration
 ACTIVE_CONTEXTS: set[str] = set()
@@ -68,11 +72,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Fade Lights from a config entry."""
-    store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    store = Store(hass, 1, STORAGE_KEY)
     storage_data = await store.async_load() or {}
-
-    # Migrate from v1 to v2 storage format
-    storage_data = _migrate_storage(storage_data)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN] = {
@@ -91,18 +92,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def handle_fade_lights(call: ServiceCall) -> None:
         """Handle the fade_lights service call."""
         entity_ids = call.data.get(ATTR_ENTITY_ID)
-        brightness_pct = call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness)
-        transition = call.data.get(ATTR_TRANSITION, default_transition)
+        brightness_pct = int(call.data.get(ATTR_BRIGHTNESS_PCT, default_brightness))
+        transition = float(call.data.get(ATTR_TRANSITION, default_transition))
 
         if isinstance(entity_ids, str):
             entity_ids = [e.strip() for e in entity_ids.split(",")]
 
         expanded_entities = await _expand_entity_ids(hass, entity_ids)
 
-        _LOGGER.debug("Fading lights: %s", expanded_entities)
-
         transition_ms = transition * 1000
-        _LOGGER.debug("Transition in ms: %s", transition_ms)
 
         # Create a context for this fade operation
         context = Context()
@@ -149,8 +147,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not entity_id.startswith("light."):
             return
 
-        # Ignore changes from our own fade operations
-        if event.context.id in ACTIVE_CONTEXTS:
+        new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
+
+        # Check if this is from our own fade operations
+        is_our_context = event.context.id in ACTIVE_CONTEXTS
+
+        # Even if it's "our" context, check if the brightness is wildly different
+        # from what we expected - this indicates a manual change that inherited our context
+        if is_our_context and entity_id in FADE_EXPECTED_BRIGHTNESS:
+            expected = FADE_EXPECTED_BRIGHTNESS[entity_id]
+            # Allow some tolerance for rounding (light may not hit exact value)
+            tolerance = 5
+            if new_brightness is not None and abs(new_brightness - expected) > tolerance:
+                # This is actually a manual change, don't ignore it
+                is_our_context = False
+
+        if is_our_context:
             return
 
         # Ignore group helpers
@@ -169,11 +181,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if orig_brightness > 0:
                 current_brightness = new_state.attributes.get(ATTR_BRIGHTNESS, 0)
                 if current_brightness != orig_brightness:
-                    _LOGGER.debug(
-                        "Restoring %s to original brightness %s",
-                        entity_id,
-                        orig_brightness,
-                    )
+                    _LOGGER.debug("Restoring %s to brightness %s", entity_id, orig_brightness)
                     hass.async_create_task(
                         hass.services.async_call(
                             LIGHT_DOMAIN,
@@ -186,30 +194,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     )
             return
 
-        # Light turned OFF - no action needed
+        # Light turned OFF manually - cancel any active fade
         if new_state.state == STATE_OFF:
+            if entity_id in ACTIVE_FADES:
+                _LOGGER.debug("Cancelling fade on %s due to manual turn off", entity_id)
+                if entity_id in FADE_CANCEL_EVENTS:
+                    FADE_CANCEL_EVENTS[entity_id].set()
+                ACTIVE_FADES[entity_id].cancel()
             return
 
         # Brightness changed while light was already ON
         if old_state and old_state.state == STATE_ON and new_state.state == STATE_ON:
-            new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
             old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS)
 
             if new_brightness != old_brightness and new_brightness is not None:
                 # Cancel active fade if any
                 if entity_id in ACTIVE_FADES:
-                    _LOGGER.debug(
-                        "Cancelling fade on %s due to manual brightness change",
-                        entity_id,
-                    )
+                    _LOGGER.debug("Cancelling fade on %s due to manual change", entity_id)
+                    if entity_id in FADE_CANCEL_EVENTS:
+                        FADE_CANCEL_EVENTS[entity_id].set()
                     ACTIVE_FADES[entity_id].cancel()
 
                 # Store new brightness as original
-                _LOGGER.debug(
-                    "Storing manual brightness change for %s: %s",
-                    entity_id,
-                    new_brightness,
-                )
                 _store_orig_brightness(hass, entity_id, new_brightness)
 
     entry.async_on_unload(
@@ -227,34 +233,19 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    for event in FADE_CANCEL_EVENTS.values():
+        event.set()
     for task in ACTIVE_FADES.values():
         task.cancel()
     ACTIVE_FADES.clear()
+    FADE_CANCEL_EVENTS.clear()
+    FADE_EXPECTED_BRIGHTNESS.clear()
     ACTIVE_CONTEXTS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
 
     return True
-
-
-def _migrate_storage(storage_data: dict) -> dict:
-    """Migrate storage from v1 to v2 format."""
-    migrated = {}
-    for key, value in storage_data.items():
-        if isinstance(value, int):
-            # v1 format: single integer
-            migrated[key] = {
-                KEY_ORIG_BRIGHTNESS: value,
-                KEY_CURR_BRIGHTNESS: value,
-            }
-        elif isinstance(value, dict):
-            # Already v2 format
-            migrated[key] = value
-        else:
-            # Unknown format, skip
-            _LOGGER.warning("Unknown storage format for %s: %s", key, value)
-    return migrated
 
 
 async def _fade_light(
@@ -266,12 +257,19 @@ async def _fade_light(
     step_delay_ms: int,
 ) -> None:
     """Fade a single light to the specified brightness."""
+    # Cancel any existing fade for this entity
     if entity_id in ACTIVE_FADES:
+        if entity_id in FADE_CANCEL_EVENTS:
+            FADE_CANCEL_EVENTS[entity_id].set()
         ACTIVE_FADES[entity_id].cancel()
         try:
             await ACTIVE_FADES[entity_id]
         except asyncio.CancelledError:
             pass
+
+    # Create cancellation event for this fade
+    cancel_event = asyncio.Event()
+    FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
     current_task = asyncio.current_task()
     if current_task:
@@ -279,12 +277,14 @@ async def _fade_light(
 
     try:
         await _execute_fade(
-            hass, entity_id, brightness_pct, transition_ms, context, step_delay_ms
+            hass, entity_id, brightness_pct, transition_ms, context, step_delay_ms, cancel_event
         )
     except asyncio.CancelledError:
-        _LOGGER.debug("Fade cancelled for %s", entity_id)
+        pass
     finally:
         ACTIVE_FADES.pop(entity_id, None)
+        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
 
 
 async def _execute_fade(
@@ -294,6 +294,7 @@ async def _execute_fade(
     transition_ms: int,
     context: Context,
     step_delay_ms: int,
+    cancel_event: asyncio.Event,
 ) -> None:
     """Execute the fade operation."""
     state = hass.states.get(entity_id)
@@ -304,7 +305,6 @@ async def _execute_fade(
     # Handle non-dimmable lights
     if ColorMode.BRIGHTNESS not in state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
         if brightness_pct == 0:
-            _LOGGER.debug("Turning off non-dimmable light %s", entity_id)
             await hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_OFF,
@@ -313,7 +313,6 @@ async def _execute_fade(
                 blocking=True,
             )
         else:
-            _LOGGER.debug("Turning on non-dimmable light %s", entity_id)
             await hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
@@ -326,16 +325,7 @@ async def _execute_fade(
     start_level = _get_current_level(hass, entity_id)
     end_level = int(brightness_pct / 100 * 255)
 
-    _LOGGER.debug(
-        "Fading %s from %s to %s in %sms",
-        entity_id,
-        start_level,
-        end_level,
-        transition_ms,
-    )
-
     if start_level == end_level:
-        _LOGGER.debug("Already at target brightness for %s", entity_id)
         return
 
     # Store starting brightness as curr
@@ -350,20 +340,21 @@ async def _execute_fade(
     delta = (end_level - start_level) / num_steps
     delta = math.ceil(delta) if delta > 0 else math.floor(delta)
 
-    _LOGGER.debug(
-        "Fading in %s steps of delta %s with delay %sms",
-        num_steps,
-        delta,
-        delay_ms,
-    )
+    _LOGGER.debug("Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps)
 
     for i in range(num_steps):
+        # Check for cancellation at start of each step
+        if cancel_event.is_set():
+            return
+
         curr = _get_curr_brightness(hass, entity_id)
         new_level = curr + delta
         new_level = max(0, min(255, new_level))
 
         # Ensure we hit the target on the last step
-        if (delta > 0 and new_level > end_level) or (delta < 0 and new_level < end_level):
+        if (delta > 0 and new_level > end_level) or (
+            delta < 0 and new_level < end_level
+        ):
             new_level = end_level
 
         if i == num_steps - 1:
@@ -375,8 +366,10 @@ async def _execute_fade(
 
         _store_curr_brightness(hass, entity_id, new_level)
 
+        # Track what brightness we expect so we can detect manual changes
+        FADE_EXPECTED_BRIGHTNESS[entity_id] = new_level
+
         if new_level == 0:
-            _LOGGER.debug("Step %s: Turning off %s", i, entity_id)
             await hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_OFF,
@@ -385,7 +378,6 @@ async def _execute_fade(
                 blocking=True,
             )
         else:
-            _LOGGER.debug("Step %s: Setting %s to %s", i, entity_id, new_level)
             await hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
@@ -397,14 +389,16 @@ async def _execute_fade(
                 blocking=True,
             )
 
+        # Check for cancellation after service call completes
+        if cancel_event.is_set():
+            return
+
         await asyncio.sleep(delay_ms / 1000)
 
     # Store orig brightness if we faded to a non-zero value
     if end_level > 0:
         _store_orig_brightness(hass, entity_id, end_level)
         await _save_storage(hass)
-
-    _LOGGER.debug("Fade complete for %s", entity_id)
 
 
 def _get_current_level(hass: HomeAssistant, entity_id: str) -> int:
@@ -466,7 +460,6 @@ async def _save_storage(hass: HomeAssistant) -> None:
 async def _expand_entity_ids(hass: HomeAssistant, entity_ids: list[str]) -> list[str]:
     """Expand light groups recursively."""
     result = []
-    _LOGGER.debug("Expanding entity IDs: %s", entity_ids)
 
     for entity_id in entity_ids:
         if not entity_id.startswith("light."):
