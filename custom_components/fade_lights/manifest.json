@@ -1,0 +1,12 @@
+{
+  "domain": "fade_lights",
+  "name": "Fade Lights",
+  "codeowners": ["@clintongormley"],
+  "config_flow": true,
+  "documentation": "https://github.com/clintongormley/ha_fade_lights",
+  "issue_tracker": "https://github.com/clintongormley/ha_fade_lights/issues",
+  "integration_type": "system",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "1.0.0"
+}
