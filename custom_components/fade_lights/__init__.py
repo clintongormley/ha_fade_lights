@@ -768,9 +768,13 @@ async def _execute_fade(
         if cancel_event.is_set():
             return
 
-        # Track expected brightness for manual intervention detection
-        if step.brightness is not None:
-            _add_expected_brightness(entity_id, step.brightness)
+        # Track expected values for manual intervention detection
+        expected = ExpectedValues(
+            brightness=step.brightness,
+            hs_color=step.hs_color,
+            color_temp_mireds=step.color_temp_mireds,
+        )
+        _add_expected_values(entity_id, expected)
 
         await _apply_step(hass, entity_id, step)
 
@@ -1570,11 +1574,16 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
     await _wait_until_stale_events_flushed(entity_id)
 
 
-def _add_expected_brightness(entity_id: str, brightness: int) -> None:
-    """Register an expected brightness value before making a service call."""
+def _add_expected_values(entity_id: str, values: ExpectedValues) -> None:
+    """Register expected values before making a service call."""
     if entity_id not in FADE_EXPECTED_BRIGHTNESS:
         FADE_EXPECTED_BRIGHTNESS[entity_id] = ExpectedState(entity_id=entity_id)
-    FADE_EXPECTED_BRIGHTNESS[entity_id].add(ExpectedValues(brightness=brightness))
+    FADE_EXPECTED_BRIGHTNESS[entity_id].add(values)
+
+
+def _add_expected_brightness(entity_id: str, brightness: int) -> None:
+    """Register an expected brightness value (convenience wrapper)."""
+    _add_expected_values(entity_id, ExpectedValues(brightness=brightness))
 
 
 async def _wait_until_stale_events_flushed(
