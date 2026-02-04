@@ -138,6 +138,57 @@ If you manually adjust a light's brightness while it's on, that becomes the new 
 
 Lights that do not support brightness will turn off when brightness is set to 0, or turn on when brightness is greater than 0.
 
+## Development
+
+### Running Tests
+
+The integration includes a comprehensive test suite with 45 tests covering config flow, service handling, fade execution, manual interruption detection, and brightness restoration.
+
+#### Prerequisites
+
+Install the test dependencies:
+
+```bash
+pip install pytest pytest-asyncio pytest-cov pytest-homeassistant-custom-component syrupy
+```
+
+> **Note:** Do not use `pip install -e .` (editable install) as it conflicts with `pytest-homeassistant-custom-component`'s custom component discovery mechanism.
+
+#### Running Tests
+
+Run all tests:
+
+```bash
+pytest tests/ -v
+```
+
+Run tests with coverage report:
+
+```bash
+pytest tests/ --cov=custom_components.fade_lights --cov-report=term-missing -v
+```
+
+Run a specific test file:
+
+```bash
+pytest tests/test_fade_execution.py -v
+```
+
+#### Test Coverage
+
+The test suite targets 90%+ code coverage and includes tests for:
+
+- **Config flow** (`test_config_flow.py`): User setup, import flow, options validation
+- **Integration setup** (`test_init.py`): Service registration, storage loading, unload cleanup
+- **Service handling** (`test_services.py`): Entity ID formats, group expansion, default parameters
+- **Fade execution** (`test_fade_execution.py`): Fade up/down, turn off at 0%, non-dimmable lights
+- **Manual interruption** (`test_manual_interruption.py`): Brightness change detection, fade cancellation
+- **Brightness restoration** (`test_brightness_restoration.py`): Restore on turn-on, storage persistence
+
+### Continuous Integration
+
+Tests run automatically on push and pull requests via GitHub Actions. The workflow tests against Python 3.12 and 3.13.
+
 ## License
 
 MIT License - feel free to modify and redistribute
