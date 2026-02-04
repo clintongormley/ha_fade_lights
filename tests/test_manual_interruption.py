@@ -1077,9 +1077,7 @@ async def test_restore_intended_state_when_intended_is_none(
     new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
     # Make _get_intended_brightness return None
-    with patch(
-        "custom_components.fade_lights._get_intended_brightness", return_value=None
-    ):
+    with patch("custom_components.fade_lights._get_intended_brightness", return_value=None):
         # Should return early without raising
         await _restore_intended_state(hass, entity_id, old_state, new_state)
 
@@ -1130,5 +1128,3 @@ async def test_restore_intended_state_when_entity_removed(
     turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
     assert len(turn_on_calls) == 0
     assert len(turn_off_calls) == 0
-
-
