@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from custom_components.fade_lights import (
+    _build_hs_to_mireds_steps,
     _hs_to_mireds,
     _is_on_planckian_locus,
     _mireds_to_hs,
 )
+from custom_components.fade_lights.models import FadeStep
 
 
 class TestIsOnPlanckianLocus:
@@ -147,3 +149,99 @@ class TestMiredsToHs:
         assert len(hs) == 2
         assert isinstance(hs[0], float)
         assert isinstance(hs[1], float)
+
+
+class TestBuildHsToMiredsSteps:
+    """Test hybrid HS→mireds step generation."""
+
+    def test_on_locus_hs_goes_straight_to_mireds(self) -> None:
+        """Test that HS already on locus generates only mireds steps."""
+        # Starting with low saturation (on locus) going to mireds
+        steps = _build_hs_to_mireds_steps(
+            start_hs=(35.0, 10.0),  # Warm white, on locus
+            end_mireds=400,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+
+        # All steps should have mireds, no HS
+        for step in steps:
+            assert step.color_temp_mireds is not None
+            assert step.hs_color is None
+
+        # Last step should be target mireds
+        assert steps[-1].color_temp_mireds == 400
+
+    def test_off_locus_hs_transitions_through_locus(self) -> None:
+        """Test that HS off locus first fades toward locus, then to mireds."""
+        # Starting with saturated red, going to warm white mireds
+        steps = _build_hs_to_mireds_steps(
+            start_hs=(0.0, 80.0),  # Saturated red, NOT on locus
+            end_mireds=333,  # Warm white
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+
+        # Should have some steps with HS (fading toward locus)
+        hs_steps = [s for s in steps if s.hs_color is not None]
+        assert len(hs_steps) > 0
+
+        # Should end with mireds steps
+        mireds_steps = [s for s in steps if s.color_temp_mireds is not None]
+        assert len(mireds_steps) > 0
+
+        # Last step should be target mireds
+        assert steps[-1].color_temp_mireds == 333
+        assert steps[-1].hs_color is None
+
+    def test_hs_saturation_decreases_toward_locus(self) -> None:
+        """Test that HS saturation decreases as we approach the locus."""
+        steps = _build_hs_to_mireds_steps(
+            start_hs=(120.0, 100.0),  # Saturated green
+            end_mireds=286,  # Neutral white
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+
+        # Get the HS steps
+        hs_steps = [s for s in steps if s.hs_color is not None]
+        if len(hs_steps) > 1:
+            saturations = [s.hs_color[1] for s in hs_steps]
+            # Saturation should generally decrease
+            assert saturations[-1] < saturations[0]
+
+    def test_minimum_one_step(self) -> None:
+        """Test at least one step is generated."""
+        steps = _build_hs_to_mireds_steps(
+            start_hs=(35.0, 5.0),  # Already near target
+            end_mireds=333,
+            transition_ms=100,
+            min_step_delay_ms=100,
+        )
+
+        assert len(steps) >= 1
+
+    def test_step_count_respects_timing(self) -> None:
+        """Test step count is limited by transition time."""
+        steps = _build_hs_to_mireds_steps(
+            start_hs=(0.0, 80.0),
+            end_mireds=333,
+            transition_ms=300,
+            min_step_delay_ms=100,
+        )
+
+        # Max 3 steps (300ms / 100ms)
+        assert len(steps) <= 3
+
+    def test_returns_list_of_fade_steps(self) -> None:
+        """Test return type is list of FadeStep."""
+        steps = _build_hs_to_mireds_steps(
+            start_hs=(35.0, 10.0),
+            end_mireds=333,
+            transition_ms=1000,
+            min_step_delay_ms=100,
+        )
+
+        assert isinstance(steps, list)
+        for step in steps:
+            assert isinstance(step, FadeStep)
