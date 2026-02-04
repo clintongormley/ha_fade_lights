@@ -63,8 +63,8 @@ fade_lights:
       name: Easing curve
       description: >-
         Controls how brightness changes over time. 'auto' selects based on fade
-        direction: ease_out for fading up, ease_in for fading down, ease_in_out
-        for mid-range transitions.
+        direction: ease_in (slow start) for fading up, ease_out (slow end) for
+        fading down.
       filter: *brightness_support
       default: auto
       example: "auto"

@@ -206,34 +206,34 @@ class TestAutoSelectEasing:
     """Test auto_select_easing direction-based selection."""
 
     def test_fading_up_from_zero(self) -> None:
-        """Test fading up from 0 selects ease_out_quad."""
+        """Test fading up from 0 selects ease_in_quad (slow start)."""
         result = auto_select_easing(0, 100)
-        assert result == "ease_out_quad"
+        assert result == "ease_in_quad"
 
     def test_fading_up_from_zero_to_max(self) -> None:
-        """Test fading from 0 to 255 selects ease_out_quad."""
+        """Test fading from 0 to 255 selects ease_in_quad (slow start)."""
         result = auto_select_easing(0, 255)
-        assert result == "ease_out_quad"
+        assert result == "ease_in_quad"
 
     def test_fading_down_to_zero(self) -> None:
-        """Test fading down to 0 selects ease_in_quad."""
+        """Test fading down to 0 selects ease_out_quad (slow end)."""
         result = auto_select_easing(100, 0)
-        assert result == "ease_in_quad"
+        assert result == "ease_out_quad"
 
     def test_fading_down_from_max_to_zero(self) -> None:
-        """Test fading from 255 to 0 selects ease_in_quad."""
+        """Test fading from 255 to 0 selects ease_out_quad (slow end)."""
         result = auto_select_easing(255, 0)
-        assert result == "ease_in_quad"
+        assert result == "ease_out_quad"
 
     def test_mid_range_fade_up(self) -> None:
-        """Test mid-range fade up selects ease_in_out_sine."""
+        """Test mid-range fade up selects ease_in_quad (slow start)."""
         result = auto_select_easing(50, 200)
-        assert result == "ease_in_out_sine"
+        assert result == "ease_in_quad"
 
     def test_mid_range_fade_down(self) -> None:
-        """Test mid-range fade down selects ease_in_out_sine."""
+        """Test mid-range fade down selects ease_out_quad (slow end)."""
         result = auto_select_easing(200, 50)
-        assert result == "ease_in_out_sine"
+        assert result == "ease_out_quad"
 
     def test_same_brightness(self) -> None:
         """Test same start/end brightness selects ease_in_out_sine."""
@@ -241,14 +241,14 @@ class TestAutoSelectEasing:
         assert result == "ease_in_out_sine"
 
     def test_small_non_zero_start(self) -> None:
-        """Test small non-zero start selects ease_in_out_sine."""
+        """Test fading up from 1 to 255 selects ease_in_quad (slow start)."""
         result = auto_select_easing(1, 255)
-        assert result == "ease_in_out_sine"
+        assert result == "ease_in_quad"
 
     def test_small_non_zero_end(self) -> None:
-        """Test small non-zero end selects ease_in_out_sine."""
+        """Test fading down to 1 selects ease_out_quad (slow end)."""
         result = auto_select_easing(255, 1)
-        assert result == "ease_in_out_sine"
+        assert result == "ease_out_quad"
 
 
 class TestEasingFunctionsDict:

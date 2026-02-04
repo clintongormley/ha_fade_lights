@@ -65,6 +65,10 @@ def get_easing_func(name: str) -> EasingFunc:
 def auto_select_easing(start_brightness: int, end_brightness: int) -> str:
     """Automatically select the best easing function based on fade direction.
 
+    - Fading up (start < end): ease_in_quad (slow start, fast end)
+    - Fading down (start > end): ease_out_quad (fast start, slow end)
+    - No change: ease_in_out_sine
+
     Args:
         start_brightness: Starting brightness value (0-255).
         end_brightness: Ending brightness value (0-255).
@@ -72,8 +76,8 @@ def auto_select_easing(start_brightness: int, end_brightness: int) -> str:
     Returns:
         The name of the recommended easing function.
     """
-    if start_brightness == 0:
-        return "ease_out_quad"
-    if end_brightness == 0:
+    if start_brightness < end_brightness:
         return "ease_in_quad"
+    if start_brightness > end_brightness:
+        return "ease_out_quad"
     return "ease_in_out_sine"
