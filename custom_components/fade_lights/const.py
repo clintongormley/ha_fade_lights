@@ -28,3 +28,9 @@ DEFAULT_MIN_STEP_DELAY_MS = 50  # milliseconds
 
 # Hard minimum for step delay (service call overhead)
 MIN_STEP_DELAY_MS = 50
+
+# Brightness tolerance for detecting manual intervention (accounts for device rounding)
+BRIGHTNESS_TOLERANCE = 3
+
+# Delay after service calls during fade cleanup (seconds)
+FADE_CLEANUP_DELAY_S = 0.1
