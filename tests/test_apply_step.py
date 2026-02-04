@@ -31,7 +31,7 @@ class TestApplyStep:
         mock_hass.services.async_call.assert_called_once_with(
             "light",
             "turn_on",
-            {"entity_id": "light.test", "brightness": 128},
+            {"entity_id": "light.test", "brightness": 128, "transition": 0.1},
             blocking=True,
         )
 
@@ -57,7 +57,7 @@ class TestApplyStep:
         mock_hass.services.async_call.assert_called_once_with(
             "light",
             "turn_on",
-            {"entity_id": "light.test", "hs_color": (120.0, 80.0)},
+            {"entity_id": "light.test", "hs_color": (120.0, 80.0), "transition": 0.1},
             blocking=True,
         )
 
@@ -70,7 +70,7 @@ class TestApplyStep:
         mock_hass.services.async_call.assert_called_once_with(
             "light",
             "turn_on",
-            {"entity_id": "light.test", "color_temp_kelvin": 4000},
+            {"entity_id": "light.test", "color_temp_kelvin": 4000, "transition": 0.1},
             blocking=True,
         )
 
@@ -83,7 +83,7 @@ class TestApplyStep:
         mock_hass.services.async_call.assert_called_once_with(
             "light",
             "turn_on",
-            {"entity_id": "light.test", "brightness": 200, "hs_color": (50.0, 90.0)},
+            {"entity_id": "light.test", "brightness": 200, "hs_color": (50.0, 90.0), "transition": 0.1},
             blocking=True,
         )
 
@@ -96,14 +96,20 @@ class TestApplyStep:
         mock_hass.services.async_call.assert_called_once_with(
             "light",
             "turn_on",
-            {"entity_id": "light.test", "brightness": 150, "color_temp_kelvin": 2500},
+            {"entity_id": "light.test", "brightness": 150, "color_temp_kelvin": 2500, "transition": 0.1},
             blocking=True,
         )
 
     @pytest.mark.asyncio
-    async def test_empty_step_does_nothing(self, mock_hass: MagicMock) -> None:
-        """Test that an empty step makes no service call."""
+    async def test_empty_step_still_applies_transition(self, mock_hass: MagicMock) -> None:
+        """Test that an empty step still applies native transition for smoothing."""
         step = FadeStep()
         await _apply_step(mock_hass, "light.test", step)
 
-        mock_hass.services.async_call.assert_not_called()
+        # Even empty steps apply native transition for flicker-free fading
+        mock_hass.services.async_call.assert_called_once_with(
+            "light",
+            "turn_on",
+            {"entity_id": "light.test", "transition": 0.1},
+            blocking=True,
+        )
