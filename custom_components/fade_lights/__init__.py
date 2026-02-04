@@ -93,6 +93,14 @@ FADE_EXPECTED_STATE: dict[str, ExpectedState] = {}
 # Waiters use this instead of polling to know when a cancelled fade has finished.
 FADE_COMPLETE_CONDITIONS: dict[str, asyncio.Condition] = {}
 
+# Maps entity_id -> latest intended State from manual intervention.
+# Updated by each manual event; read at restore time to get the final intended state.
+LATEST_INTENDED_STATE: dict[str, State] = {}
+
+# Maps entity_id -> running restore Task to avoid spawning duplicates.
+# Only one restore task runs per entity; subsequent events update LATEST_INTENDED_STATE.
+RESTORE_TASKS: dict[str, asyncio.Task] = {}
+
 
 # =============================================================================
 # Integration Setup
@@ -158,17 +166,26 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     for event in FADE_CANCEL_EVENTS.values():
         event.set()
 
-    tasks = list(ACTIVE_FADES.values())
-    for task in tasks:
+    # Cancel all active fade tasks
+    fade_tasks = list(ACTIVE_FADES.values())
+    for task in fade_tasks:
         task.cancel()
 
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
+    # Cancel all restore tasks
+    restore_tasks = list(RESTORE_TASKS.values())
+    for task in restore_tasks:
+        task.cancel()
+
+    all_tasks = fade_tasks + restore_tasks
+    if all_tasks:
+        await asyncio.gather(*all_tasks, return_exceptions=True)
 
     ACTIVE_FADES.clear()
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_STATE.clear()
     FADE_COMPLETE_CONDITIONS.clear()
+    LATEST_INTENDED_STATE.clear()
+    RESTORE_TASKS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
@@ -1055,14 +1072,25 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChang
 
     # During fade: if we get here, state didn't match expected - manual intervention
     if entity_id in ACTIVE_FADES and entity_id in FADE_EXPECTED_STATE:
-        # Manual intervention detected
+        # Manual intervention detected - always update to latest intended state
         _LOGGER.info(
             "%s: Manual intervention detected (state=%s, brightness=%s)",
             entity_id,
             new_state.state,
             new_state.attributes.get(ATTR_BRIGHTNESS),
         )
-        hass.async_create_task(_restore_intended_state(hass, entity_id, old_state, new_state))
+        LATEST_INTENDED_STATE[entity_id] = new_state
+
+        # Only spawn restore task if one isn't already running
+        if entity_id not in RESTORE_TASKS:
+            task = hass.async_create_task(
+                _restore_intended_state(hass, entity_id, old_state)
+            )
+            RESTORE_TASKS[entity_id] = task
+        else:
+            _LOGGER.debug(
+                "%s: Restore task already running, updated intended state", entity_id
+            )
         return
 
     # Normal state handling (no active fade)
@@ -1186,15 +1214,16 @@ async def _restore_intended_state(
     hass: HomeAssistant,
     entity_id: str,
     old_state,
-    new_state,
 ) -> None:
     """Restore intended state after manual intervention during fade.
 
     When manual intervention is detected during a fade, late fade events may
     overwrite the user's intended state. This function:
     1. Cancels the fade and waits for cleanup
-    2. Compares current state to intended state (brightness + color)
-    3. Restores intended state if they differ
+    2. Loops: reads LATEST intended state and restores if needed
+    3. Continues until no more intended states are queued
+
+    The loop handles the case where another manual event arrives during restore.
 
     The intended brightness encodes both state and brightness:
     - 0 means OFF
@@ -1203,104 +1232,126 @@ async def _restore_intended_state(
     Colors from the manual intervention are also restored.
     Note: Only brightness is persisted to storage, not colors.
     """
-    if DOMAIN not in hass.data:
-        return
-    _LOGGER.debug(
-        "%s: Waiting for state events to flush before restoring intended state", entity_id
-    )
-    await _cancel_and_wait_for_fade(entity_id)
-
-    intended_brightness = _get_intended_brightness(hass, entity_id, old_state, new_state)
-    _LOGGER.debug("%s: Got intended brightness (%s)", entity_id, intended_brightness)
-    if intended_brightness is None:
-        return
-
-    # Store as new original brightness (for future OFF->ON restore)
-    # Note: We only store brightness, not colors
-    if intended_brightness > 0:
-        _LOGGER.debug("%s: Storing original brightness (%s)", entity_id, intended_brightness)
-        _store_orig_brightness(hass, entity_id, intended_brightness)
-
-    # Get current state after fade cleanup
-    current_state = hass.states.get(entity_id)
-    if not current_state:
-        _LOGGER.debug("%s: No current state found, exiting", entity_id)
-        return
-
-    current_brightness = current_state.attributes.get(ATTR_BRIGHTNESS) or 0
-    if current_state.state == STATE_OFF:
-        current_brightness = 0
-
-    # Handle OFF case
-    if intended_brightness == 0:
-        if current_brightness != 0:
-            _LOGGER.info("%s: Restoring to off as intended", entity_id)
-            _add_expected_brightness(entity_id, 0)
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_OFF,
-                {ATTR_ENTITY_ID: entity_id},
-                blocking=True,
-            )
-            await _wait_until_stale_events_flushed(entity_id)
+    try:
+        if DOMAIN not in hass.data:
             return
-        _LOGGER.debug("%s: already off, nothing to restore", entity_id)
-        return
-
-    # Handle ON case - check brightness and colors
-    # Build service data for restoration
-    service_data: dict = {ATTR_ENTITY_ID: entity_id}
-    need_restore = False
-
-    # Check brightness
-    if current_brightness != intended_brightness:
-        service_data[ATTR_BRIGHTNESS] = intended_brightness
-        need_restore = True
-
-    # Get intended colors from manual intervention (new_state)
-    intended_hs = new_state.attributes.get(HA_ATTR_HS_COLOR)
-    intended_kelvin = new_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
-
-    # Get current colors
-    current_hs = current_state.attributes.get(HA_ATTR_HS_COLOR)
-    current_kelvin = current_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
-
-    # Check HS color
-    if intended_hs and intended_hs != current_hs:
-        service_data[HA_ATTR_HS_COLOR] = intended_hs
-        need_restore = True
-
-    # Check color temp (mutually exclusive with HS)
-    if (
-        intended_kelvin
-        and intended_kelvin != current_kelvin
-        and HA_ATTR_HS_COLOR not in service_data
-    ):
-        service_data[HA_ATTR_COLOR_TEMP_KELVIN] = intended_kelvin
-        need_restore = True
-
-    if need_restore:
-        _LOGGER.info("%s: Restoring intended state: %s", entity_id, service_data)
-
-        # Track expected values (ExpectedValues uses kelvin)
-        _add_expected_values(
+        _LOGGER.debug(
+            "%s: Waiting for state events to flush before restoring intended state",
             entity_id,
-            ExpectedValues(
-                brightness=service_data.get(ATTR_BRIGHTNESS),
-                hs_color=service_data.get(HA_ATTR_HS_COLOR),
-                color_temp_kelvin=service_data.get(HA_ATTR_COLOR_TEMP_KELVIN),
-            ),
         )
+        await _cancel_and_wait_for_fade(entity_id)
 
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_ON,
-            service_data,
-            blocking=True,
-        )
-        await _wait_until_stale_events_flushed(entity_id)
-    else:
-        _LOGGER.debug("%s: already in intended state, nothing to restore", entity_id)
+        # Loop until no more intended states are queued
+        # (handles case where another manual event arrives during restore)
+        while True:
+            # Read the LATEST intended state (may have been updated while waiting)
+            intended_state = LATEST_INTENDED_STATE.pop(entity_id, None)
+            if not intended_state:
+                _LOGGER.debug("%s: No more intended states, done", entity_id)
+                break
+
+            intended_brightness = _get_intended_brightness(
+                hass, entity_id, old_state, intended_state
+            )
+            _LOGGER.debug(
+                "%s: Got intended brightness (%s)", entity_id, intended_brightness
+            )
+            if intended_brightness is None:
+                break
+
+            # Store as new original brightness (for future OFF->ON restore)
+            # Note: We only store brightness, not colors
+            if intended_brightness > 0:
+                _LOGGER.debug(
+                    "%s: Storing original brightness (%s)", entity_id, intended_brightness
+                )
+                _store_orig_brightness(hass, entity_id, intended_brightness)
+
+            # Get current state after fade cleanup
+            current_state = hass.states.get(entity_id)
+            if not current_state:
+                _LOGGER.debug("%s: No current state found, exiting", entity_id)
+                break
+
+            current_brightness = current_state.attributes.get(ATTR_BRIGHTNESS) or 0
+            if current_state.state == STATE_OFF:
+                current_brightness = 0
+
+            # Handle OFF case
+            if intended_brightness == 0:
+                if current_brightness != 0:
+                    _LOGGER.info("%s: Restoring to off as intended", entity_id)
+                    _add_expected_brightness(entity_id, 0)
+                    await hass.services.async_call(
+                        LIGHT_DOMAIN,
+                        SERVICE_TURN_OFF,
+                        {ATTR_ENTITY_ID: entity_id},
+                        blocking=True,
+                    )
+                    await _wait_until_stale_events_flushed(entity_id)
+                else:
+                    _LOGGER.debug("%s: already off, nothing to restore", entity_id)
+                continue  # Check for more intended states
+
+            # Handle ON case - check brightness and colors
+            # Build service data for restoration
+            service_data: dict = {ATTR_ENTITY_ID: entity_id}
+            need_restore = False
+
+            # Check brightness
+            if current_brightness != intended_brightness:
+                service_data[ATTR_BRIGHTNESS] = intended_brightness
+                need_restore = True
+
+            # Get intended colors from manual intervention (intended_state)
+            intended_hs = intended_state.attributes.get(HA_ATTR_HS_COLOR)
+            intended_kelvin = intended_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+
+            # Get current colors
+            current_hs = current_state.attributes.get(HA_ATTR_HS_COLOR)
+            current_kelvin = current_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+
+            # Check HS color
+            if intended_hs and intended_hs != current_hs:
+                service_data[HA_ATTR_HS_COLOR] = intended_hs
+                need_restore = True
+
+            # Check color temp (mutually exclusive with HS)
+            if (
+                intended_kelvin
+                and intended_kelvin != current_kelvin
+                and HA_ATTR_HS_COLOR not in service_data
+            ):
+                service_data[HA_ATTR_COLOR_TEMP_KELVIN] = intended_kelvin
+                need_restore = True
+
+            if need_restore:
+                _LOGGER.info("%s: Restoring intended state: %s", entity_id, service_data)
+
+                # Track expected values (ExpectedValues uses kelvin)
+                _add_expected_values(
+                    entity_id,
+                    ExpectedValues(
+                        brightness=service_data.get(ATTR_BRIGHTNESS),
+                        hs_color=service_data.get(HA_ATTR_HS_COLOR),
+                        color_temp_kelvin=service_data.get(HA_ATTR_COLOR_TEMP_KELVIN),
+                    ),
+                )
+
+                await hass.services.async_call(
+                    LIGHT_DOMAIN,
+                    SERVICE_TURN_ON,
+                    service_data,
+                    blocking=True,
+                )
+                await _wait_until_stale_events_flushed(entity_id)
+            else:
+                _LOGGER.debug(
+                    "%s: already in intended state, nothing to restore", entity_id
+                )
+    finally:
+        # Clean up restore task tracking
+        RESTORE_TASKS.pop(entity_id, None)
 
 
 def _get_intended_brightness(
