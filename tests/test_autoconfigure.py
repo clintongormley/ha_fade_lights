@@ -429,7 +429,7 @@ class TestWsAutoconfigure:
         max_concurrent = 0
         lock = asyncio.Lock()
 
-        async def mock_test_light_delay(hass: HomeAssistant, entity_id: str) -> dict:
+        async def mock_autoconfigure_light(hass: HomeAssistant, entity_id: str) -> dict:
             """Mock that tracks concurrent execution."""
             nonlocal current_concurrent, max_concurrent
             async with lock:
@@ -442,11 +442,11 @@ class TestWsAutoconfigure:
             async with lock:
                 current_concurrent -= 1
 
-            return {"entity_id": entity_id, "min_delay_ms": 100}
+            return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_test_light_delay",
-            side_effect=mock_test_light_delay,
+            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
 
@@ -503,19 +503,19 @@ class TestWsAutoconfigure:
 
         call_count = 0
 
-        async def mock_test_light_delay(hass: HomeAssistant, entity_id: str) -> dict:
+        async def mock_autoconfigure_light(hass: HomeAssistant, entity_id: str) -> dict:
             """Mock that returns success or error based on entity."""
             nonlocal call_count
             call_count += 1
 
             if entity_id == entity_id_success:
-                return {"entity_id": entity_id, "min_delay_ms": 100}
+                return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
             else:
                 return {"entity_id": entity_id, "error": "Test error message"}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_test_light_delay",
-            side_effect=mock_test_light_delay,
+            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
 
@@ -580,14 +580,14 @@ class TestWsAutoconfigure:
         """Verify light groups are expanded to individual lights."""
         tested_entities: list[str] = []
 
-        async def mock_test_light_delay(hass: HomeAssistant, entity_id: str) -> dict:
+        async def mock_autoconfigure_light(hass: HomeAssistant, entity_id: str) -> dict:
             """Mock that records tested entity IDs."""
             tested_entities.append(entity_id)
-            return {"entity_id": entity_id, "min_delay_ms": 100}
+            return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_test_light_delay",
-            side_effect=mock_test_light_delay,
+            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
 
@@ -648,14 +648,14 @@ class TestWsAutoconfigure:
 
         tested_entities: list[str] = []
 
-        async def mock_test_light_delay(hass: HomeAssistant, entity_id: str) -> dict:
+        async def mock_autoconfigure_light(hass: HomeAssistant, entity_id: str) -> dict:
             """Mock that records tested entity IDs."""
             tested_entities.append(entity_id)
-            return {"entity_id": entity_id, "min_delay_ms": 100}
+            return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_test_light_delay",
-            side_effect=mock_test_light_delay,
+            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
 
@@ -689,17 +689,17 @@ class TestWsAutoconfigure:
         completed_count = 0
         cancel_after = 2  # Cancel after 2 lights start
 
-        async def mock_test_light_delay(hass: HomeAssistant, entity_id: str) -> dict:
+        async def mock_autoconfigure_light(hass: HomeAssistant, entity_id: str) -> dict:
             """Mock that simulates work."""
             nonlocal completed_count
             # Longer delay to allow time for cancellation
             await asyncio.sleep(0.5)
             completed_count += 1
-            return {"entity_id": entity_id, "min_delay_ms": 100}
+            return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_test_light_delay",
-            side_effect=mock_test_light_delay,
+            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
 

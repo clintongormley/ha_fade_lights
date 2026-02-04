@@ -65,6 +65,7 @@ from .const import (
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
     LOG_LEVEL_WARNING,
+    NATIVE_TRANSITION_MS,
     OPTION_LOG_LEVEL,
     OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
@@ -449,9 +450,9 @@ async def _fade_light(
     - Delegating to _execute_fade for the actual work
     - Cleaning up tracking state when done (success, cancel, or error)
     """
-    # Get per-light config and determine effective delay
+    # Get per-light delay config
     light_config = _get_light_config(hass, entity_id)
-    effective_delay = light_config.get("min_delay_ms") or min_step_delay_ms
+    delay_ms = light_config.get("min_delay_ms") or min_step_delay_ms
 
     # Cancel any existing fade for this entity - only one fade per light at a time
     await _cancel_and_wait_for_fade(entity_id)
@@ -472,7 +473,7 @@ async def _fade_light(
         ACTIVE_FADES[entity_id] = current_task
 
     try:
-        await _execute_fade(hass, entity_id, fade_params, effective_delay, cancel_event)
+        await _execute_fade(hass, entity_id, fade_params, delay_ms, cancel_event)
     except asyncio.CancelledError:
         pass  # Normal cancellation, not an error
     finally:
@@ -528,9 +529,14 @@ async def _execute_fade(
     total_steps = fade.step_count()
     delay_ms = fade.delay_ms()
 
+    # Check if light supports native transitions and if "from" was specified
+    light_config = _get_light_config(hass, entity_id)
+    native_transitions = light_config.get("native_transitions", False)
+    has_from = fade_params.has_from_target()
+
     _LOGGER.info(
         "%s: Fading in %s steps, (brightness=%s->%s, hs=%s->%s, mireds=%s->%s, "
-        "easing=%s, hybrid=%s, crossover_step=%s, delay_ms=%s)",
+        "easing=%s, hybrid=%s, crossover_step=%s, delay_ms=%s, native_transitions=%s)",
         entity_id,
         total_steps,
         fade.start_brightness,
@@ -543,9 +549,13 @@ async def _execute_fade(
         fade._hybrid_direction,
         fade._crossover_step,
         delay_ms,
+        native_transitions,
     )
 
     # Execute fade steps
+    step_num = 0
+    prev_step: FadeStep | None = None
+
     while fade.has_next():
         step_start = time.monotonic()
 
@@ -553,16 +563,35 @@ async def _execute_fade(
             return
 
         step = fade.next_step()
+        step_num += 1
 
-        # Track expected values for manual intervention detection
-        expected = ExpectedValues(
-            brightness=step.brightness,
-            hs_color=step.hs_color,
-            color_temp_kelvin=step.color_temp_kelvin,
-        )
+        # Determine if using transition for THIS step
+        use_transition = native_transitions and not (step_num == 1 and has_from)
+
+        # Build expected values - track ranges when using transitions
+        if use_transition and prev_step is not None:
+            # Range-based: track transition from prev_step → step
+            expected = ExpectedValues(
+                brightness=step.brightness,
+                from_brightness=prev_step.brightness,
+                hs_color=step.hs_color,
+                from_hs_color=prev_step.hs_color,
+                color_temp_kelvin=step.color_temp_kelvin,
+                from_color_temp_kelvin=prev_step.color_temp_kelvin,
+            )
+        else:
+            # Point-based: no from values
+            expected = ExpectedValues(
+                brightness=step.brightness,
+                hs_color=step.hs_color,
+                color_temp_kelvin=step.color_temp_kelvin,
+            )
         _add_expected_values(entity_id, expected)
 
-        await _apply_step(hass, entity_id, step)
+        await _apply_step(hass, entity_id, step, use_transition=use_transition)
+
+        # Save for next iteration
+        prev_step = step
 
         if cancel_event.is_set():
             return
@@ -599,6 +628,8 @@ async def _apply_step(
     hass: HomeAssistant,
     entity_id: str,
     step: FadeStep,
+    *,
+    use_transition: bool = False,
 ) -> None:
     """Apply a fade step to a light.
 
@@ -609,6 +640,7 @@ async def _apply_step(
         hass: Home Assistant instance
         entity_id: Light entity ID
         step: The fade step to apply
+        use_transition: If True, add transition: 0.1 to smooth the step
     """
     # Build service data based on what's in the step
     service_data: dict = {ATTR_ENTITY_ID: entity_id}
@@ -630,6 +662,10 @@ async def _apply_step(
 
     if step.color_temp_kelvin is not None:
         service_data[HA_ATTR_COLOR_TEMP_KELVIN] = step.color_temp_kelvin
+
+    # Add short transition for smoother steps on lights that support native transitions
+    if use_transition:
+        service_data["transition"] = NATIVE_TRANSITION_MS / 1000
 
     _LOGGER.debug("%s", service_data)
 
@@ -771,10 +807,12 @@ def _handle_light_state_change(hass: HomeAssistant, event: Event[EventStateChang
     is_during_restore = entity_id in RESTORE_TASKS
     if is_during_fade or is_during_restore:
         # Manual intervention detected - add to intended state queue
+        old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS) if old_state else None
         _LOGGER.info(
-            "%s: Manual intervention detected (state=%s, brightness=%s)",
+            "%s: Manual intervention detected (state=%s, brightness=%s->%s)",
             entity_id,
             new_state.state,
+            old_brightness,
             new_state.attributes.get(ATTR_BRIGHTNESS),
         )
 

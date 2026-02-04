@@ -168,3 +168,196 @@ class TestExpectedStateColorMatching:
         assert result is not None
         assert result.brightness == 128
         assert state.is_empty
+
+    def test_brightness_range_match_intermediate_value(self) -> None:
+        """Test range matching accepts intermediate brightness values."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 10 -> 100
+        expected = ExpectedValues(brightness=100, from_brightness=10)
+        expected_state.add(expected)
+
+        # Intermediate value during transition
+        actual = ExpectedValues(brightness=50)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        # Should NOT remove (range match, waiting for final value)
+        assert len(expected_state.values) == 1
+
+    def test_brightness_range_match_final_value(self) -> None:
+        """Test range matching removes on final target value."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 10 -> 100
+        expected = ExpectedValues(brightness=100, from_brightness=10)
+        expected_state.add(expected)
+
+        # Final value (within tolerance of target)
+        actual = ExpectedValues(brightness=98)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        # Should remove (exact match)
+        assert len(expected_state.values) == 0
+
+    def test_brightness_range_match_outside_range(self) -> None:
+        """Test range matching rejects values outside range."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 10 -> 100
+        expected = ExpectedValues(brightness=100, from_brightness=10)
+        expected_state.add(expected)
+
+        # Value outside range
+        actual = ExpectedValues(brightness=150)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched is None
+        assert len(expected_state.values) == 1
+
+    def test_brightness_point_match_unchanged(self) -> None:
+        """Test point matching behavior unchanged when no from_brightness."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Point-based (no from_brightness)
+        expected = ExpectedValues(brightness=100)
+        expected_state.add(expected)
+
+        # Within tolerance
+        actual = ExpectedValues(brightness=98)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        # Should remove (exact match)
+        assert len(expected_state.values) == 0
+
+    def test_hs_range_match_no_wraparound(self) -> None:
+        """Test HS range matching without hue wraparound."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from (100, 50) -> (150, 80)
+        expected = ExpectedValues(
+            hs_color=(150.0, 80.0),
+            from_hs_color=(100.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Intermediate value
+        actual = ExpectedValues(hs_color=(125.0, 65.0))
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 1  # Range match, not removed
+
+    def test_hs_range_match_with_wraparound(self) -> None:
+        """Test HS range matching with hue wraparound (350->10)."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from (350, 50) -> (10, 50)
+        expected = ExpectedValues(
+            hs_color=(10.0, 50.0),
+            from_hs_color=(350.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Intermediate values in wraparound range (not near target)
+        for test_hue in [355.0, 0.0]:
+            actual = ExpectedValues(hs_color=(test_hue, 50.0))
+            matched = expected_state.match_and_remove(actual)
+            assert matched == expected
+            assert len(expected_state.values) == 1  # Range match, not removed
+
+        # Value close to target (within tolerance) - should be exact match
+        actual = ExpectedValues(hs_color=(8.0, 50.0))
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 0  # Exact match, removed
+
+    def test_hs_range_match_wraparound_rejects_gap(self) -> None:
+        """Test HS range matching rejects values in the wraparound gap."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from (350, 50) -> (10, 50)
+        expected = ExpectedValues(
+            hs_color=(10.0, 50.0),
+            from_hs_color=(350.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Value in the gap (should be rejected)
+        actual = ExpectedValues(hs_color=(180.0, 50.0))
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched is None
+
+    def test_hs_exact_match_removes(self) -> None:
+        """Test HS exact match removes from queue."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition with range
+        expected = ExpectedValues(
+            hs_color=(150.0, 80.0),
+            from_hs_color=(100.0, 50.0)
+        )
+        expected_state.add(expected)
+
+        # Target value (within tolerance)
+        actual = ExpectedValues(hs_color=(148.0, 79.0))
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 0  # Exact match, removed
+
+    def test_kelvin_range_match_intermediate_value(self) -> None:
+        """Test kelvin range matching accepts intermediate values."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 2700K -> 6500K
+        expected = ExpectedValues(
+            color_temp_kelvin=6500,
+            from_color_temp_kelvin=2700
+        )
+        expected_state.add(expected)
+
+        # Intermediate value
+        actual = ExpectedValues(color_temp_kelvin=4000)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 1  # Range match
+
+    def test_kelvin_range_match_final_value(self) -> None:
+        """Test kelvin range matching removes on target value."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 2700K -> 6500K
+        expected = ExpectedValues(
+            color_temp_kelvin=6500,
+            from_color_temp_kelvin=2700
+        )
+        expected_state.add(expected)
+
+        # Target value (within tolerance)
+        actual = ExpectedValues(color_temp_kelvin=6450)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched == expected
+        assert len(expected_state.values) == 0  # Exact match, removed
+
+    def test_kelvin_range_match_outside_range(self) -> None:
+        """Test kelvin range matching rejects out of range values."""
+        expected_state = ExpectedState(entity_id="light.test")
+
+        # Transition from 2700K -> 6500K
+        expected = ExpectedValues(
+            color_temp_kelvin=6500,
+            from_color_temp_kelvin=2700
+        )
+        expected_state.add(expected)
+
+        # Out of range
+        actual = ExpectedValues(color_temp_kelvin=7000)
+
+        matched = expected_state.match_and_remove(actual)
+        assert matched is None
