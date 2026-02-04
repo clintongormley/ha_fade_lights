@@ -31,6 +31,28 @@ from .websocket_api import async_save_light_config
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _async_turn_on(
+    hass: HomeAssistant,
+    entity_id: str,
+    brightness: int | None = None,
+    transition: float | None = None,
+) -> None:
+    """Turn on a light with optional brightness and transition."""
+    data: dict[str, Any] = {ATTR_ENTITY_ID: entity_id}
+    if brightness is not None:
+        data[ATTR_BRIGHTNESS] = brightness
+    if transition is not None:
+        data["transition"] = transition
+    await hass.services.async_call(LIGHT_DOMAIN, SERVICE_TURN_ON, data, blocking=True)
+
+
+async def _async_turn_off(hass: HomeAssistant, entity_id: str) -> None:
+    """Turn off a light."""
+    await hass.services.async_call(
+        LIGHT_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: entity_id}, blocking=True
+    )
+
+
 async def async_autoconfigure_light(
     hass: HomeAssistant, entity_id: str
 ) -> dict[str, Any]:
@@ -38,8 +60,8 @@ async def async_autoconfigure_light(
 
     This is the main entry point that:
     1. Captures original state
-    2. Runs delay test
-    3. Runs native transitions test
+    2. Runs native transitions test
+    3. Runs delay test (with transitions if supported)
     4. Restores original state
     5. Saves results to storage
 
@@ -107,29 +129,38 @@ async def _async_restore_light_state(
     """Restore a light to its original state."""
     try:
         if original_on:
-            if original_brightness is not None:
-                await hass.services.async_call(
-                    LIGHT_DOMAIN,
-                    SERVICE_TURN_ON,
-                    {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: original_brightness},
-                    blocking=True,
-                )
-            else:
-                await hass.services.async_call(
-                    LIGHT_DOMAIN,
-                    SERVICE_TURN_ON,
-                    {ATTR_ENTITY_ID: entity_id},
-                    blocking=True,
-                )
+            await _async_turn_on(hass, entity_id, brightness=original_brightness)
         else:
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_OFF,
-                {ATTR_ENTITY_ID: entity_id},
-                blocking=True,
-            )
+            await _async_turn_off(hass, entity_id)
     except Exception:  # noqa: BLE001
         _LOGGER.warning("%s: Failed to restore original state", entity_id)
+
+
+async def _async_set_standard_state(hass: HomeAssistant, entity_id: str) -> None:
+    """Set light to standard test state (on at brightness 255).
+
+    Waits for state to settle before returning.
+    """
+    state_changed_event = asyncio.Event()
+
+    @callback
+    def _on_state_changed(event: Event[EventStateChangedData]) -> None:
+        """Handle state changed events for the test light."""
+        new_state = event.data.get("new_state")
+        if new_state and new_state.entity_id == entity_id:
+            state_changed_event.set()
+
+    unsub = hass.bus.async_listen("state_changed", _on_state_changed)
+
+    try:
+        await _async_turn_on(hass, entity_id, brightness=255)
+        # Wait for state change or short timeout (light may already be at 255)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(state_changed_event.wait(), timeout=2.0)
+        # Let state settle
+        await asyncio.sleep(0.5)
+    finally:
+        unsub()
 
 
 async def _async_test_light_delay(
@@ -149,6 +180,8 @@ async def _async_test_light_delay(
         On success: {"entity_id": entity_id, "min_delay_ms": result}
         On failure: {"entity_id": entity_id, "error": "..."}
     """
+    await _async_set_standard_state(hass, entity_id)
+
     timings: list[float] = []
     state_changed_event = asyncio.Event()
     retry_count = 0
@@ -164,69 +197,37 @@ async def _async_test_light_delay(
     unsub = hass.bus.async_listen("state_changed", _on_state_changed)
 
     try:
-        # Build service data with optional transition
-        service_data_base: dict[str, Any] = {ATTR_ENTITY_ID: entity_id}
-        if use_native_transitions:
-            service_data_base["transition"] = NATIVE_TRANSITION_MS / 1000
-
-        # Initialize light to a known state (on at brightness 255)
-        state_changed_event.clear()
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_ON,
-            {**service_data_base, ATTR_BRIGHTNESS: 255},
-            blocking=True,
-        )
-        # Wait for state change or short timeout (light may already be at 255)
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(state_changed_event.wait(), timeout=2.0)
+        transition = NATIVE_TRANSITION_MS / 1000 if use_native_transitions else None
 
         for i in range(1, AUTOCONFIGURE_ITERATIONS + 1):
-            state_changed_event.clear()
-            start_time = time.monotonic()
-
             # Alternate brightness: 10 for odd iterations, 255 for even
             target_brightness = 10 if i % 2 == 1 else 255
+            start_time = time.monotonic()
 
-            await hass.services.async_call(
-                LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
-                {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
-                blocking=True,
-            )
+            # Try up to 2 times (initial + one retry)
+            for attempt in range(2):
+                state_changed_event.clear()
+                start_time = time.monotonic()
 
-            # Wait for state_changed event with timeout
-            try:
-                await asyncio.wait_for(
-                    state_changed_event.wait(),
-                    timeout=AUTOCONFIGURE_TIMEOUT_S,
+                await _async_turn_on(
+                    hass, entity_id, brightness=target_brightness, transition=transition
                 )
-            except TimeoutError:
-                # Retry once on timeout
-                if retry_count == 0:
-                    retry_count += 1
-                    _LOGGER.warning(
-                        "%s: Timeout on iteration %d, retrying",
-                        entity_id,
-                        i,
-                    )
-                    state_changed_event.clear()
-                    start_time = time.monotonic()
-                    await hass.services.async_call(
-                        LIGHT_DOMAIN,
-                        SERVICE_TURN_ON,
-                        {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
-                        blocking=True,
-                    )
 
-                    try:
-                        await asyncio.wait_for(
-                            state_changed_event.wait(),
-                            timeout=AUTOCONFIGURE_TIMEOUT_S,
+                try:
+                    await asyncio.wait_for(
+                        state_changed_event.wait(),
+                        timeout=AUTOCONFIGURE_TIMEOUT_S,
+                    )
+                    break  # Success, exit retry loop
+                except TimeoutError:
+                    if attempt == 0 and retry_count == 0:
+                        retry_count += 1
+                        _LOGGER.warning(
+                            "%s: Timeout on iteration %d, retrying",
+                            entity_id,
+                            i,
                         )
-                    except TimeoutError:
-                        return {"entity_id": entity_id, "error": "Timeout after retry"}
-                else:
+                        continue  # Retry once
                     return {"entity_id": entity_id, "error": "Timeout after retry"}
 
             elapsed_ms = (time.monotonic() - start_time) * 1000
@@ -272,14 +273,10 @@ async def _async_test_native_transitions(
         On success: {"entity_id": entity_id, "supports_native_transitions": bool, ...}
         On failure: {"entity_id": entity_id, "error": "..."}
     """
-    # Get current brightness to determine target
-    current_state = hass.states.get(entity_id)
-    current_brightness = 0
-    if current_state:
-        current_brightness = current_state.attributes.get(ATTR_BRIGHTNESS) or 0
+    await _async_set_standard_state(hass, entity_id)
 
-    # Determine target brightness (opposite end of spectrum)
-    target_brightness = 10 if current_brightness > 127 else 255
+    # Target brightness 10 (light starts at 255 from standard state)
+    target_brightness = 10
 
     state_changed_event = asyncio.Event()
 
@@ -293,28 +290,10 @@ async def _async_test_native_transitions(
     unsub = hass.bus.async_listen("state_changed", _on_state_changed)
 
     try:
-        # Ensure light is on at a known brightness (without transition)
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: current_brightness or 128},
-            blocking=True,
-        )
-        await asyncio.sleep(0.5)  # Let state settle
-
-        # Clear event and send command with transition
-        state_changed_event.clear()
+        # Send command with transition (light already at 255)
         start_time = time.monotonic()
-
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_ON,
-            {
-                ATTR_ENTITY_ID: entity_id,
-                ATTR_BRIGHTNESS: target_brightness,
-                "transition": transition_s,
-            },
-            blocking=True,
+        await _async_turn_on(
+            hass, entity_id, brightness=target_brightness, transition=transition_s
         )
 
         # Wait for state change with generous timeout
@@ -348,49 +327,3 @@ async def _async_test_native_transitions(
 
     finally:
         unsub()
-
-
-# Public aliases for standalone testing (used by websocket API for individual tests)
-async def async_test_light_delay(
-    hass: HomeAssistant, entity_id: str
-) -> dict[str, Any]:
-    """Test a light to determine optimal minimum delay between commands.
-
-    This is the public API that captures/restores state and saves results.
-    For batch testing, use async_autoconfigure_light instead.
-    """
-    original_state = hass.states.get(entity_id)
-    if original_state is None:
-        return {"entity_id": entity_id, "error": "Entity not found"}
-
-    original_on = original_state.state == STATE_ON
-    original_brightness = original_state.attributes.get(ATTR_BRIGHTNESS)
-
-    try:
-        result = await _async_test_light_delay(hass, entity_id)
-        if "error" not in result:
-            await async_save_light_config(hass, entity_id, min_delay_ms=result["min_delay_ms"])
-        return result
-    finally:
-        await _async_restore_light_state(hass, entity_id, original_on, original_brightness)
-
-
-async def async_test_native_transitions(
-    hass: HomeAssistant, entity_id: str, transition_s: float = 2.0
-) -> dict[str, Any]:
-    """Test if a light supports native transitions.
-
-    This is the public API that captures/restores state.
-    For batch testing, use async_autoconfigure_light instead.
-    """
-    original_state = hass.states.get(entity_id)
-    if original_state is None:
-        return {"entity_id": entity_id, "error": "Entity not found"}
-
-    original_on = original_state.state == STATE_ON
-    original_brightness = original_state.attributes.get(ATTR_BRIGHTNESS)
-
-    try:
-        return await _async_test_native_transitions(hass, entity_id, transition_s)
-    finally:
-        await _async_restore_light_state(hass, entity_id, original_on, original_brightness)
