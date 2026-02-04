@@ -35,6 +35,7 @@ from .const import (
     OPTION_LOG_LEVEL,
     OPTION_MIN_STEP_DELAY_MS,
 )
+from .notifications import _notify_unconfigured_lights
 
 
 def async_register_websocket_api(hass: HomeAssistant) -> None:
@@ -192,6 +193,9 @@ async def async_save_light_config(
     # Save to disk
     store = hass.data[DOMAIN]["store"]
     await store.async_save(data)
+
+    # Check if notification should be updated/dismissed
+    await _notify_unconfigured_lights(hass)
 
     return {"success": True}
 
