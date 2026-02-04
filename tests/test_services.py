@@ -233,3 +233,129 @@ async def test_service_uses_default_transition(
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
         assert call_args[0][3] == DEFAULT_TRANSITION * 1000  # transition_ms
+
+
+async def test_service_deduplicates_entities(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_light_entity: str,
+    mock_light_group: str,
+) -> None:
+    """Test service deduplicates entities that appear multiple times.
+
+    If an entity is specified directly AND is also part of a group,
+    it should only be faded once.
+    """
+    with patch(
+        "custom_components.fade_lights._fade_light",
+        new_callable=AsyncMock,
+    ) as mock_fade_light:
+        # mock_light_entity is both specified directly and is part of mock_light_group
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                ATTR_ENTITY_ID: [mock_light_entity, mock_light_group],
+                ATTR_BRIGHTNESS_PCT: 50,
+                ATTR_TRANSITION: 1,
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+        # mock_light_group contains mock_light_entity and mock_light_off
+        # So we should only have 2 unique entities, not 3
+        assert mock_fade_light.call_count == 2
+
+        # Verify each entity was only called once
+        called_entity_ids = [call[0][1] for call in mock_fade_light.call_args_list]
+        assert len(called_entity_ids) == len(set(called_entity_ids))
+
+
+async def test_service_expands_nested_groups(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_light_entity: str,
+    mock_light_off: str,
+) -> None:
+    """Test service expands nested light groups recursively."""
+    # Create a nested group structure:
+    # outer_group -> inner_group -> mock_light_entity
+    #             -> mock_light_off
+    inner_group = "light.inner_group"
+    hass.states.async_set(
+        inner_group,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 150,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+            ATTR_ENTITY_ID: [mock_light_entity],
+        },
+    )
+
+    outer_group = "light.outer_group"
+    hass.states.async_set(
+        outer_group,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 150,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+            ATTR_ENTITY_ID: [inner_group, mock_light_off],
+        },
+    )
+
+    with patch(
+        "custom_components.fade_lights._fade_light",
+        new_callable=AsyncMock,
+    ) as mock_fade_light:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                ATTR_ENTITY_ID: outer_group,
+                ATTR_BRIGHTNESS_PCT: 50,
+                ATTR_TRANSITION: 1,
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+        # Should expand to the 2 individual lights
+        assert mock_fade_light.call_count == 2
+
+        called_entity_ids = {call[0][1] for call in mock_fade_light.call_args_list}
+        assert called_entity_ids == {mock_light_entity, mock_light_off}
+        # Groups should not be in the called entities
+        assert inner_group not in called_entity_ids
+        assert outer_group not in called_entity_ids
+
+
+async def test_service_handles_comma_string_with_whitespace(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_light_entity: str,
+    mock_light_off: str,
+) -> None:
+    """Test service handles comma-separated strings with various whitespace."""
+    with patch(
+        "custom_components.fade_lights._fade_light",
+        new_callable=AsyncMock,
+    ) as mock_fade_light:
+        # Various whitespace patterns
+        comma_string = f"  {mock_light_entity}  ,   {mock_light_off}  "
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                ATTR_ENTITY_ID: comma_string,
+                ATTR_BRIGHTNESS_PCT: 50,
+                ATTR_TRANSITION: 1,
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+        assert mock_fade_light.call_count == 2
+
+        called_entity_ids = {call[0][1] for call in mock_fade_light.call_args_list}
+        assert called_entity_ids == {mock_light_entity, mock_light_off}
