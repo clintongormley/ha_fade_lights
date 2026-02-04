@@ -14,4 +14,5 @@
 ## Shortcuts
 
 - `cp to ha` - Copy the integration to `/workspaces/homeassistant-core/config/custom_components/fade_lights/` for testing
-- `pr and merge` - Commit any changes in separate commits if that makes sense, create a pr, and merge the pr
+- `pr` - Commit any changes in separate commits if that makes sense, and create a PR (do not merge)
+- `merge` - Merge the current PR (only after explicit user approval)
