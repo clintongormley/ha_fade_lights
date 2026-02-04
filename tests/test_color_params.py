@@ -227,3 +227,101 @@ class TestColorConversions:
 
         assert params.hs_color is None
         assert params.color_temp_mireds is None
+
+
+class TestFromParameter:
+    """Test the from: parameter for specifying starting values."""
+
+    async def test_from_brightness(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test from: parameter with brightness_pct."""
+        from custom_components.fade_lights import _parse_color_params
+        from custom_components.fade_lights.const import ATTR_FROM
+
+        params = _parse_color_params({
+            ATTR_BRIGHTNESS_PCT: 100,
+            ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 0},
+        })
+
+        assert params.brightness_pct == 100
+        assert params.from_brightness_pct == 0
+
+    async def test_from_hs_color(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test from: parameter with hs_color."""
+        from custom_components.fade_lights import _parse_color_params
+        from custom_components.fade_lights.const import ATTR_FROM
+
+        params = _parse_color_params({
+            ATTR_HS_COLOR: [200, 80],
+            ATTR_FROM: {ATTR_HS_COLOR: [0, 0]},
+        })
+
+        assert params.hs_color == (200, 80)
+        assert params.from_hs_color == (0, 0)
+
+    async def test_from_color_temp(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test from: parameter with color_temp_kelvin."""
+        from custom_components.fade_lights import _parse_color_params
+        from custom_components.fade_lights.const import ATTR_FROM
+
+        params = _parse_color_params({
+            ATTR_COLOR_TEMP_KELVIN: 4000,
+            ATTR_FROM: {ATTR_COLOR_TEMP_KELVIN: 2700},
+        })
+
+        assert params.color_temp_mireds == 250  # 4000K
+        assert params.from_color_temp_mireds == 370  # 2700K
+
+    async def test_from_rgb_converts_to_hs(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test from: parameter converts rgb_color to hs."""
+        from custom_components.fade_lights import _parse_color_params
+        from custom_components.fade_lights.const import ATTR_FROM
+
+        params = _parse_color_params({
+            ATTR_HS_COLOR: [200, 80],
+            ATTR_FROM: {ATTR_RGB_COLOR: [255, 0, 0]},  # Red
+        })
+
+        assert params.from_hs_color is not None
+        assert abs(params.from_hs_color[0] - 0) < 1  # hue ~0 (red)
+
+    async def test_from_validates_single_color(
+        self,
+        hass: HomeAssistant,
+        init_integration: MockConfigEntry,
+        mock_light_entity: str,
+    ) -> None:
+        """Test from: parameter validates only one color param."""
+        with pytest.raises(ServiceValidationError, match="Only one color parameter"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_FADE_LIGHTS,
+                {
+                    "entity_id": mock_light_entity,
+                    ATTR_HS_COLOR: [200, 80],
+                    "from": {
+                        ATTR_HS_COLOR: [0, 0],
+                        ATTR_COLOR_TEMP_KELVIN: 2700,
+                    },
+                },
+                blocking=True,
+            )
