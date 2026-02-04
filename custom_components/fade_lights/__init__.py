@@ -599,14 +599,8 @@ async def _execute_fade(
 
     # Store final brightness after successful fade completion
     if not cancel_event.is_set():
-        # Get final brightness from last phase's last step
-        last_phase = phases[-1]
-        last_phase.reset()
-        final_step = None
-        while last_phase.has_next():
-            final_step = last_phase.next_step()
-
-        final_brightness = final_step.brightness if final_step and final_step.brightness is not None else None
+        # Get final brightness from last phase's end_brightness (efficient)
+        final_brightness = phases[-1].end_brightness
         if final_brightness is None:
             # Try to get from params
             if fade_params.brightness_pct is not None:
