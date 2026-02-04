@@ -408,6 +408,9 @@ async def _apply_step(hass: HomeAssistant, entity_id: str, step: FadeStep) -> No
     if step.color_temp_kelvin is not None:
         service_data[HA_ATTR_COLOR_TEMP_KELVIN] = step.color_temp_kelvin
 
+    # Use native transitions to smooth out each step, if supported
+    service_data["transition"] = 0.1
+
     # Only call service if there's something to set (beyond entity_id)
     if len(service_data) > 1:
         await hass.services.async_call(
