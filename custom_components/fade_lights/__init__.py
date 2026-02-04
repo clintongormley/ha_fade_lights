@@ -70,7 +70,7 @@ from .const import (
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
 )
-from .models import ExpectedState, ExpectedValues, FadeParams, FadeStep
+from .models import ExpectedState, ExpectedValues, FadeChange, FadeParams, FadeStep
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1024,6 +1024,126 @@ def _mireds_to_hs(mireds: int) -> tuple[float, float]:
 
     # Fallback (should not reach here)
     return (38.0, 12.0)  # Neutral white
+
+
+def _calculate_hs_to_mireds_changes(
+    start_brightness: int | None,
+    end_brightness: int | None,
+    start_hs: tuple[float, float],
+    end_mireds: int,
+    transition_ms: int,
+    min_step_delay_ms: int,
+) -> list[FadeChange]:
+    """Calculate HS -> mireds hybrid transition (two phases).
+
+    Phase 1 (70%): Fade HS toward Planckian locus
+    Phase 2 (30%): Fade mireds to target
+    """
+    # If already on locus, skip HS phase and just do mireds
+    if _is_on_planckian_locus(start_hs):
+        start_mireds = _hs_to_mireds(start_hs)
+        return [FadeChange(
+            start_brightness=start_brightness,
+            end_brightness=end_brightness,
+            start_mireds=start_mireds,
+            end_mireds=end_mireds,
+            transition_ms=transition_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        )]
+
+    # Find intersection point on Planckian locus
+    intersection_hs = _mireds_to_hs(end_mireds)
+    intersection_mireds = _hs_to_mireds(intersection_hs)
+
+    # Split timing 70/30
+    phase1_ms = int(transition_ms * 0.7)
+    phase2_ms = transition_ms - phase1_ms
+
+    # Split brightness proportionally
+    mid_brightness = None
+    if start_brightness is not None and end_brightness is not None:
+        brightness_change = end_brightness - start_brightness
+        mid_brightness = start_brightness + int(brightness_change * 0.7)
+
+    return [
+        FadeChange(
+            start_brightness=start_brightness,
+            end_brightness=mid_brightness,
+            start_hs=start_hs,
+            end_hs=intersection_hs,
+            transition_ms=phase1_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        ),
+        FadeChange(
+            start_brightness=mid_brightness,
+            end_brightness=end_brightness,
+            start_mireds=intersection_mireds,
+            end_mireds=end_mireds,
+            transition_ms=phase2_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        ),
+    ]
+
+
+def _calculate_mireds_to_hs_changes(
+    start_brightness: int | None,
+    end_brightness: int | None,
+    start_mireds: int,
+    end_hs: tuple[float, float],
+    transition_ms: int,
+    min_step_delay_ms: int,
+) -> list[FadeChange]:
+    """Calculate mireds -> HS hybrid transition (two phases).
+
+    Phase 1 (30%): Fade mireds to Planckian intersection
+    Phase 2 (70%): Fade HS to target
+    """
+    # Find the locus point closest to target HS
+    target_locus_mireds = _hs_to_mireds(end_hs)
+
+    # If already close to target mireds, skip mireds phase
+    if abs(start_mireds - target_locus_mireds) < 10:
+        start_hs_from_mireds = _mireds_to_hs(start_mireds)
+        return [FadeChange(
+            start_brightness=start_brightness,
+            end_brightness=end_brightness,
+            start_hs=start_hs_from_mireds,
+            end_hs=end_hs,
+            transition_ms=transition_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        )]
+
+    # Split timing 30/70
+    phase1_ms = int(transition_ms * 0.3)
+    phase2_ms = transition_ms - phase1_ms
+
+    # Split brightness proportionally
+    mid_brightness = None
+    if start_brightness is not None and end_brightness is not None:
+        brightness_change = end_brightness - start_brightness
+        mid_brightness = start_brightness + int(brightness_change * 0.3)
+
+    # Get HS at the target mireds point on locus
+    locus_hs = _mireds_to_hs(target_locus_mireds)
+
+    return [
+        FadeChange(
+            start_brightness=start_brightness,
+            end_brightness=mid_brightness,
+            start_mireds=start_mireds,
+            end_mireds=target_locus_mireds,
+            transition_ms=phase1_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        ),
+        FadeChange(
+            start_brightness=mid_brightness,
+            end_brightness=end_brightness,
+            start_hs=locus_hs,
+            end_hs=end_hs,
+            transition_ms=phase2_ms,
+            min_step_delay_ms=min_step_delay_ms,
+        ),
+    ]
 
 
 def _build_hs_to_mireds_steps(
