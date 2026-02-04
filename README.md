@@ -60,7 +60,7 @@ To adjust the integration settings, go to **Settings** → **Devices & Services*
 | Option | Description | Default | Range |
 |--------|-------------|---------|-------|
 | **Default brightness** | Target brightness percentage when not specified in service call | 40% | 0-100 |
-| **Default transition** | Transition duration in seconds when not specified in service call | 3 seconds | 0-3600 |
+| **Default transition** | Transition duration in seconds when not specified in service call. Accepts decimal values (e.g., `0.5` for 500ms). | 3 seconds | 0-3600 |
 | **Step delay** | Minimum delay between brightness steps in milliseconds. Lower values create smoother fades but increase system load. | 50ms | 50-1000 |
 
 ## Usage
@@ -78,7 +78,7 @@ Fades one or more lights to a target brightness over a transition period.
   - Light groups are automatically expanded to their individual lights
   - Duplicate entities are automatically deduplicated
 - **brightness_pct** (optional, default: 40): Target brightness percentage (0-100)
-- **transition** (optional, default: 3): Transition duration in seconds
+- **transition** (optional, default: 3): Transition duration in seconds (supports decimals, e.g., `0.5` for 500ms)
 
 #### Examples:
 

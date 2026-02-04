@@ -86,7 +86,7 @@ class FadeLightsOptionsFlow(OptionsFlow):
                     vol.Optional(
                         OPTION_DEFAULT_TRANSITION,
                         default=options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=3600)),
                     vol.Optional(
                         OPTION_STEP_DELAY_MS,
                         default=options.get(OPTION_STEP_DELAY_MS, DEFAULT_STEP_DELAY_MS),
