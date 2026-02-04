@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from custom_components.fade_lights import _is_on_planckian_locus
+from custom_components.fade_lights import (
+    _hs_to_mireds,
+    _is_on_planckian_locus,
+    _mireds_to_hs,
+)
 
 
 class TestIsOnPlanckianLocus:
@@ -39,9 +43,6 @@ class TestIsOnPlanckianLocus:
         """Test behavior at saturation threshold boundary."""
         assert _is_on_planckian_locus((35.0, 15.0)) is True
         assert _is_on_planckian_locus((35.0, 16.0)) is False
-
-
-from custom_components.fade_lights import _hs_to_mireds
 
 
 class TestHsToMireds:
@@ -81,9 +82,6 @@ class TestHsToMireds:
         """Test that result is an integer."""
         mireds = _hs_to_mireds((35.0, 10.0))
         assert isinstance(mireds, int)
-
-
-from custom_components.fade_lights import _mireds_to_hs
 
 
 class TestMiredsToHs:
