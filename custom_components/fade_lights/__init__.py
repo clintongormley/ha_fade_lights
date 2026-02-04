@@ -519,8 +519,14 @@ async def _execute_fade(
     # Get stored brightness for auto-turn-on when fading color from off
     stored_brightness = existing_orig if existing_orig > 0 else start_brightness
 
+    # Get per-light minimum brightness from config (detected by autoconfigure)
+    light_config = _get_light_config(hass, entity_id)
+    min_brightness = light_config.get("min_brightness") or 1
+
     # Resolve fade parameters into a configured FadeChange
-    fade = FadeChange.resolve(fade_params, state.attributes, min_step_delay_ms, stored_brightness)
+    fade = FadeChange.resolve(
+        fade_params, state.attributes, min_step_delay_ms, stored_brightness, min_brightness
+    )
 
     if fade is None:
         _LOGGER.debug("%s: Nothing to fade", entity_id)
@@ -530,7 +536,6 @@ async def _execute_fade(
     delay_ms = fade.delay_ms()
 
     # Check if light supports native transitions and if "from" was specified
-    light_config = _get_light_config(hass, entity_id)
     native_transitions = light_config.get("native_transitions", False)
     has_from = fade_params.has_from_target()
 

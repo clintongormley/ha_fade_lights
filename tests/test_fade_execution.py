@@ -1007,3 +1007,172 @@ async def test_native_transition_tracks_range(
         assert expected.from_brightness is not None
         assert expected.brightness is not None
         assert expected.from_brightness < expected.brightness
+
+
+async def test_min_brightness_from_light_config_passed_to_resolve(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that min_brightness from light config is passed to FadeChange.resolve().
+
+    When a light is configured with min_brightness (e.g., detected by autoconfigure),
+    that value should be passed to FadeChange.resolve() so that brightness values
+    are clamped appropriately.
+    """
+    entity_id = "light.test_min_brightness"
+
+    # Configure per-light min_brightness of 15 (simulating a light that doesn't
+    # work below brightness 15)
+    hass.data[DOMAIN]["data"][entity_id] = {"min_brightness": 15}
+
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Track the min_brightness passed to FadeChange.resolve
+    resolve_calls = []
+    original_resolve = None
+
+    # Import here to get the class
+    from custom_components.fade_lights.fade_change import FadeChange
+
+    original_resolve = FadeChange.resolve
+
+    @classmethod
+    def tracking_resolve(cls, params, state_attrs, min_step_delay_ms, stored_brightness=0, min_brightness=1):
+        resolve_calls.append({
+            "params": params,
+            "min_step_delay_ms": min_step_delay_ms,
+            "stored_brightness": stored_brightness,
+            "min_brightness": min_brightness,
+        })
+        return original_resolve(params, state_attrs, min_step_delay_ms, stored_brightness, min_brightness)
+
+    with patch.object(FadeChange, "resolve", tracking_resolve):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                "entity_id": entity_id,
+                ATTR_BRIGHTNESS_PCT: 5,  # Low brightness target
+                ATTR_TRANSITION: 0.3,
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    # Verify FadeChange.resolve was called with min_brightness=15
+    assert len(resolve_calls) == 1
+    assert resolve_calls[0]["min_brightness"] == 15
+
+
+async def test_min_brightness_defaults_to_1_when_not_configured(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that min_brightness defaults to 1 when not configured in light config."""
+    entity_id = "light.test_default_min_brightness"
+
+    # No min_brightness configured for this light
+    hass.data[DOMAIN]["data"][entity_id] = {}
+
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 255,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Track the min_brightness passed to FadeChange.resolve
+    resolve_calls = []
+
+    from custom_components.fade_lights.fade_change import FadeChange
+
+    original_resolve = FadeChange.resolve
+
+    @classmethod
+    def tracking_resolve(cls, params, state_attrs, min_step_delay_ms, stored_brightness=0, min_brightness=1):
+        resolve_calls.append({
+            "min_brightness": min_brightness,
+        })
+        return original_resolve(params, state_attrs, min_step_delay_ms, stored_brightness, min_brightness)
+
+    with patch.object(FadeChange, "resolve", tracking_resolve):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                "entity_id": entity_id,
+                ATTR_BRIGHTNESS_PCT: 50,
+                ATTR_TRANSITION: 0.3,
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    # Verify FadeChange.resolve was called with min_brightness=1 (default)
+    assert len(resolve_calls) == 1
+    assert resolve_calls[0]["min_brightness"] == 1
+
+
+async def test_min_brightness_clamps_fade_steps(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that min_brightness clamps brightness values during fade.
+
+    When fading to a very low brightness (like 1%), the actual brightness
+    should be clamped to the light's min_brightness floor.
+    """
+    entity_id = "light.test_clamp_brightness"
+
+    # Configure per-light min_brightness of 20
+    hass.data[DOMAIN]["data"][entity_id] = {"min_brightness": 20}
+
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 100,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Fade to 1% (normally 2-3 brightness, but should clamp to 20)
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_FADE_LIGHTS,
+        {
+            "entity_id": entity_id,
+            ATTR_BRIGHTNESS_PCT: 1,  # 1% = 2 brightness normally
+            ATTR_TRANSITION: 0.3,
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    turn_on_calls = _get_turn_on_calls(service_calls)
+    assert len(turn_on_calls) > 0
+
+    # All brightness values should be >= min_brightness (20)
+    for call in turn_on_calls:
+        brightness = call.data.get(ATTR_BRIGHTNESS)
+        if brightness is not None:
+            assert brightness >= 20, f"Brightness {brightness} should be >= min_brightness (20)"
+
+    # Final brightness should be 20 (clamped from ~2)
+    final_brightness = _get_final_brightness(service_calls)
+    assert final_brightness == 20
