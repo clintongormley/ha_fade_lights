@@ -1184,7 +1184,9 @@ async def _restore_intended_state(
     """
     if DOMAIN not in hass.data:
         return
-    _LOGGER.debug("%s: In _restore_intended_state", entity_id)
+    _LOGGER.debug(
+        "%s: Waiting for state events to flush before restoring intended state", entity_id
+    )
     await _cancel_and_wait_for_fade(entity_id)
 
     intended_brightness = _get_intended_brightness(hass, entity_id, old_state, new_state)
@@ -1209,71 +1211,76 @@ async def _restore_intended_state(
         current_brightness = 0
 
     # Handle OFF case
-    if intended_brightness == 0 and current_brightness != 0:
-        _LOGGER.info("%s: Restoring to off as intended", entity_id)
-        _add_expected_brightness(entity_id, 0)
-        await hass.services.async_call(
-            LIGHT_DOMAIN,
-            SERVICE_TURN_OFF,
-            {ATTR_ENTITY_ID: entity_id},
-            blocking=True,
-        )
-        await _wait_until_stale_events_flushed(entity_id)
-        return
-
-    # Handle ON case - check brightness and colors
-    if intended_brightness > 0:
-        # Build service data for restoration
-        service_data: dict = {ATTR_ENTITY_ID: entity_id}
-        need_restore = False
-
-        # Check brightness
-        if current_brightness != intended_brightness:
-            service_data[ATTR_BRIGHTNESS] = intended_brightness
-            need_restore = True
-
-        # Get intended colors from manual intervention (new_state)
-        intended_hs = new_state.attributes.get(HA_ATTR_HS_COLOR)
-        intended_kelvin = new_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
-
-        # Get current colors
-        current_hs = current_state.attributes.get(HA_ATTR_HS_COLOR)
-        current_kelvin = current_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
-
-        # Check HS color
-        if intended_hs and intended_hs != current_hs:
-            service_data[HA_ATTR_HS_COLOR] = intended_hs
-            need_restore = True
-
-        # Check color temp (mutually exclusive with HS)
-        if (
-            intended_kelvin
-            and intended_kelvin != current_kelvin
-            and HA_ATTR_HS_COLOR not in service_data
-        ):
-            service_data[HA_ATTR_COLOR_TEMP_KELVIN] = intended_kelvin
-            need_restore = True
-
-        if need_restore:
-            _LOGGER.info("%s: Restoring intended state: %s", entity_id, service_data)
-
-            # Track expected values (ExpectedValues uses kelvin)
-            _add_expected_values(
-                entity_id,
-                ExpectedValues(
-                    brightness=service_data.get(ATTR_BRIGHTNESS),
-                    hs_color=service_data.get(HA_ATTR_HS_COLOR),
-                    color_temp_kelvin=service_data.get(HA_ATTR_COLOR_TEMP_KELVIN),
-                ),
-            )
-
+    if intended_brightness == 0:
+        if current_brightness != 0:
+            _LOGGER.info("%s: Restoring to off as intended", entity_id)
+            _add_expected_brightness(entity_id, 0)
             await hass.services.async_call(
                 LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
-                service_data,
+                SERVICE_TURN_OFF,
+                {ATTR_ENTITY_ID: entity_id},
                 blocking=True,
             )
             await _wait_until_stale_events_flushed(entity_id)
+            return
+        else:
+            _LOGGER.debug("%s: already off, nothing to restore", entity_id)
+            return
+
+    # Handle ON case - check brightness and colors
+    # Build service data for restoration
+    service_data: dict = {ATTR_ENTITY_ID: entity_id}
+    need_restore = False
+
+    # Check brightness
+    if current_brightness != intended_brightness:
+        service_data[ATTR_BRIGHTNESS] = intended_brightness
+        need_restore = True
+
+    # Get intended colors from manual intervention (new_state)
+    intended_hs = new_state.attributes.get(HA_ATTR_HS_COLOR)
+    intended_kelvin = new_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+
+    # Get current colors
+    current_hs = current_state.attributes.get(HA_ATTR_HS_COLOR)
+    current_kelvin = current_state.attributes.get(HA_ATTR_COLOR_TEMP_KELVIN)
+
+    # Check HS color
+    if intended_hs and intended_hs != current_hs:
+        service_data[HA_ATTR_HS_COLOR] = intended_hs
+        need_restore = True
+
+    # Check color temp (mutually exclusive with HS)
+    if (
+        intended_kelvin
+        and intended_kelvin != current_kelvin
+        and HA_ATTR_HS_COLOR not in service_data
+    ):
+        service_data[HA_ATTR_COLOR_TEMP_KELVIN] = intended_kelvin
+        need_restore = True
+
+    if need_restore:
+        _LOGGER.info("%s: Restoring intended state: %s", entity_id, service_data)
+
+        # Track expected values (ExpectedValues uses kelvin)
+        _add_expected_values(
+            entity_id,
+            ExpectedValues(
+                brightness=service_data.get(ATTR_BRIGHTNESS),
+                hs_color=service_data.get(HA_ATTR_HS_COLOR),
+                color_temp_kelvin=service_data.get(HA_ATTR_COLOR_TEMP_KELVIN),
+            ),
+        )
+
+        await hass.services.async_call(
+            LIGHT_DOMAIN,
+            SERVICE_TURN_ON,
+            service_data,
+            blocking=True,
+        )
+        await _wait_until_stale_events_flushed(entity_id)
+    else:
+        _LOGGER.debug("%s: already in intended state, nothing to restore", entity_id)
 
 
 def _get_intended_brightness(
