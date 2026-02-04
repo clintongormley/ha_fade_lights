@@ -283,3 +283,319 @@ async def test_register_websocket_api(
         # Verify all five commands were registered
         # (get_lights, save_light_config, autoconfigure, get_settings, save_settings)
         assert mock_register.call_count == 5
+
+
+async def test_get_lights_skips_non_light_entities(
+    hass: HomeAssistant,
+    init_integration,
+) -> None:
+    """Test get_lights skips entities that don't start with 'light.'."""
+    from custom_components.fade_lights.websocket_api import async_get_lights
+
+    # Mock entity that's not a light
+    switch_entity = MagicMock()
+    switch_entity.entity_id = "switch.my_switch"
+    switch_entity.name = "My Switch"
+    switch_entity.area_id = None
+    switch_entity.disabled_by = None
+
+    with (
+        patch(
+            "homeassistant.helpers.floor_registry.async_get",
+            return_value=MagicMock(floors={}),
+        ),
+        patch(
+            "homeassistant.helpers.area_registry.async_get",
+            return_value=MagicMock(areas={}, async_get_area=lambda aid: None),
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=MagicMock(entities=MagicMock(values=lambda: [switch_entity])),
+        ),
+    ):
+        result = await async_get_lights(hass)
+
+    # Should have no lights
+    all_lights = []
+    for floor in result["floors"]:
+        for area in floor["areas"]:
+            all_lights.extend(area["lights"])
+    assert len(all_lights) == 0
+
+
+async def test_get_lights_gets_area_from_device(
+    hass: HomeAssistant,
+    init_integration,
+) -> None:
+    """Test get_lights gets area from device when entity has no area."""
+    from custom_components.fade_lights.websocket_api import async_get_lights
+
+    # Mock device with area
+    device = MagicMock()
+    device.area_id = "living_room"
+
+    # Mock area
+    area = MagicMock()
+    area.id = "living_room"
+    area.name = "Living Room"
+    area.floor_id = None
+    area.icon = None
+
+    # Mock light with device but no direct area
+    light_entity = MagicMock()
+    light_entity.entity_id = "light.device_light"
+    light_entity.name = "Device Light"
+    light_entity.original_name = "Device Light"
+    light_entity.area_id = None  # No direct area
+    light_entity.device_id = "device123"  # Has device
+    light_entity.disabled_by = None
+    light_entity.icon = None
+
+    hass.states.async_set("light.device_light", "on", {"brightness": 200})
+
+    with (
+        patch(
+            "homeassistant.helpers.floor_registry.async_get",
+            return_value=MagicMock(floors={}),
+        ),
+        patch(
+            "homeassistant.helpers.area_registry.async_get",
+            return_value=MagicMock(
+                areas={"living_room": area},
+                async_get_area=lambda aid: area if aid == "living_room" else None,
+            ),
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=MagicMock(entities=MagicMock(values=lambda: [light_entity])),
+        ),
+        patch(
+            "homeassistant.helpers.device_registry.async_get",
+            return_value=MagicMock(async_get=lambda did: device if did == "device123" else None),
+        ),
+    ):
+        result = await async_get_lights(hass)
+
+    # Find living room area
+    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
+    assert no_floor is not None
+    living_room = next((a for a in no_floor["areas"] if a["area_id"] == "living_room"), None)
+    assert living_room is not None
+    assert living_room["name"] == "Living Room"
+
+
+async def test_get_lights_uses_state_friendly_name_and_icon(
+    hass: HomeAssistant,
+    init_integration,
+) -> None:
+    """Test get_lights uses friendly_name and icon from state."""
+    from custom_components.fade_lights.websocket_api import async_get_lights
+
+    light_entity = MagicMock()
+    light_entity.entity_id = "light.test_light"
+    light_entity.name = "Entity Name"
+    light_entity.original_name = "Original Name"
+    light_entity.area_id = None
+    light_entity.device_id = None
+    light_entity.disabled_by = None
+    light_entity.icon = "mdi:entity-icon"
+
+    # State has different friendly_name and icon
+    hass.states.async_set(
+        "light.test_light",
+        "on",
+        {"friendly_name": "State Friendly Name", "icon": "mdi:state-icon", "brightness": 200},
+    )
+
+    with (
+        patch(
+            "homeassistant.helpers.floor_registry.async_get",
+            return_value=MagicMock(floors={}),
+        ),
+        patch(
+            "homeassistant.helpers.area_registry.async_get",
+            return_value=MagicMock(areas={}, async_get_area=lambda aid: None),
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            return_value=MagicMock(entities=MagicMock(values=lambda: [light_entity])),
+        ),
+        patch(
+            "homeassistant.helpers.device_registry.async_get",
+            return_value=MagicMock(async_get=lambda did: None),
+        ),
+    ):
+        result = await async_get_lights(hass)
+
+    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
+    no_area = next((a for a in no_floor["areas"] if a["area_id"] is None), None)
+    light = next((lt for lt in no_area["lights"] if lt["entity_id"] == "light.test_light"), None)
+
+    # Should prefer state values
+    assert light["name"] == "State Friendly Name"
+    assert light["icon"] == "mdi:state-icon"
+
+
+async def test_expand_light_groups(hass: HomeAssistant) -> None:
+    """Test _expand_light_groups expands groups to individual lights."""
+    from custom_components.fade_lights.websocket_api import _expand_light_groups
+
+    # Set up a group and individual lights
+    hass.states.async_set(
+        "light.group",
+        "on",
+        {"entity_id": ["light.lamp1", "light.lamp2"]},
+    )
+    hass.states.async_set("light.lamp1", "on", {"brightness": 200})
+    hass.states.async_set("light.lamp2", "on", {"brightness": 150})
+    hass.states.async_set("light.individual", "on", {"brightness": 100})
+
+    result = _expand_light_groups(hass, ["light.group", "light.individual"])
+
+    # Should have 3 individual lights (lamp1, lamp2, individual)
+    assert len(result) == 3
+    assert "light.lamp1" in result
+    assert "light.lamp2" in result
+    assert "light.individual" in result
+    assert "light.group" not in result
+
+
+async def test_expand_light_groups_handles_string_entity_id(hass: HomeAssistant) -> None:
+    """Test _expand_light_groups handles single string entity_id attribute."""
+    from custom_components.fade_lights.websocket_api import _expand_light_groups
+
+    # Set up a group with single string entity_id
+    hass.states.async_set(
+        "light.single_group",
+        "on",
+        {"entity_id": "light.single_lamp"},  # String, not list
+    )
+    hass.states.async_set("light.single_lamp", "on", {"brightness": 200})
+
+    result = _expand_light_groups(hass, ["light.single_group"])
+
+    assert len(result) == 1
+    assert "light.single_lamp" in result
+
+
+async def test_expand_light_groups_skips_missing_entities(hass: HomeAssistant) -> None:
+    """Test _expand_light_groups skips entities with no state."""
+    from custom_components.fade_lights.websocket_api import _expand_light_groups
+
+    # Only set up one light, not the other
+    hass.states.async_set("light.exists", "on", {"brightness": 200})
+
+    result = _expand_light_groups(hass, ["light.exists", "light.missing"])
+
+    assert len(result) == 1
+    assert "light.exists" in result
+    assert "light.missing" not in result
+
+
+async def test_get_light_config(hass: HomeAssistant, init_integration) -> None:
+    """Test _get_light_config returns config from storage."""
+    from custom_components.fade_lights.websocket_api import _get_light_config
+
+    # Set up config
+    hass.data[DOMAIN]["data"]["light.configured"] = {
+        "min_delay_ms": 150,
+        "exclude": True,
+    }
+
+    config = _get_light_config(hass, "light.configured")
+    assert config["min_delay_ms"] == 150
+    assert config["exclude"] is True
+
+    # Unconfigured light
+    config = _get_light_config(hass, "light.unconfigured")
+    assert config == {}
+
+
+async def test_get_settings(hass: HomeAssistant, init_integration) -> None:
+    """Test ws_get_settings returns current settings."""
+    from custom_components.fade_lights.websocket_api import _get_config_entry
+
+    from custom_components.fade_lights.const import (
+        DEFAULT_LOG_LEVEL,
+        DEFAULT_MIN_STEP_DELAY_MS,
+    )
+
+    entry = _get_config_entry(hass)
+    assert entry is not None
+
+    # Defaults should be returned when no options set
+    assert entry.options.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS) == DEFAULT_MIN_STEP_DELAY_MS
+    assert entry.options.get("log_level", DEFAULT_LOG_LEVEL) == DEFAULT_LOG_LEVEL
+
+
+async def test_save_settings_updates_min_delay(hass: HomeAssistant, init_integration) -> None:
+    """Test save_settings updates min_step_delay_ms."""
+    from custom_components.fade_lights.const import OPTION_MIN_STEP_DELAY_MS
+    from custom_components.fade_lights.websocket_api import _get_config_entry
+
+    entry = _get_config_entry(hass)
+
+    # Update options
+    new_options = dict(entry.options)
+    new_options[OPTION_MIN_STEP_DELAY_MS] = 200
+    hass.config_entries.async_update_entry(entry, options=new_options)
+
+    # Verify update
+    entry = _get_config_entry(hass)
+    assert entry.options.get(OPTION_MIN_STEP_DELAY_MS) == 200
+
+
+async def test_apply_log_level(hass: HomeAssistant, init_integration) -> None:
+    """Test _apply_log_level calls logger service."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.fade_lights.websocket_api import _apply_log_level
+
+    # Register a mock logger service to capture the call
+    calls = []
+
+    async def mock_set_level(call):
+        calls.append(call.data)
+
+    hass.services.async_register("logger", "set_level", mock_set_level)
+
+    await _apply_log_level(hass, "debug")
+
+    assert len(calls) == 1
+    assert calls[0] == {"custom_components.fade_lights": "debug"}
+
+
+async def test_apply_log_level_warning(hass: HomeAssistant, init_integration) -> None:
+    """Test _apply_log_level with warning level."""
+    from custom_components.fade_lights.websocket_api import _apply_log_level
+
+    calls = []
+
+    async def mock_set_level(call):
+        calls.append(call.data)
+
+    hass.services.async_register("logger", "set_level", mock_set_level)
+
+    await _apply_log_level(hass, "warning")
+
+    assert len(calls) == 1
+    assert calls[0] == {"custom_components.fade_lights": "warning"}
+
+
+async def test_apply_log_level_unknown_defaults_to_warning(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """Test _apply_log_level defaults to warning for unknown level."""
+    from custom_components.fade_lights.websocket_api import _apply_log_level
+
+    calls = []
+
+    async def mock_set_level(call):
+        calls.append(call.data)
+
+    hass.services.async_register("logger", "set_level", mock_set_level)
+
+    await _apply_log_level(hass, "unknown_level")
+
+    assert len(calls) == 1
+    assert calls[0] == {"custom_components.fade_lights": "warning"}
