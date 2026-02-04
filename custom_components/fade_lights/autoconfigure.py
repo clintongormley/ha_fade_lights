@@ -66,22 +66,20 @@ async def async_autoconfigure_light(
     result: dict[str, Any] = {"entity_id": entity_id}
 
     try:
-        # Run delay test
-        delay_result = await _async_test_light_delay(hass, entity_id)
-        if "error" in delay_result:
-            result["error"] = delay_result["error"]
-        else:
-            result["min_delay_ms"] = delay_result["min_delay_ms"]
-
-        # Run native transitions test (even if delay test failed)
+        # Run native transitions test first
         transition_result = await _async_test_native_transitions(hass, entity_id)
         if "error" not in transition_result:
             result["native_transitions"] = transition_result["supports_native_transitions"]
 
-        # If native_transitions is True and we have min_delay_ms, add transition time
-        # to account for the native transition duration
-        if result.get("native_transitions") and "min_delay_ms" in result:
-            result["min_delay_ms"] += NATIVE_TRANSITION_MS
+        # Run delay test with native transitions enabled if supported
+        use_transitions = result.get("native_transitions", False)
+        delay_result = await _async_test_light_delay(
+            hass, entity_id, use_native_transitions=use_transitions
+        )
+        if "error" in delay_result:
+            result["error"] = delay_result["error"]
+        else:
+            result["min_delay_ms"] = delay_result["min_delay_ms"]
 
         # Save results to storage
         if "min_delay_ms" in result:
@@ -135,7 +133,7 @@ async def _async_restore_light_state(
 
 
 async def _async_test_light_delay(
-    hass: HomeAssistant, entity_id: str
+    hass: HomeAssistant, entity_id: str, use_native_transitions: bool = False
 ) -> dict[str, Any]:
     """Test a light to determine optimal minimum delay between commands.
 
@@ -145,6 +143,7 @@ async def _async_test_light_delay(
     Args:
         hass: Home Assistant instance
         entity_id: The light entity ID to test
+        use_native_transitions: If True, include transition parameter in commands
 
     Returns:
         On success: {"entity_id": entity_id, "min_delay_ms": result}
@@ -165,12 +164,17 @@ async def _async_test_light_delay(
     unsub = hass.bus.async_listen("state_changed", _on_state_changed)
 
     try:
+        # Build service data with optional transition
+        service_data_base: dict[str, Any] = {ATTR_ENTITY_ID: entity_id}
+        if use_native_transitions:
+            service_data_base["transition"] = NATIVE_TRANSITION_MS / 1000
+
         # Initialize light to a known state (on at brightness 255)
         state_changed_event.clear()
         await hass.services.async_call(
             LIGHT_DOMAIN,
             SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: 255},
+            {**service_data_base, ATTR_BRIGHTNESS: 255},
             blocking=True,
         )
         # Wait for state change or short timeout (light may already be at 255)
@@ -187,7 +191,7 @@ async def _async_test_light_delay(
             await hass.services.async_call(
                 LIGHT_DOMAIN,
                 SERVICE_TURN_ON,
-                {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: target_brightness},
+                {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
                 blocking=True,
             )
 
@@ -211,7 +215,7 @@ async def _async_test_light_delay(
                     await hass.services.async_call(
                         LIGHT_DOMAIN,
                         SERVICE_TURN_ON,
-                        {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: target_brightness},
+                        {**service_data_base, ATTR_BRIGHTNESS: target_brightness},
                         blocking=True,
                     )
 
