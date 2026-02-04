@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
@@ -14,7 +12,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
-
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import (
@@ -40,11 +37,7 @@ def service_calls(hass: HomeAssistant) -> list[ServiceCall]:
 
         entity_id = call.data.get(ATTR_ENTITY_ID)
         if entity_id:
-            if isinstance(entity_id, list):
-                entity_ids = entity_id
-            else:
-                entity_ids = [entity_id]
-
+            entity_ids = entity_id if isinstance(entity_id, list) else [entity_id]
             for eid in entity_ids:
                 current_state = hass.states.get(eid)
                 if current_state:
@@ -62,11 +55,7 @@ def service_calls(hass: HomeAssistant) -> list[ServiceCall]:
 
         entity_id = call.data.get(ATTR_ENTITY_ID)
         if entity_id:
-            if isinstance(entity_id, list):
-                entity_ids = entity_id
-            else:
-                entity_ids = [entity_id]
-
+            entity_ids = entity_id if isinstance(entity_id, list) else [entity_id]
             for eid in entity_ids:
                 current_state = hass.states.get(eid)
                 if current_state:
@@ -333,7 +322,8 @@ async def test_storage_persists_across_reload(
 
         # Verify storage data is loaded
         assert DOMAIN in hass.data
-        assert hass.data[DOMAIN]["data"].get(storage_key, {}).get(KEY_ORIG_BRIGHTNESS) == stored_brightness
+        stored_orig = hass.data[DOMAIN]["data"].get(storage_key, {}).get(KEY_ORIG_BRIGHTNESS)
+        assert stored_orig == stored_brightness
 
         # Unload the integration
         await hass.config_entries.async_unload(mock_config_entry.entry_id)
@@ -345,7 +335,8 @@ async def test_storage_persists_across_reload(
 
     # Verify storage data is still available after reload
     assert DOMAIN in hass.data
-    assert hass.data[DOMAIN]["data"].get(storage_key, {}).get(KEY_ORIG_BRIGHTNESS) == stored_brightness
+    stored_orig = hass.data[DOMAIN]["data"].get(storage_key, {}).get(KEY_ORIG_BRIGHTNESS)
+    assert stored_orig == stored_brightness
 
     # Create dimmable light that is OFF
     hass.states.async_set(

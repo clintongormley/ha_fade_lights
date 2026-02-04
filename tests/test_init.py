@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights import (
@@ -105,10 +105,8 @@ async def test_unload_entry_clears_tracking_dicts(
 
     # Clean up the test task
     test_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await test_task
-    except asyncio.CancelledError:
-        pass
 
 
 async def test_unload_entry_state(

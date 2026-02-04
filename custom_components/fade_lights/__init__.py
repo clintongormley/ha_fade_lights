@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import time
@@ -10,6 +11,8 @@ import time
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
+)
+from homeassistant.components.light import (
     DOMAIN as LIGHT_DOMAIN,
 )
 from homeassistant.components.light.const import ColorMode
@@ -83,12 +86,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "data": storage_data,
     }
 
-    default_brightness = entry.options.get(
-        OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT
-    )
-    default_transition = entry.options.get(
-        OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION
-    )
+    default_brightness = entry.options.get(OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT)
+    default_transition = entry.options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION)
     step_delay_ms = entry.options.get(OPTION_STEP_DELAY_MS, DEFAULT_STEP_DELAY_MS)
 
     async def handle_fade_lights(call: ServiceCall) -> None:
@@ -174,9 +173,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Light turned ON (was OFF)
         if old_state and old_state.state == STATE_OFF and new_state.state == STATE_ON:
             # Check if light supports brightness
-            if ColorMode.BRIGHTNESS not in new_state.attributes.get(
-                ATTR_SUPPORTED_COLOR_MODES, []
-            ):
+            if ColorMode.BRIGHTNESS not in new_state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []):
                 return
 
             orig_brightness = _get_orig_brightness(hass, entity_id)
@@ -220,9 +217,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # Store new brightness as original
                 _store_orig_brightness(hass, entity_id, new_brightness)
 
-    entry.async_on_unload(
-        hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change)
-    )
+    entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, handle_light_state_change))
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     return True
@@ -264,10 +259,8 @@ async def _fade_light(
         if entity_id in FADE_CANCEL_EVENTS:
             FADE_CANCEL_EVENTS[entity_id].set()
         ACTIVE_FADES[entity_id].cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await ACTIVE_FADES[entity_id]
-        except asyncio.CancelledError:
-            pass
 
     # Create cancellation event for this fade
     cancel_event = asyncio.Event()
@@ -357,7 +350,9 @@ async def _execute_fade(
     delay_ms = transition_ms / actual_steps
     num_steps = actual_steps
 
-    _LOGGER.debug("Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps)
+    _LOGGER.debug(
+        "Fading %s from %s to %s in %s steps", entity_id, start_level, end_level, num_steps
+    )
 
     for i in range(num_steps):
         step_start = time.monotonic()
@@ -371,9 +366,7 @@ async def _execute_fade(
         new_level = max(0, min(255, new_level))
 
         # Ensure we hit the target on the last step
-        if (delta > 0 and new_level > end_level) or (
-            delta < 0 and new_level < end_level
-        ):
+        if (delta > 0 and new_level > end_level) or (delta < 0 and new_level < end_level):
             new_level = end_level
 
         if i == num_steps - 1:

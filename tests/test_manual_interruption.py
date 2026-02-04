@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, patch
+import contextlib
 
 import pytest
-
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_SUPPORTED_COLOR_MODES,
@@ -15,7 +13,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import Context, HomeAssistant, ServiceCall
-
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights import (
@@ -51,11 +48,7 @@ def service_calls(hass: HomeAssistant) -> list[ServiceCall]:
 
         entity_id = call.data.get(ATTR_ENTITY_ID)
         if entity_id:
-            if isinstance(entity_id, list):
-                entity_ids = entity_id
-            else:
-                entity_ids = [entity_id]
-
+            entity_ids = entity_id if isinstance(entity_id, list) else [entity_id]
             for eid in entity_ids:
                 current_state = hass.states.get(eid)
                 if current_state:
@@ -72,11 +65,7 @@ def service_calls(hass: HomeAssistant) -> list[ServiceCall]:
 
         entity_id = call.data.get(ATTR_ENTITY_ID)
         if entity_id:
-            if isinstance(entity_id, list):
-                entity_ids = entity_id
-            else:
-                entity_ids = [entity_id]
-
+            entity_ids = entity_id if isinstance(entity_id, list) else [entity_id]
             for eid in entity_ids:
                 current_state = hass.states.get(eid)
                 if current_state:
@@ -145,10 +134,8 @@ async def test_manual_brightness_change_cancels_fade(
 
     # Cancel the task to clean up
     fade_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await fade_task
-    except asyncio.CancelledError:
-        pass
 
 
 async def test_manual_turn_off_cancels_fade(
@@ -206,10 +193,8 @@ async def test_manual_turn_off_cancels_fade(
 
     # Clean up
     fade_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await fade_task
-    except asyncio.CancelledError:
-        pass
 
 
 async def test_new_fade_cancels_previous(
@@ -247,7 +232,6 @@ async def test_new_fade_cancels_previous(
 
     # Verify first fade is active
     assert entity_id in ACTIVE_FADES
-    first_task = ACTIVE_FADES[entity_id]
 
     # Start a second fade (to 80%)
     second_fade = hass.async_create_task(
@@ -277,10 +261,8 @@ async def test_new_fade_cancels_previous(
 
     # Clean up
     first_fade.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await first_fade
-    except asyncio.CancelledError:
-        pass
 
 
 async def test_manual_change_stores_new_orig(
@@ -338,10 +320,8 @@ async def test_manual_change_stores_new_orig(
 
     # Clean up
     fade_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await fade_task
-    except asyncio.CancelledError:
-        pass
 
 
 async def test_group_changes_ignored(
@@ -456,7 +436,7 @@ async def test_brightness_tolerance_allows_rounding(
         await hass.async_block_till_done()
 
         # Fade should still be active - the cancel event should not be set
-        assert not cancel_event.is_set(), "Cancel event should not be set for within-tolerance change"
+        assert not cancel_event.is_set(), "Cancel should not be set for within-tolerance"
 
         # Now test with brightness AT the tolerance boundary
         hass.states.async_set(
@@ -551,10 +531,8 @@ async def test_inherited_context_detected_by_brightness(
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         # Wait for the fake task to complete (may already be cancelled)
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await fake_task
-        except asyncio.CancelledError:
-            pass  # Task was cancelled by the handler, which is expected
 
 
 async def test_our_context_changes_ignored(
@@ -619,7 +597,7 @@ async def test_our_context_changes_ignored(
         await hass.async_block_till_done()
 
         # Should still not be cancelled
-        assert not cancel_event.is_set(), "Cancel event should not be set for within-tolerance change"
+        assert not cancel_event.is_set(), "Cancel should not be set for within-tolerance"
 
     finally:
         # Clean up
