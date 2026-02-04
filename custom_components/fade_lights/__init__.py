@@ -1348,19 +1348,32 @@ def _match_and_remove_expected(entity_id: str, new_state: State) -> bool:
     if not expected_state or expected_state.is_empty:
         return False
 
-    # Normalize state to brightness: OFF -> 0, ON -> actual brightness
+    # Build ExpectedValues from the new state
     if new_state.state == STATE_OFF:
-        brightness = 0
+        actual = ExpectedValues(brightness=0)
     else:
         brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
         if brightness is None:
             return False
 
-    matched = expected_state.match_and_remove(ExpectedValues(brightness=brightness))
+        # Extract color attributes
+        hs_raw = new_state.attributes.get(HA_ATTR_HS_COLOR)
+        hs_color = (float(hs_raw[0]), float(hs_raw[1])) if hs_raw else None
+
+        mireds_raw = new_state.attributes.get("color_temp")
+        color_temp_mireds = int(mireds_raw) if mireds_raw else None
+
+        actual = ExpectedValues(
+            brightness=brightness,
+            hs_color=hs_color,
+            color_temp_mireds=color_temp_mireds,
+        )
+
+    matched = expected_state.match_and_remove(actual)
 
     if matched is not None:
         _LOGGER.debug(
-            "%s: Matched expected brightness %s, remaining: %d",
+            "%s: Matched expected %s, remaining: %d",
             entity_id,
             matched,
             len(expected_state.values),
