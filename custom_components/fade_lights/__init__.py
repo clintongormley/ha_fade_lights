@@ -784,6 +784,35 @@ def _expand_entity_ids(hass: HomeAssistant, entity_ids_raw: str | list[str] | No
     return list(result)
 
 
+
+def _can_fade_color(state: State, params: FadeParams) -> bool:
+    """Check if a light supports the color mode needed for this fade.
+
+    Returns True if:
+    - No color target specified (brightness-only fade)
+    - HS target and light supports any color mode (HS/RGB/RGBW/RGBWW/XY)
+    - Color temp target and light supports COLOR_TEMP mode
+    """
+    if params.hs_color is None and params.color_temp_mireds is None:
+        return True
+
+    modes = set(state.attributes.get(ATTR_SUPPORTED_COLOR_MODES, []))
+
+    if params.hs_color is not None:
+        hs_capable = modes & {
+            ColorMode.HS,
+            ColorMode.RGB,
+            ColorMode.RGBW,
+            ColorMode.RGBWW,
+            ColorMode.XY,
+        }
+        return bool(hs_capable)
+
+    if params.color_temp_mireds is not None:
+        return ColorMode.COLOR_TEMP in modes
+
+    return True
+
 # =============================================================================
 # State Change Handler
 # =============================================================================
