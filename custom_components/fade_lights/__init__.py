@@ -41,6 +41,7 @@ from .const import (
     DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
+    FADE_CANCEL_TIMEOUT_S,
     FADE_CLEANUP_DELAY_S,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
@@ -84,6 +85,10 @@ FADE_EXPECTED_BRIGHTNESS: dict[str, set[int]] = {}
 # fade steps may still arrive. Without this flag, those events could trigger
 # unintended brightness restoration. Cleared after _cancel_and_wait_for_fade.
 FADE_INTERRUPTED: dict[str, bool] = {}
+
+# Maps entity_id -> asyncio.Condition to signal when fade cleanup completes.
+# Waiters use this instead of polling to know when a cancelled fade has finished.
+FADE_COMPLETE_CONDITIONS: dict[str, asyncio.Condition] = {}
 
 
 async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
@@ -246,6 +251,7 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     FADE_CANCEL_EVENTS.clear()
     FADE_EXPECTED_BRIGHTNESS.clear()
     FADE_INTERRUPTED.clear()
+    FADE_COMPLETE_CONDITIONS.clear()
 
     hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
@@ -282,6 +288,10 @@ async def _fade_light(
     cancel_event = asyncio.Event()
     FADE_CANCEL_EVENTS[entity_id] = cancel_event
 
+    # Create completion condition for waiters to know when cleanup is done
+    complete_condition = asyncio.Condition()
+    FADE_COMPLETE_CONDITIONS[entity_id] = complete_condition
+
     # Track this task so external code can cancel it
     current_task = asyncio.current_task()
     if current_task:
@@ -298,6 +308,12 @@ async def _fade_light(
         ACTIVE_FADES.pop(entity_id, None)
         FADE_CANCEL_EVENTS.pop(entity_id, None)
         FADE_EXPECTED_BRIGHTNESS.pop(entity_id, None)
+
+        # Notify any waiters that cleanup is complete
+        condition = FADE_COMPLETE_CONDITIONS.pop(entity_id, None)
+        if condition:
+            async with condition:
+                condition.notify_all()
 
 
 # =============================================================================
@@ -664,8 +680,8 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
     """Cancel any active fade for entity and wait for cleanup.
 
     This function cancels an active fade task and waits for it to be fully
-    removed from ACTIVE_FADES. Since asyncio.sleep is interruptible, the
-    cleanup happens quickly after cancellation.
+    removed from ACTIVE_FADES using an asyncio.Condition for efficient
+    notification instead of polling.
     """
     _LOGGER.debug("(%s) -> Cancelling fade", entity_id)
     if entity_id not in ACTIVE_FADES:
@@ -673,32 +689,35 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
         return
 
     task = ACTIVE_FADES[entity_id]
+    condition = FADE_COMPLETE_CONDITIONS.get(entity_id)
 
     # Signal cancellation via the cancel event if available
     if entity_id in FADE_CANCEL_EVENTS:
-        _LOGGER.debug("  -> Cancelling event")
+        _LOGGER.debug("  -> Setting cancel event")
         FADE_CANCEL_EVENTS[entity_id].set()
 
     # Cancel the task
     if task.done():
-        _LOGGER.debug("  -> Task done")
+        _LOGGER.debug("  -> Task already done")
     else:
         _LOGGER.debug("  -> Cancelling task")
         task.cancel()
 
-    # Wait for task to complete (with timeout to avoid infinite wait)
-    max_wait = 100  # 100 * 0.01 = 1 second max wait
-    for _ in range(max_wait):
-        _LOGGER.debug("  -> Waiting for task to disappear (%s)", _)
-        if entity_id not in ACTIVE_FADES:
-            _LOGGER.debug("  -> Task disappeared")
-            await asyncio.sleep(FADE_CLEANUP_DELAY_S)
-            return
-        await asyncio.sleep(0.01)
+    # Wait for cleanup using Condition
+    if condition:
+        async with condition:
+            try:
+                await asyncio.wait_for(
+                    condition.wait_for(lambda: entity_id not in ACTIVE_FADES),
+                    timeout=FADE_CANCEL_TIMEOUT_S,
+                )
+                _LOGGER.debug("  -> Task cleanup complete")
+            except TimeoutError:
+                _LOGGER.debug(
+                    "(%s) -> Timed out waiting for fade task cleanup", entity_id
+                )
 
-    if entity_id in ACTIVE_FADES:
-        _LOGGER.debug("(%s) -> Timed out waiting for fade task to be cancelled", entity_id)
-    return
+    await asyncio.sleep(FADE_CLEANUP_DELAY_S)
 
 
 def _get_intended_brightness(

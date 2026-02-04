@@ -34,3 +34,6 @@ BRIGHTNESS_TOLERANCE = 3
 
 # Delay after service calls during fade cleanup (seconds)
 FADE_CLEANUP_DELAY_S = 0.1
+
+# Timeout for waiting on fade cancellation (seconds)
+FADE_CANCEL_TIMEOUT_S = 2.0
