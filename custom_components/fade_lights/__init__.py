@@ -561,6 +561,8 @@ async def _execute_fade(
 
     # Execute fade steps
     step_num = 0
+    prev_step: FadeStep | None = None
+
     while fade.has_next():
         step_start = time.monotonic()
 
@@ -570,19 +572,33 @@ async def _execute_fade(
         step = fade.next_step()
         step_num += 1
 
-        # Track expected values for manual intervention detection
-        expected = ExpectedValues(
-            brightness=step.brightness,
-            hs_color=step.hs_color,
-            color_temp_kelvin=step.color_temp_kelvin,
-        )
-        _add_expected_values(entity_id, expected)
-
-        # Use native transition unless this is the first step with "from" specified
-        # (first step should jump instantly to the starting position)
+        # Determine if using transition for THIS step
         use_transition = native_transitions and not (step_num == 1 and has_from)
 
+        # Build expected values - track ranges when using transitions
+        if use_transition and prev_step is not None:
+            # Range-based: track transition from prev_step → step
+            expected = ExpectedValues(
+                brightness=step.brightness,
+                from_brightness=prev_step.brightness,
+                hs_color=step.hs_color,
+                from_hs_color=prev_step.hs_color,
+                color_temp_kelvin=step.color_temp_kelvin,
+                from_color_temp_kelvin=prev_step.color_temp_kelvin,
+            )
+        else:
+            # Point-based: no from values
+            expected = ExpectedValues(
+                brightness=step.brightness,
+                hs_color=step.hs_color,
+                color_temp_kelvin=step.color_temp_kelvin,
+            )
+        _add_expected_values(entity_id, expected)
+
         await _apply_step(hass, entity_id, step, use_transition=use_transition)
+
+        # Save for next iteration
+        prev_step = step
 
         if cancel_event.is_set():
             return

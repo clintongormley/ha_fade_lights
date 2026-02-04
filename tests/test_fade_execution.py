@@ -950,3 +950,60 @@ async def test_native_transitions_first_step_has_transition_without_from(
     # ALL calls should have transition: 0.1 (no "from" specified)
     for call in turn_on_calls:
         assert call.data.get("transition") == 0.1
+
+
+async def test_native_transition_tracks_range(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test that native transitions track from->to ranges."""
+    from custom_components.fade_lights.expected_state import ExpectedState
+
+    entity_id = "light.test_range_tracking"
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 1,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions and min_delay_ms
+    hass.data[DOMAIN]["data"][entity_id] = {
+        "native_transitions": True,
+        "min_delay_ms": 100,  # 100ms step delay
+    }
+
+    # Track expected values added
+    expected_values_added = []
+    original_add = ExpectedState.add
+
+    def track_add(self, expected):
+        expected_values_added.append(expected)
+        return original_add(self, expected)
+
+    with patch.object(ExpectedState, "add", track_add):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                "entity_id": entity_id,
+                ATTR_BRIGHTNESS_PCT: 100,
+                ATTR_TRANSITION: 0.5,  # 500ms = 5 steps at 100ms
+            },
+            blocking=True,
+        )
+
+    # Should have multiple steps
+    assert len(expected_values_added) > 1, f"Expected multiple steps, got {len(expected_values_added)}"
+
+    # Verify first step has no from_brightness (no prev_step yet)
+    assert expected_values_added[0].from_brightness is None
+
+    # Verify subsequent steps have from_brightness
+    for expected in expected_values_added[1:]:
+        assert expected.from_brightness is not None
+        assert expected.brightness is not None
+        assert expected.from_brightness < expected.brightness
