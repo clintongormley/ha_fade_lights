@@ -144,7 +144,14 @@ def _validate_color_ranges(data: dict) -> None:
 
 
 def _validate_color_ranges_dict(data: dict, prefix: str) -> None:
-    """Validate color ranges in a single dict."""
+    """Validate color and brightness ranges in a single dict."""
+    if ATTR_BRIGHTNESS_PCT in data:
+        brightness = data[ATTR_BRIGHTNESS_PCT]
+        if not (0 <= brightness <= 100):
+            raise ServiceValidationError(
+                f"{prefix}Brightness must be between 0 and 100, got {brightness}"
+            )
+
     if ATTR_HS_COLOR in data:
         hs = data[ATTR_HS_COLOR]
         if not (0 <= hs[0] <= 360):
