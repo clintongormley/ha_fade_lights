@@ -24,6 +24,7 @@ from .const import (
     AUTOCONFIGURE_TIMEOUT_S,
     DEFAULT_MIN_STEP_DELAY_MS,
     DOMAIN,
+    NATIVE_TRANSITION_MS,
 )
 from .websocket_api import async_save_light_config
 
@@ -71,16 +72,23 @@ async def async_autoconfigure_light(
             result["error"] = delay_result["error"]
         else:
             result["min_delay_ms"] = delay_result["min_delay_ms"]
-            # Save min_delay_ms to storage
-            await async_save_light_config(
-                hass, entity_id, min_delay_ms=delay_result["min_delay_ms"]
-            )
 
         # Run native transitions test (even if delay test failed)
         transition_result = await _async_test_native_transitions(hass, entity_id)
         if "error" not in transition_result:
             result["native_transitions"] = transition_result["supports_native_transitions"]
-            # Save native_transitions to storage
+
+        # If native_transitions is True and we have min_delay_ms, add transition time
+        # to account for the native transition duration
+        if result.get("native_transitions") and "min_delay_ms" in result:
+            result["min_delay_ms"] += NATIVE_TRANSITION_MS
+
+        # Save results to storage
+        if "min_delay_ms" in result:
+            await async_save_light_config(
+                hass, entity_id, min_delay_ms=result["min_delay_ms"]
+            )
+        if "native_transitions" in result:
             await async_save_light_config(
                 hass, entity_id, native_transitions=result["native_transitions"]
             )

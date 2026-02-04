@@ -65,6 +65,7 @@ from .const import (
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
     LOG_LEVEL_WARNING,
+    NATIVE_TRANSITION_MS,
     OPTION_LOG_LEVEL,
     OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
@@ -451,7 +452,14 @@ async def _fade_light(
     """
     # Get per-light config and determine effective delay
     light_config = _get_light_config(hass, entity_id)
+    native_transitions = light_config.get("native_transitions", False)
+
+    # Calculate effective delay - lights with native_transitions need extra time
+    # to account for the native transition duration
     effective_delay = light_config.get("min_delay_ms") or min_step_delay_ms
+    if native_transitions:
+        min_with_transition = min_step_delay_ms + NATIVE_TRANSITION_MS
+        effective_delay = max(effective_delay, min_with_transition)
 
     # Cancel any existing fade for this entity - only one fade per light at a time
     await _cancel_and_wait_for_fade(entity_id)
@@ -532,10 +540,6 @@ async def _execute_fade(
     light_config = _get_light_config(hass, entity_id)
     native_transitions = light_config.get("native_transitions", False)
     has_from = fade_params.has_from_target()
-
-    # Add 100ms to delay when using native transitions (to account for the 0.1s transition)
-    if native_transitions:
-        delay_ms += 100
 
     _LOGGER.info(
         "%s: Fading in %s steps, (brightness=%s->%s, hs=%s->%s, mireds=%s->%s, "
@@ -652,7 +656,7 @@ async def _apply_step(
 
     # Add short transition for smoother steps on lights that support native transitions
     if use_transition:
-        service_data["transition"] = 0.1
+        service_data["transition"] = NATIVE_TRANSITION_MS / 1000
 
     _LOGGER.debug("%s", service_data)
 
