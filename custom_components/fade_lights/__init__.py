@@ -36,10 +36,12 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
+    BRIGHTNESS_TOLERANCE,
     DEFAULT_BRIGHTNESS_PCT,
     DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
+    FADE_CLEANUP_DELAY_S,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
     OPTION_MIN_STEP_DELAY_MS,
@@ -433,7 +435,7 @@ async def _finalize_fade(
 
 
 # =============================================================================
-# Fade Execution
+# Fade Loop
 # =============================================================================
 
 
@@ -591,14 +593,13 @@ def _is_expected_fade_state(entity_id: str, new_state: State) -> bool:
     if expected_values is None:
         return False
     new_brightness = new_state.attributes.get(ATTR_BRIGHTNESS)
-    tolerance = 3
 
     if new_state.state == STATE_OFF and 0 in expected_values:
         return True
 
     if new_state.state == STATE_ON and new_brightness is not None:
         for expected in expected_values:
-            if expected > 0 and abs(new_brightness - expected) <= tolerance:
+            if expected > 0 and abs(new_brightness - expected) <= BRIGHTNESS_TOLERANCE:
                 return True
 
     return False
@@ -690,7 +691,7 @@ async def _cancel_and_wait_for_fade(entity_id: str) -> None:
         _LOGGER.debug("  -> Waiting for task to disappear (%s)", _)
         if entity_id not in ACTIVE_FADES:
             _LOGGER.debug("  -> Task disappeared")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(FADE_CLEANUP_DELAY_S)
             return
         await asyncio.sleep(0.01)
 
@@ -785,7 +786,7 @@ async def _restore_manual_state(
             {ATTR_ENTITY_ID: entity_id},
             blocking=True,
         )
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(FADE_CLEANUP_DELAY_S)
     elif intended > 0 and current != intended:
         _LOGGER.debug("(%s) -> setting light brightness (%s) as intended", entity_id, intended)
         await hass.services.async_call(
@@ -794,13 +795,13 @@ async def _restore_manual_state(
             {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: intended},
             blocking=True,
         )
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(FADE_CLEANUP_DELAY_S)
 
     _clear_fade_interrupted(entity_id)
 
 
 def _clear_fade_interrupted(entity_id: str) -> None:
-    # Clear the interrupted flag now that cleanup is complete
+    """Clear the interrupted flag after fade cleanup is complete."""
     _LOGGER.debug("(%s) -> Clearing FADE_INTERRUPTED", entity_id)
     FADE_INTERRUPTED.pop(entity_id, None)
 
