@@ -10,13 +10,13 @@ from homeassistant.core import callback
 
 from .const import (
     DEFAULT_BRIGHTNESS_PCT,
-    DEFAULT_STEP_DELAY_MS,
+    DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
     MIN_STEP_DELAY_MS,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
-    OPTION_STEP_DELAY_MS,
+    OPTION_MIN_STEP_DELAY_MS,
 )
 
 
@@ -81,8 +81,8 @@ class FadeLightsOptionsFlow(OptionsFlow):
                         default=options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION),
                     ): vol.All(vol.Coerce(float), vol.Range(min=0, max=3600)),
                     vol.Optional(
-                        OPTION_STEP_DELAY_MS,
-                        default=options.get(OPTION_STEP_DELAY_MS, DEFAULT_STEP_DELAY_MS),
+                        OPTION_MIN_STEP_DELAY_MS,
+                        default=options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_STEP_DELAY_MS, max=1000)),
                 }
             ),
