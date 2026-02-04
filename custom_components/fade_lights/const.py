@@ -30,6 +30,35 @@ COLOR_PARAMS = frozenset(
     }
 )
 
+# Valid parameters for from: block
+FROM_PARAMS = frozenset(
+    {
+        ATTR_BRIGHTNESS_PCT,
+        ATTR_COLOR_TEMP_KELVIN,
+        ATTR_HS_COLOR,
+        ATTR_RGB_COLOR,
+        ATTR_RGBW_COLOR,
+        ATTR_RGBWW_COLOR,
+        ATTR_XY_COLOR,
+    }
+)
+
+# Valid parameters for main service call (entity_id handled separately by HA)
+MAIN_PARAMS = frozenset(
+    {
+        "entity_id",
+        ATTR_BRIGHTNESS_PCT,
+        ATTR_TRANSITION,
+        ATTR_FROM,
+        ATTR_COLOR_TEMP_KELVIN,
+        ATTR_HS_COLOR,
+        ATTR_RGB_COLOR,
+        ATTR_RGBW_COLOR,
+        ATTR_RGBWW_COLOR,
+        ATTR_XY_COLOR,
+    }
+)
+
 # Storage
 STORAGE_KEY = f"{DOMAIN}.last_brightness"
 

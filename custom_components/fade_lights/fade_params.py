@@ -24,6 +24,8 @@ from .const import (
     ATTR_XY_COLOR,
     COLOR_PARAMS,
     DEFAULT_TRANSITION,
+    FROM_PARAMS,
+    MAIN_PARAMS,
 )
 
 
@@ -67,6 +69,7 @@ class FadeParams:
         """Create FadeParams from service call data with validation.
 
         Validates:
+        - No unknown parameters are specified
         - At most one color parameter is specified
         - Color parameter values are within valid ranges
 
@@ -84,6 +87,7 @@ class FadeParams:
         Raises:
             ServiceValidationError: If validation fails
         """
+        cls._validate_known_params(data)
         cls._validate_color_params(data)
         cls._validate_color_ranges(data)
 
@@ -147,6 +151,29 @@ class FadeParams:
             raise ServiceValidationError(
                 f"Only one color parameter allowed{ctx}, got: {', '.join(sorted(specified))}"
             )
+
+    @classmethod
+    def _validate_known_params(cls, data: dict) -> None:
+        """Validate that all parameters are known/valid.
+
+        Raises:
+            ServiceValidationError: If unknown parameters are provided.
+        """
+        unknown = set(data.keys()) - MAIN_PARAMS
+        if unknown:
+            raise ServiceValidationError(
+                f"Unknown parameter(s): {', '.join(sorted(unknown))}. "
+                f"Valid parameters are: {', '.join(sorted(MAIN_PARAMS))}"
+            )
+
+        from_data = data.get(ATTR_FROM, {})
+        if from_data:
+            unknown_from = set(from_data.keys()) - FROM_PARAMS
+            if unknown_from:
+                raise ServiceValidationError(
+                    f"Unknown parameter(s) in 'from': {', '.join(sorted(unknown_from))}. "
+                    f"Valid 'from' parameters are: {', '.join(sorted(FROM_PARAMS))}"
+                )
 
     @classmethod
     def _validate_color_ranges(cls, data: dict) -> None:

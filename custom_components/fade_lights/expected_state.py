@@ -30,6 +30,17 @@ class ExpectedValues:
     hs_color: tuple[float, float] | None = None
     color_temp_kelvin: int | None = None
 
+    def __str__(self) -> str:
+        """Format without class name for cleaner logs."""
+        parts = []
+        if self.brightness is not None:
+            parts.append(f"brightness={self.brightness}")
+        if self.hs_color is not None:
+            parts.append(f"hs_color={self.hs_color}")
+        if self.color_temp_kelvin is not None:
+            parts.append(f"color_temp_kelvin={self.color_temp_kelvin}")
+        return "(" + (", ".join(parts) if parts else "empty") + ")"
+
 
 @dataclass
 class ExpectedState:
@@ -43,7 +54,7 @@ class ExpectedState:
         """Add an expected value with current timestamp."""
         self.values.append((expected, time.monotonic()))
         _LOGGER.debug(
-            "%s: ExpectedState.add(%s) -> count=%d",
+            "%s: add%s -> count=%d",
             self.entity_id,
             expected,
             len(self.values),
@@ -52,7 +63,7 @@ class ExpectedState:
     def get_condition(self) -> asyncio.Condition:
         """Get or create the condition for waiting, pruning stale values first."""
         _LOGGER.debug(
-            "%s: ExpectedState.get_condition() count=%d",
+            "%s: get_condition() count=%d",
             self.entity_id,
             len(self.values),
         )
@@ -62,14 +73,14 @@ class ExpectedState:
         stale_count = sum(1 for _, ts in self.values if now - ts > STALE_THRESHOLD)
         if stale_count:
             _LOGGER.debug(
-                "%s: ExpectedState.get_condition() removing %d stale entries",
+                "%s: -> removing %d stale entries",
                 self.entity_id,
                 stale_count,
             )
         self.values = [(v, ts) for v, ts in self.values if now - ts <= STALE_THRESHOLD]
 
         _LOGGER.debug(
-            "%s: ExpectedState.get_condition() after prune count=%d",
+            "%s: -> after prune count=%d",
             self.entity_id,
             len(self.values),
         )
@@ -80,7 +91,7 @@ class ExpectedState:
         # Notify if all values were pruned
         if not self.values:
             _LOGGER.debug(
-                "%s: ExpectedState.get_condition -> values empty, notifying condition",
+                "%s: -> values empty, notifying condition",
                 self.entity_id,
             )
             asyncio.get_event_loop().call_soon(
@@ -99,7 +110,7 @@ class ExpectedState:
             The matched ExpectedValues, or None if no match.
         """
         _LOGGER.debug(
-            "%s: ExpectedState.match_and_remove(%s) count=%d",
+            "%s: match_and_remove%s count=%d",
             self.entity_id,
             actual,
             len(self.values),
@@ -115,19 +126,14 @@ class ExpectedState:
                 break
 
         if matched_index is None or matched_value is None:
-            _LOGGER.debug(
-                "%s: ExpectedState.match_and_remove(%s) -> no match found",
-                self.entity_id,
-                actual,
-            )
+            _LOGGER.debug("%s: -> no match found", self.entity_id)
             return None
 
         # Remove matched value and all older entries (handles event coalescing)
         del self.values[: matched_index + 1]
         _LOGGER.debug(
-            "%s: ExpectedState.match_and_remove(%s) matched=%s remaining=%d",
+            "%s: -> matched=%s remaining=%d",
             self.entity_id,
-            actual,
             matched_value,
             len(self.values),
         )
@@ -135,7 +141,7 @@ class ExpectedState:
         # Notify condition if set is now empty
         if not self.values and self._condition is not None:
             _LOGGER.debug(
-                "%s: ExpectedState.match_and_remove -> values empty, notifying condition",
+                "%s: -> values empty, notifying condition",
                 self.entity_id,
             )
             # Schedule notification (can't await in callback context)
@@ -173,10 +179,7 @@ class ExpectedState:
         if expected.color_temp_kelvin is not None:
             if actual.color_temp_kelvin is None:
                 return False
-            if (
-                abs(expected.color_temp_kelvin - actual.color_temp_kelvin)
-                > KELVIN_TOLERANCE
-            ):
+            if abs(expected.color_temp_kelvin - actual.color_temp_kelvin) > KELVIN_TOLERANCE:
                 return False
 
         return True
@@ -226,7 +229,7 @@ class ExpectedState:
         # Clear any remaining entries
         self.values.clear()
         _LOGGER.debug(
-            "%s: ExpectedState.wait_and_clear() completed",
+            "%s: wait_and_clear() completed",
             self.entity_id,
         )
 
