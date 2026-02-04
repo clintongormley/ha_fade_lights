@@ -1252,3 +1252,176 @@ async def test_second_manual_event_during_restore_appends_to_queue(
         # Clean up
         RESTORE_TASKS.pop(entity_id, None)
         INTENDED_STATE_QUEUE.pop(entity_id, None)
+
+
+async def test_native_transition_no_false_intervention(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test native transitions don't trigger false manual intervention.
+
+    This test intercepts light.turn_on calls to simulate intermediate brightness
+    values being reported during native transitions (like real hardware does).
+    """
+    entity_id = "light.test"
+
+    # Set up the light
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 1,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions
+    hass.data[DOMAIN]["data"][entity_id] = {
+        "native_transitions": True,
+        "min_delay_ms": 150,
+    }
+
+    # Track how many turn_on calls we've seen
+    turn_on_count = 0
+
+    # Intercept light.turn_on to simulate intermediate brightness reports
+    original_turn_on = None
+    for call in service_calls:
+        pass  # Just to reference the fixture
+
+    async def mock_turn_on_with_intermediates(call: ServiceCall) -> None:
+        """Mock turn_on that simulates intermediate brightness reports."""
+        nonlocal turn_on_count
+        service_calls.append(call)
+
+        entity_id_param = call.data.get(ATTR_ENTITY_ID)
+        if entity_id_param == entity_id and ATTR_BRIGHTNESS in call.data:
+            turn_on_count += 1
+            target_brightness = call.data[ATTR_BRIGHTNESS]
+
+            # Get current brightness
+            current_state = hass.states.get(entity_id)
+            current_brightness = current_state.attributes.get(ATTR_BRIGHTNESS, 1) if current_state else 1
+
+            # Inject intermediate values only after first step (when range tracking is active)
+            # First step doesn't have prev_step, so uses point matching
+            if turn_on_count > 1:
+                # Simulate intermediate values during transition
+                # Report 3 intermediate values between current and target
+                step_size = (target_brightness - current_brightness) / 4
+                for i in range(1, 4):
+                    intermediate = int(current_brightness + step_size * i)
+                    hass.states.async_set(
+                        entity_id,
+                        STATE_ON,
+                        {
+                            ATTR_BRIGHTNESS: intermediate,
+                            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+                        },
+                        context=call.context,
+                    )
+                    await asyncio.sleep(0.02)
+
+            # Finally set target brightness
+            hass.states.async_set(
+                entity_id,
+                STATE_ON,
+                {
+                    ATTR_BRIGHTNESS: target_brightness,
+                    ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+                },
+                context=call.context,
+            )
+
+    # Replace the light.turn_on service
+    hass.services.async_remove("light", "turn_on")
+    hass.services.async_register("light", "turn_on", mock_turn_on_with_intermediates)
+
+    # Start a fade WITHOUT explicit from parameter to enable range tracking from step 1
+    # (when has_from=False, native_transitions use range tracking from the first step)
+    fade_task = asyncio.create_task(
+        hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                "entity_id": entity_id,
+                "brightness_pct": 100,
+                "transition": 1.0,
+            },
+            blocking=True,
+        )
+    )
+
+    # Wait for fade to complete
+    await fade_task
+
+    # Verify no manual intervention was detected (fade completed normally)
+    # Check that entity is not in INTENDED_STATE_QUEUE
+    assert entity_id not in INTENDED_STATE_QUEUE, "Intermediate values should not trigger manual intervention"
+
+
+async def test_native_transition_detects_real_intervention(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    service_calls: list[ServiceCall],
+) -> None:
+    """Test real manual interventions are still detected with native transitions."""
+    entity_id = "light.test"
+
+    # Set up the light
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {
+            ATTR_BRIGHTNESS: 1,
+            ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
+        },
+    )
+
+    # Configure light with native_transitions
+    hass.data[DOMAIN]["data"][entity_id] = {
+        "native_transitions": True,
+        "min_delay_ms": 150,
+    }
+
+    # Start a fade from 1 to 100
+    fade_task = asyncio.create_task(
+        hass.services.async_call(
+            DOMAIN,
+            SERVICE_FADE_LIGHTS,
+            {
+                "entity_id": entity_id,
+                "brightness_pct": 100,
+                "transition": 1.5,
+            },
+            blocking=True,
+        )
+    )
+
+    # Wait for fade to start and first step to execute
+    await asyncio.sleep(0.2)
+
+    # Verify fade is active before intervention
+    from custom_components.fade_lights import ACTIVE_FADES
+    assert entity_id in ACTIVE_FADES, "Fade should be active before intervention"
+
+    # Manual intervention: jump to 1 (way outside current range - going backwards)
+    # After first step, we're fading upward, so jumping back to 1 is clearly manual
+    hass.states.async_set(
+        entity_id,
+        STATE_ON,
+        {ATTR_BRIGHTNESS: 1},
+    )
+    await asyncio.sleep(0.05)
+
+    # Verify fade was cancelled due to manual intervention
+    assert entity_id not in ACTIVE_FADES, "Fade should be cancelled after manual intervention"
+
+    # Verify the manual change was stored as new original brightness
+    assert hass.data[DOMAIN]["data"][entity_id]["orig_brightness"] == 1
+
+    # Cancel fade task
+    fade_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await fade_task
