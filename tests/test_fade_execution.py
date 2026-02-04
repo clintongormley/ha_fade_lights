@@ -19,7 +19,6 @@ from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DOMAIN,
-    KEY_ORIG_BRIGHTNESS,
     SERVICE_FADE_LIGHTS,
 )
 
@@ -409,11 +408,10 @@ async def test_fade_stores_orig_brightness(
     )
     await hass.async_block_till_done()
 
-    # Check that the original brightness was stored
-    storage_key = entity_id.replace(".", "_")
+    # Check that the original brightness was stored (flat map: entity_id -> brightness)
     storage_data = hass.data[DOMAIN]["data"]
-    assert storage_key in storage_data
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 153  # 60% of 255
+    assert entity_id in storage_data
+    assert storage_data[entity_id] == 153  # 60% of 255
 
 
 async def test_fade_from_off_turns_on(

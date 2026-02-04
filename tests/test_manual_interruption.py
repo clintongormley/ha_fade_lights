@@ -25,7 +25,6 @@ from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DOMAIN,
-    KEY_ORIG_BRIGHTNESS,
     SERVICE_FADE_LIGHTS,
 )
 
@@ -233,10 +232,9 @@ async def test_manual_turn_off_preserves_orig_brightness(
 
     # Verify fade is active and orig brightness was stored
     assert entity_id in ACTIVE_FADES
-    storage_key = entity_id.replace(".", "_")
     storage_data = hass.data[DOMAIN]["data"]
-    assert storage_key in storage_data
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == initial_brightness
+    assert entity_id in storage_data
+    assert storage_data[entity_id] == initial_brightness
 
     # Simulate turning off the light manually (interrupting fade)
     hass.states.async_set(
@@ -254,7 +252,7 @@ async def test_manual_turn_off_preserves_orig_brightness(
     assert entity_id not in ACTIVE_FADES
 
     # Original brightness should still be the pre-fade value
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == initial_brightness
+    assert storage_data[entity_id] == initial_brightness
 
     # Clean up
     fade_task.cancel()
@@ -330,13 +328,13 @@ async def test_new_fade_cancels_previous(
         await first_fade
 
 
-async def test_manual_change_during_fade_preserves_orig(
+async def test_manual_change_during_fade_updates_orig(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     service_calls: list[ServiceCall],
 ) -> None:
-    """Test that manual brightness change during fade preserves pre-fade original."""
-    entity_id = "light.test_preserve_orig"
+    """Test that manual brightness change during fade becomes new original."""
+    entity_id = "light.test_update_orig"
     hass.states.async_set(
         entity_id,
         STATE_ON,
@@ -364,10 +362,9 @@ async def test_manual_change_during_fade_preserves_orig(
     await asyncio.sleep(0.2)
 
     # Verify orig brightness was stored at fade start
-    storage_key = entity_id.replace(".", "_")
     storage_data = hass.data[DOMAIN]["data"]
-    assert storage_key in storage_data
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 200
+    assert entity_id in storage_data
+    assert storage_data[entity_id] == 200
 
     # Simulate a manual brightness change to 150 (interrupting the fade)
     hass.states.async_set(
@@ -383,8 +380,9 @@ async def test_manual_change_during_fade_preserves_orig(
     # Give a moment for the state change handler to process
     await asyncio.sleep(0.1)
 
-    # Original brightness should still be 200 (pre-fade value), not 150
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 200
+    # Original brightness should now be 150 (the manual change), not 200
+    # This is the user's new intended brightness level
+    assert storage_data[entity_id] == 150
 
     # Clean up
     fade_task.cancel()
@@ -421,10 +419,9 @@ async def test_manual_change_without_fade_stores_new_orig(
     await hass.async_block_till_done()
 
     # Check that the new brightness was stored as original (since no fade was active)
-    storage_key = entity_id.replace(".", "_")
     storage_data = hass.data[DOMAIN]["data"]
-    assert storage_key in storage_data
-    assert storage_data[storage_key][KEY_ORIG_BRIGHTNESS] == 150
+    assert entity_id in storage_data
+    assert storage_data[entity_id] == 150
 
 
 async def test_group_changes_ignored(
@@ -464,10 +461,9 @@ async def test_group_changes_ignored(
     # trigger any storage updates or actions that would affect member lights
     # (Groups are detected by having entity_id attribute and are ignored)
 
-    # First, set up storage data for the regular light
-    storage_key = regular_light.replace(".", "_")
-    hass.data[DOMAIN]["data"][storage_key] = {KEY_ORIG_BRIGHTNESS: 200}
-    original_value = hass.data[DOMAIN]["data"][storage_key][KEY_ORIG_BRIGHTNESS]
+    # First, set up storage data for the regular light (flat map: entity_id -> brightness)
+    hass.data[DOMAIN]["data"][regular_light] = 200
+    original_value = hass.data[DOMAIN]["data"][regular_light]
 
     # Now simulate a brightness change on the group light
     hass.states.async_set(
@@ -482,11 +478,10 @@ async def test_group_changes_ignored(
     await hass.async_block_till_done()
 
     # The group's state change should not have stored any brightness for the group
-    group_storage_key = group_light.replace(".", "_")
-    assert group_storage_key not in hass.data[DOMAIN]["data"]
+    assert group_light not in hass.data[DOMAIN]["data"]
 
     # The regular light's stored brightness should be unchanged
-    assert hass.data[DOMAIN]["data"][storage_key][KEY_ORIG_BRIGHTNESS] == original_value
+    assert hass.data[DOMAIN]["data"][regular_light] == original_value
 
 
 async def test_brightness_tolerance_allows_rounding(
@@ -526,12 +521,12 @@ async def test_brightness_tolerance_allows_rounding(
 
     try:
         # Simulate a state update from our context with brightness within tolerance
-        # (expected is 100, so 97-103 should be within tolerance of 5)
+        # (expected is 100, so 97-103 should be within tolerance of 3)
         hass.states.async_set(
             entity_id,
             STATE_ON,
             {
-                ATTR_BRIGHTNESS: 103,  # Within tolerance (100 + 3)
+                ATTR_BRIGHTNESS: 102,  # Within tolerance (100 + 2)
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
             context=our_context,
@@ -546,14 +541,14 @@ async def test_brightness_tolerance_allows_rounding(
             entity_id,
             STATE_ON,
             {
-                ATTR_BRIGHTNESS: 105,  # At boundary (100 + 5)
+                ATTR_BRIGHTNESS: 103,  # At boundary (100 + 3)
                 ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS],
             },
             context=our_context,
         )
         await hass.async_block_till_done()
 
-        # Should still not be cancelled (5 is within tolerance)
+        # Should still not be cancelled (3 is within tolerance)
         assert not cancel_event.is_set(), "Cancel event should not be set at tolerance boundary"
 
     finally:

@@ -14,10 +14,7 @@ from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import (
-    DOMAIN,
-    KEY_ORIG_BRIGHTNESS,
-)
+from custom_components.fade_lights.const import DOMAIN
 
 
 @pytest.fixture
@@ -81,12 +78,11 @@ async def test_restore_brightness_on_turn_on(
 ) -> None:
     """Test light restored to orig brightness when turned on."""
     entity_id = "light.test_restore"
-    storage_key = entity_id.replace(".", "_")
     stored_brightness = 180
 
-    # Create mock storage with stored brightness
+    # Create mock storage with stored brightness (flat map: entity_id -> brightness)
     mock_storage_data = {
-        storage_key: {KEY_ORIG_BRIGHTNESS: stored_brightness},
+        entity_id: stored_brightness,
     }
 
     mock_config_entry.add_to_hass(hass)
@@ -190,12 +186,11 @@ async def test_no_restore_if_already_at_orig(
 ) -> None:
     """Test no extra call if turned on at correct brightness."""
     entity_id = "light.test_already_correct"
-    storage_key = entity_id.replace(".", "_")
     stored_brightness = 150
 
-    # Create mock storage with stored brightness
+    # Create mock storage with stored brightness (flat map: entity_id -> brightness)
     mock_storage_data = {
-        storage_key: {KEY_ORIG_BRIGHTNESS: stored_brightness},
+        entity_id: stored_brightness,
     }
 
     mock_config_entry.add_to_hass(hass)
@@ -245,12 +240,11 @@ async def test_no_restore_for_non_dimmable(
 ) -> None:
     """Test non-dimmable lights skip restoration."""
     entity_id = "light.test_non_dimmable"
-    storage_key = entity_id.replace(".", "_")
     stored_brightness = 180
 
-    # Create mock storage with stored brightness
+    # Create mock storage with stored brightness (flat map: entity_id -> brightness)
     mock_storage_data = {
-        storage_key: {KEY_ORIG_BRIGHTNESS: stored_brightness},
+        entity_id: stored_brightness,
     }
 
     mock_config_entry.add_to_hass(hass)
@@ -298,12 +292,11 @@ async def test_storage_persists_across_reload(
 ) -> None:
     """Test stored brightness survives integration reload."""
     entity_id = "light.test_persist"
-    storage_key = entity_id.replace(".", "_")
     stored_brightness = 200
 
-    # Create mock storage with stored brightness
+    # Create mock storage with stored brightness (flat map: entity_id -> brightness)
     mock_storage_data = {
-        storage_key: {KEY_ORIG_BRIGHTNESS: stored_brightness},
+        entity_id: stored_brightness,
     }
 
     mock_config_entry.add_to_hass(hass)
@@ -322,7 +315,7 @@ async def test_storage_persists_across_reload(
 
         # Verify storage data is loaded
         assert DOMAIN in hass.data
-        stored_orig = hass.data[DOMAIN]["data"].get(storage_key, {}).get(KEY_ORIG_BRIGHTNESS)
+        stored_orig = hass.data[DOMAIN]["data"].get(entity_id, 0)
         assert stored_orig == stored_brightness
 
         # Unload the integration
@@ -335,7 +328,7 @@ async def test_storage_persists_across_reload(
 
     # Verify storage data is still available after reload
     assert DOMAIN in hass.data
-    stored_orig = hass.data[DOMAIN]["data"].get(storage_key, {}).get(KEY_ORIG_BRIGHTNESS)
+    stored_orig = hass.data[DOMAIN]["data"].get(entity_id, 0)
     assert stored_orig == stored_brightness
 
     # Create dimmable light that is OFF
@@ -374,12 +367,12 @@ async def test_restore_uses_correct_brightness(
 ) -> None:
     """Test restores to exact stored value."""
     entity_id = "light.test_exact_restore"
-    storage_key = entity_id.replace(".", "_")
     # Use a specific non-round number to verify exact restoration
     stored_brightness = 137
 
+    # Flat map: entity_id -> brightness
     mock_storage_data = {
-        storage_key: {KEY_ORIG_BRIGHTNESS: stored_brightness},
+        entity_id: stored_brightness,
     }
 
     mock_config_entry.add_to_hass(hass)

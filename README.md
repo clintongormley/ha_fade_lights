@@ -147,7 +147,7 @@ The integration detects manual changes using two methods:
 
 1. **Context tracking**: Home Assistant's context system identifies whether a change came from the fade service or an external source.
 
-2. **Brightness comparison**: During an active fade, the integration compares the actual brightness to the expected brightness. If they differ by more than ±5 (tolerance for device rounding), the change is treated as manual intervention.
+2. **Brightness comparison**: During an active fade, the integration compares the actual brightness to the expected brightness. If they differ by more than ±3 (tolerance for device rounding), the change is treated as manual intervention.
 
 #### Behavior During Fades
 
