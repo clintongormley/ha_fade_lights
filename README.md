@@ -22,6 +22,7 @@ A Home Assistant custom integration that provides smooth light fading for bright
 - Target lights by entity, device, area, floor, or label
 - Automatically expands light groups
 - Capability-aware: skips lights that don't support requested color modes
+- Uses native transitions to smooth out each step for flicker-free fading
 - Cancels fade when lights are manually adjusted
 
 ### Automatic Brightness Restoration
