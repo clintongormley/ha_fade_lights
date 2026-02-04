@@ -131,6 +131,7 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
                 "min_delay_ms": light_config.get("min_delay_ms"),
                 "exclude": light_config.get("exclude", False),
                 "native_transitions": light_config.get("native_transitions"),
+                "min_brightness": light_config.get("min_brightness"),
             }
         )
 
@@ -227,6 +228,7 @@ async def async_save_light_config(
         vol.Optional("min_delay_ms"): vol.Any(None, vol.All(int, vol.Range(min=50, max=1000))),
         vol.Optional("exclude"): bool,
         vol.Optional("native_transitions"): vol.Any(None, bool),
+        vol.Optional("min_brightness"): vol.Any(None, vol.All(int, vol.Range(min=1, max=255))),
     }
 )
 @websocket_api.async_response
@@ -241,6 +243,7 @@ async def ws_save_light_config(
     # Determine if we should clear fields
     clear_min_delay = "min_delay_ms" in msg and msg["min_delay_ms"] is None
     clear_native_transitions = "native_transitions" in msg and msg["native_transitions"] is None
+    clear_min_brightness = "min_brightness" in msg and msg["min_brightness"] is None
 
     result = await async_save_light_config(
         hass,
@@ -248,8 +251,10 @@ async def ws_save_light_config(
         min_delay_ms=msg.get("min_delay_ms"),
         exclude=msg.get("exclude"),
         native_transitions=msg.get("native_transitions"),
+        min_brightness=msg.get("min_brightness"),
         clear_min_delay=clear_min_delay,
         clear_native_transitions=clear_native_transitions,
+        clear_min_brightness=clear_min_brightness,
     )
 
     connection.send_result(msg["id"], result)
@@ -408,6 +413,7 @@ async def ws_autoconfigure(
                                 "entity_id": entity_id,
                                 "min_delay_ms": result.get("min_delay_ms"),
                                 "native_transitions": result.get("native_transitions"),
+                                "min_brightness": result.get("min_brightness"),
                             },
                         )
                     )

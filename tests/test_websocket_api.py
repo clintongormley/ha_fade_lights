@@ -599,3 +599,145 @@ async def test_apply_log_level_unknown_defaults_to_warning(
 
     assert len(calls) == 1
     assert calls[0] == {"custom_components.fade_lights": "warning"}
+
+
+async def test_get_lights_includes_min_brightness(
+    hass: HomeAssistant,
+    init_integration,
+    mock_registries,
+) -> None:
+    """Test get_lights includes min_brightness in response."""
+    from custom_components.fade_lights.websocket_api import async_get_lights
+
+    # Set up storage with min_brightness for one light
+    hass.data[DOMAIN]["data"]["light.bedroom_ceiling"] = {
+        "min_delay_ms": 150,
+        "min_brightness": 3,
+    }
+
+    result = await async_get_lights(hass)
+
+    # Find upstairs floor and bedroom area
+    upstairs = next((f for f in result["floors"] if f["floor_id"] == "upstairs"), None)
+    bedroom = next((a for a in upstairs["areas"] if a["area_id"] == "bedroom"), None)
+    light = next(
+        (lt for lt in bedroom["lights"] if lt["entity_id"] == "light.bedroom_ceiling"),
+        None,
+    )
+
+    assert light is not None
+    assert light["min_brightness"] == 3
+
+
+async def test_get_lights_returns_none_for_unconfigured_min_brightness(
+    hass: HomeAssistant,
+    init_integration,
+    mock_registries,
+) -> None:
+    """Test get_lights returns None for min_brightness when not configured."""
+    from custom_components.fade_lights.websocket_api import async_get_lights
+
+    result = await async_get_lights(hass)
+
+    # Find kitchen light (unconfigured)
+    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
+    kitchen = next((a for a in no_floor["areas"] if a["area_id"] == "kitchen"), None)
+    light = next(
+        (lt for lt in kitchen["lights"] if lt["entity_id"] == "light.kitchen_main"),
+        None,
+    )
+
+    assert light is not None
+    assert light["min_brightness"] is None
+
+
+async def test_save_light_config_saves_min_brightness(
+    hass: HomeAssistant,
+    init_integration,
+) -> None:
+    """Test save_light_config saves min_brightness."""
+    from custom_components.fade_lights.websocket_api import async_save_light_config
+
+    result = await async_save_light_config(
+        hass,
+        "light.test",
+        min_brightness=5,
+    )
+
+    # Verify data was saved
+    assert hass.data[DOMAIN]["data"]["light.test"]["min_brightness"] == 5
+    assert result == {"success": True}
+
+
+async def test_save_light_config_clears_min_brightness_with_flag(
+    hass: HomeAssistant,
+    init_integration,
+) -> None:
+    """Test save_light_config clears min_brightness when clear_min_brightness is True."""
+    from custom_components.fade_lights.websocket_api import async_save_light_config
+
+    # Set up existing config with min_brightness
+    hass.data[DOMAIN]["data"]["light.test"] = {
+        "min_brightness": 5,
+    }
+
+    await async_save_light_config(
+        hass,
+        "light.test",
+        min_brightness=None,
+        clear_min_brightness=True,
+    )
+
+    # Verify min_brightness was removed
+    assert "min_brightness" not in hass.data[DOMAIN]["data"]["light.test"]
+
+
+async def test_autoconfigure_result_includes_min_brightness(
+    hass: HomeAssistant,
+    hass_ws_client,
+    init_integration,
+) -> None:
+    """Test autoconfigure result event includes min_brightness."""
+    from unittest.mock import patch
+
+    entity_id = "light.test_min_brightness"
+    hass.states.async_set(entity_id, "on", {"brightness": 200})
+
+    async def mock_autoconfigure_light(hass, entity_id):
+        return {
+            "entity_id": entity_id,
+            "min_delay_ms": 100,
+            "native_transitions": True,
+            "min_brightness": 3,
+        }
+
+    with patch(
+        "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+        side_effect=mock_autoconfigure_light,
+    ):
+        client = await hass_ws_client(hass)
+
+        await client.send_json(
+            {
+                "id": 1,
+                "type": "fade_lights/autoconfigure",
+                "entity_ids": [entity_id],
+            }
+        )
+
+        # Collect events
+        events = []
+        while True:
+            msg = await client.receive_json()
+            if msg["type"] == "result":
+                break
+            events.append(msg)
+
+    # Find result event
+    result_event = next(
+        (e for e in events if e["event"]["type"] == "result"),
+        None,
+    )
+
+    assert result_event is not None
+    assert result_event["event"]["min_brightness"] == 3
