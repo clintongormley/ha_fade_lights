@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import (
     ATTR_BRIGHTNESS_PCT,
+    ATTR_FROM,
     ATTR_TRANSITION,
     DEFAULT_TRANSITION,
     DOMAIN,
@@ -187,23 +188,26 @@ async def test_service_accepts_missing_brightness(
         "custom_components.fade_lights._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
-        # Call without brightness_pct
+        # Call with from brightness but no target brightness_pct
         await hass.services.async_call(
             DOMAIN,
             SERVICE_FADE_LIGHTS,
             {
                 ATTR_ENTITY_ID: mock_light_entity,
+                ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 20},
                 ATTR_TRANSITION: 2,
             },
             blocking=True,
         )
         await hass.async_block_till_done()
 
-        # Verify _fade_light was called with None brightness
+        # Verify _fade_light was called with None brightness target
         assert mock_fade_light.call_count == 1
         call_args = mock_fade_light.call_args
-        # fade_params.brightness_pct should be None when not provided
+        # fade_params.brightness_pct should be None when not provided as target
         assert call_args[0][2].brightness_pct is None
+        # But from_brightness_pct should be set
+        assert call_args[0][2].from_brightness_pct == 20
 
 
 async def test_service_uses_default_transition(

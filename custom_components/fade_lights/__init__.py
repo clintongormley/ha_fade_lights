@@ -387,6 +387,11 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 
     fade_params = _validate_and_parse_color_params(call.data)
+
+    if not fade_params.has_target() and not fade_params.has_from_target():
+        _LOGGER.debug("No fade parameters specified, nothing to do")
+        return
+
     transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, DEFAULT_TRANSITION)))
 
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
