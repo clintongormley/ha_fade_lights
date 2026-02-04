@@ -307,8 +307,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "store": store,
         "data": storage_data,
-        "default_brightness": DEFAULT_BRIGHTNESS_PCT,
-        "default_transition": DEFAULT_TRANSITION,
         "min_step_delay_ms": entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS),
     }
 
@@ -370,15 +368,13 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
 async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the fade_lights service call."""
     domain_data = hass.data.get(DOMAIN, {})
-    default_brightness = domain_data.get("default_brightness", DEFAULT_BRIGHTNESS_PCT)
-    default_transition = domain_data.get("default_transition", DEFAULT_TRANSITION)
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 
     # Validate color parameters
     _validate_color_params(call.data)
     _validate_color_ranges(call.data)
 
-    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, default_transition)))
+    transition_ms = int(1000 * float(call.data.get(ATTR_TRANSITION, DEFAULT_TRANSITION)))
 
     expanded_entities = _expand_entity_ids(hass, call.data.get(ATTR_ENTITY_ID))
     if not expanded_entities:
@@ -388,7 +384,7 @@ async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
 
     # Apply default brightness if not specified
     if fade_params.brightness_pct is None:
-        fade_params.brightness_pct = default_brightness
+        fade_params.brightness_pct = DEFAULT_BRIGHTNESS_PCT
 
     tasks = []
     for entity_id in expanded_entities:
