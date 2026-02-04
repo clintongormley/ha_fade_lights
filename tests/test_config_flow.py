@@ -11,12 +11,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fade_lights.const import (
     DEFAULT_BRIGHTNESS_PCT,
-    DEFAULT_STEP_DELAY_MS,
+    DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
-    OPTION_STEP_DELAY_MS,
+    OPTION_MIN_STEP_DELAY_MS,
 )
 
 
@@ -93,7 +93,7 @@ async def test_options_flow_shows_defaults(
     schema_dict = {str(key): key for key in schema.schema}
     assert OPTION_DEFAULT_BRIGHTNESS_PCT in schema_dict
     assert OPTION_DEFAULT_TRANSITION in schema_dict
-    assert OPTION_STEP_DELAY_MS in schema_dict
+    assert OPTION_MIN_STEP_DELAY_MS in schema_dict
 
     # Check defaults by accessing the schema key defaults
     for key in schema.schema:
@@ -101,8 +101,8 @@ async def test_options_flow_shows_defaults(
             assert key.default() == DEFAULT_BRIGHTNESS_PCT
         elif str(key) == OPTION_DEFAULT_TRANSITION:
             assert key.default() == DEFAULT_TRANSITION
-        elif str(key) == OPTION_STEP_DELAY_MS:
-            assert key.default() == DEFAULT_STEP_DELAY_MS
+        elif str(key) == OPTION_MIN_STEP_DELAY_MS:
+            assert key.default() == DEFAULT_MIN_STEP_DELAY_MS
 
 
 async def test_options_flow_updates_values(
@@ -123,7 +123,7 @@ async def test_options_flow_updates_values(
         user_input={
             OPTION_DEFAULT_BRIGHTNESS_PCT: 75,
             OPTION_DEFAULT_TRANSITION: 10,
-            OPTION_STEP_DELAY_MS: 200,
+            OPTION_MIN_STEP_DELAY_MS: 200,
         },
     )
 
@@ -131,7 +131,7 @@ async def test_options_flow_updates_values(
     assert result["data"] == {
         OPTION_DEFAULT_BRIGHTNESS_PCT: 75,
         OPTION_DEFAULT_TRANSITION: 10,
-        OPTION_STEP_DELAY_MS: 200,
+        OPTION_MIN_STEP_DELAY_MS: 200,
     }
 
 
@@ -154,7 +154,7 @@ async def test_options_flow_validates_brightness_range(
             user_input={
                 OPTION_DEFAULT_BRIGHTNESS_PCT: 150,  # Invalid: > 100
                 OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-                OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
+                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
             },
         )
 
@@ -167,7 +167,7 @@ async def test_options_flow_validates_brightness_range(
             user_input={
                 OPTION_DEFAULT_BRIGHTNESS_PCT: -10,  # Invalid: < 0
                 OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-                OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
+                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
             },
         )
 
@@ -191,7 +191,7 @@ async def test_options_flow_validates_transition_range(
             user_input={
                 OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
                 OPTION_DEFAULT_TRANSITION: 5000,  # Invalid: > 3600
-                OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
+                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
             },
         )
 
@@ -204,7 +204,7 @@ async def test_options_flow_validates_transition_range(
             user_input={
                 OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
                 OPTION_DEFAULT_TRANSITION: -5,  # Invalid: < 0
-                OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
+                OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
             },
         )
 
@@ -216,7 +216,7 @@ async def test_options_flow_validates_transition_range(
         user_input={
             OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
             OPTION_DEFAULT_TRANSITION: 0.5,  # Valid: float value for 500ms
-            OPTION_STEP_DELAY_MS: DEFAULT_STEP_DELAY_MS,
+            OPTION_MIN_STEP_DELAY_MS: DEFAULT_MIN_STEP_DELAY_MS,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -242,7 +242,7 @@ async def test_options_flow_validates_step_delay_range(
             user_input={
                 OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
                 OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-                OPTION_STEP_DELAY_MS: 30,  # Invalid: < 50 (MIN_STEP_DELAY_MS)
+                OPTION_MIN_STEP_DELAY_MS: 30,  # Invalid: < 50 (MIN_STEP_DELAY_MS)
             },
         )
 
@@ -255,7 +255,7 @@ async def test_options_flow_validates_step_delay_range(
             user_input={
                 OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
                 OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-                OPTION_STEP_DELAY_MS: 1500,  # Invalid: > 1000
+                OPTION_MIN_STEP_DELAY_MS: 1500,  # Invalid: > 1000
             },
         )
 
@@ -267,8 +267,8 @@ async def test_options_flow_validates_step_delay_range(
         user_input={
             OPTION_DEFAULT_BRIGHTNESS_PCT: DEFAULT_BRIGHTNESS_PCT,
             OPTION_DEFAULT_TRANSITION: DEFAULT_TRANSITION,
-            OPTION_STEP_DELAY_MS: 50,  # Valid: exactly MIN_STEP_DELAY_MS
+            OPTION_MIN_STEP_DELAY_MS: 50,  # Valid: exactly MIN_STEP_DELAY_MS
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][OPTION_STEP_DELAY_MS] == 50
+    assert result["data"][OPTION_MIN_STEP_DELAY_MS] == 50

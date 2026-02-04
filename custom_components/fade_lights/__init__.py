@@ -38,14 +38,14 @@ from .const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DEFAULT_BRIGHTNESS_PCT,
-    DEFAULT_STEP_DELAY_MS,
+    DEFAULT_MIN_STEP_DELAY_MS,
     DEFAULT_TRANSITION,
     DOMAIN,
     KEY_CURR_BRIGHTNESS,
     KEY_ORIG_BRIGHTNESS,
     OPTION_DEFAULT_BRIGHTNESS_PCT,
     OPTION_DEFAULT_TRANSITION,
-    OPTION_STEP_DELAY_MS,
+    OPTION_MIN_STEP_DELAY_MS,
     SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
 )
@@ -86,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     default_brightness = entry.options.get(OPTION_DEFAULT_BRIGHTNESS_PCT, DEFAULT_BRIGHTNESS_PCT)
     default_transition = entry.options.get(OPTION_DEFAULT_TRANSITION, DEFAULT_TRANSITION)
-    step_delay_ms = entry.options.get(OPTION_STEP_DELAY_MS, DEFAULT_STEP_DELAY_MS)
+    min_step_delay_ms = entry.options.get(OPTION_MIN_STEP_DELAY_MS, DEFAULT_MIN_STEP_DELAY_MS)
 
     async def handle_fade_lights(call: ServiceCall) -> None:
         """Handle the fade_lights service call."""
@@ -119,7 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         brightness_pct,
                         transition_ms,
                         context,
-                        step_delay_ms,
+                        min_step_delay_ms,
                     )
                 )
                 for entity_id in expanded_entities
@@ -254,7 +254,7 @@ async def _fade_light(
     brightness_pct: int,
     transition_ms: int,
     context: Context,
-    step_delay_ms: int,
+    min_step_delay_ms: int,
 ) -> None:
     """Fade a single light to the specified brightness."""
     # Cancel any existing fade for this entity
@@ -275,7 +275,7 @@ async def _fade_light(
 
     try:
         await _execute_fade(
-            hass, entity_id, brightness_pct, transition_ms, context, step_delay_ms, cancel_event
+            hass, entity_id, brightness_pct, transition_ms, context, min_step_delay_ms, cancel_event
         )
     except asyncio.CancelledError:
         pass
@@ -291,7 +291,7 @@ async def _execute_fade(
     brightness_pct: int,
     transition_ms: int,
     context: Context,
-    step_delay_ms: int,
+    min_step_delay_ms: int,
     cancel_event: asyncio.Event,
 ) -> None:
     """Execute the fade operation."""
@@ -330,13 +330,13 @@ async def _execute_fade(
     _store_curr_brightness(hass, entity_id, start_level)
 
     # Calculate steps and timing
-    # Goal: complete the fade in exactly transition_ms, with each step taking at least step_delay_ms
+    # Goal: complete fade in transition_ms, with each step taking at least min_step_delay_ms
     level_diff = abs(end_level - start_level)
     if level_diff == 0:
         return
 
     # Maximum steps we can fit in the transition time (given minimum delay per step)
-    max_steps_by_time = max(1, int(transition_ms / step_delay_ms))
+    max_steps_by_time = max(1, int(transition_ms / min_step_delay_ms))
 
     # We can't have more steps than brightness levels to change
     num_steps = min(max_steps_by_time, level_diff)
