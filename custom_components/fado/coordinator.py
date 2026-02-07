@@ -604,7 +604,7 @@ class FadeCoordinator:
         _LOGGER.debug("%s: Cancelling fade", entity_id)
         entity = self.get_entity(entity_id)
         if entity is None or entity.active_task is None:
-            _LOGGER.debug("%s: Fade not in ACTIVE_FADES", entity_id)
+            _LOGGER.debug("%s: No active fade task", entity_id)
             return
 
         task = entity.active_task
