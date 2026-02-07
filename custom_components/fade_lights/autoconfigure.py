@@ -89,6 +89,10 @@ async def async_autoconfigure_light(
 
     result: dict[str, Any] = {"entity_id": entity_id}
 
+    # Temporarily exclude light to suppress main integration state monitoring
+    light_config = hass.data.setdefault(DOMAIN, {}).setdefault("data", {}).setdefault(entity_id, {})
+    light_config["exclude"] = True
+
     try:
         # Run native transitions test first
         transition_result = await _async_test_native_transitions(hass, entity_id)
@@ -125,6 +129,8 @@ async def async_autoconfigure_light(
             )
 
     finally:
+        # Restore exclude flag before restoring state
+        light_config["exclude"] = False
         # Always restore original state
         await _async_restore_light_state(hass, entity_id, original_on, original_brightness)
 
@@ -291,6 +297,14 @@ async def _async_test_min_brightness(
     await _async_turn_off(hass, entity_id)
     await asyncio.sleep(0.5)  # Allow state to settle
 
+    off_state = hass.states.get(entity_id)
+    _LOGGER.debug(
+        "%s: Min brightness test start: state=%s, brightness=%s",
+        entity_id,
+        off_state.state if off_state else None,
+        off_state.attributes.get(ATTR_BRIGHTNESS) if off_state else None,
+    )
+
     state_changed_event = asyncio.Event()
 
     @callback
@@ -306,6 +320,11 @@ async def _async_test_min_brightness(
         for brightness_value in range(1, 256):
             state_changed_event.clear()
 
+            _LOGGER.debug(
+                "%s: Min brightness test: sending turn_on brightness=%d",
+                entity_id,
+                brightness_value,
+            )
             await _async_turn_on(hass, entity_id, brightness=brightness_value)
 
             # Wait for state change with timeout
@@ -315,19 +334,37 @@ async def _async_test_min_brightness(
                     timeout=AUTOCONFIGURE_TIMEOUT_S,
                 )
             except TimeoutError:
-                _LOGGER.warning(
-                    "%s: Timeout waiting for state change at brightness %d",
+                _LOGGER.debug(
+                    "%s: Timeout waiting for state change at brightness %d, trying next",
                     entity_id,
                     brightness_value,
                 )
-                return {"entity_id": entity_id, "error": "Timeout waiting for state change"}
+                continue
+
+            # Log immediate state after state change
+            immediate_state = hass.states.get(entity_id)
+            _LOGGER.debug(
+                "%s: After state change: state=%s, brightness=%s",
+                entity_id,
+                immediate_state.state if immediate_state else None,
+                immediate_state.attributes.get(ATTR_BRIGHTNESS) if immediate_state else None,
+            )
+
+            # Let state settle (some lights briefly report ON then revert)
+            await asyncio.sleep(0.5)
 
             # Check if light is on with valid brightness
             state = hass.states.get(entity_id)
+            _LOGGER.debug(
+                "%s: After settle: state=%s, brightness=%s",
+                entity_id,
+                state.state if state else None,
+                state.attributes.get(ATTR_BRIGHTNESS) if state else None,
+            )
             if (
                 state is not None
                 and state.state == STATE_ON
-                and state.attributes.get(ATTR_BRIGHTNESS) is not None
+                and (state.attributes.get(ATTR_BRIGHTNESS) or 0) > 0
             ):
                 _LOGGER.info(
                     "%s: Minimum brightness detected as %d",
@@ -337,6 +374,11 @@ async def _async_test_min_brightness(
                 return {"entity_id": entity_id, "min_brightness": brightness_value}
 
             # Light didn't turn on, turn it off and try next value
+            _LOGGER.debug(
+                "%s: Brightness %d did not turn on, trying next",
+                entity_id,
+                brightness_value,
+            )
             await _async_turn_off(hass, entity_id)
             await asyncio.sleep(0.1)  # Brief pause before next attempt
 

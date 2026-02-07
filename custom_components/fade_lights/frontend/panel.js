@@ -440,6 +440,13 @@ class FadeLightsPanel extends LitElement {
   updated(changedProperties) {
     super.updated(changedProperties);
     if (changedProperties.has("hass") && this.hass) {
+      // Cancel any active autoconfigure on reconnect to prevent auto-re-subscription
+      if (this._autoconfigureUnsub) {
+        this._autoconfigureUnsub();
+        this._autoconfigureUnsub = null;
+        this._testing = new Set();
+      }
+
       // Fetch immediately when hass first becomes available and we haven't loaded yet
       if (!this._data && this._loading) {
         this._fetchAll();
