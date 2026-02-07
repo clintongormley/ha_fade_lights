@@ -12,14 +12,9 @@ from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fado import (
-    FADE_EXPECTED_STATE,
-    ExpectedState,
-    _add_expected_brightness,
-    _match_and_remove_expected,
-    _wait_until_stale_events_flushed,
-)
-from custom_components.fado.expected_state import ExpectedValues
+from custom_components.fado.const import DOMAIN
+from custom_components.fado.coordinator import FadeCoordinator
+from custom_components.fado.expected_state import ExpectedState, ExpectedValues
 
 
 def _has_brightness(expected_state: ExpectedState, brightness: int) -> bool:
@@ -33,18 +28,15 @@ async def test_add_expected_brightness_creates_entry(
 ) -> None:
     """Test _add_expected_brightness creates ExpectedState if not exists."""
     entity_id = "light.test_add"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
-    # Ensure no entry exists
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    coordinator._add_expected_brightness(entity_id, 100)
 
-    _add_expected_brightness(entity_id, 100)
-
-    assert entity_id in FADE_EXPECTED_STATE
-    assert _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
-    assert FADE_EXPECTED_STATE[entity_id]._condition is None
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    entity = coordinator.get_entity(entity_id)
+    assert entity is not None
+    assert entity.expected_state is not None
+    assert _has_brightness(entity.expected_state, 100)
+    assert entity.expected_state._condition is None
 
 
 async def test_add_expected_brightness_adds_multiple_entries(
@@ -53,20 +45,17 @@ async def test_add_expected_brightness_adds_multiple_entries(
 ) -> None:
     """Test _add_expected_brightness adds multiple entries (not overwrites)."""
     entity_id = "light.test_timestamp"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
-    FADE_EXPECTED_STATE.pop(entity_id, None)
-
-    _add_expected_brightness(entity_id, 100)
-    assert len(FADE_EXPECTED_STATE[entity_id].values) == 1
+    coordinator._add_expected_brightness(entity_id, 100)
+    entity = coordinator.get_entity(entity_id)
+    assert len(entity.expected_state.values) == 1
 
     await asyncio.sleep(0.01)
 
-    _add_expected_brightness(entity_id, 100)
+    coordinator._add_expected_brightness(entity_id, 100)
     # New implementation appends to list, so we now have 2 entries
-    assert len(FADE_EXPECTED_STATE[entity_id].values) == 2
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    assert len(entity.expected_state.values) == 2
 
 
 async def test_match_and_remove_expected_removes_matched_value(
@@ -75,6 +64,7 @@ async def test_match_and_remove_expected_removes_matched_value(
 ) -> None:
     """Test _match_and_remove_expected removes matched brightness."""
     entity_id = "light.test_match"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     hass.states.async_set(
         entity_id,
@@ -82,19 +72,17 @@ async def test_match_and_remove_expected_removes_matched_value(
         {ATTR_BRIGHTNESS: 100, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     state = hass.states.get(entity_id)
-    result = _match_and_remove_expected(entity_id, state)
+    result = coordinator._match_and_remove_expected(entity_id, state)
 
     assert result is True
-    assert not _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    assert not _has_brightness(entity.expected_state, 100)
 
 
 async def test_match_and_remove_expected_with_tolerance(
@@ -103,6 +91,7 @@ async def test_match_and_remove_expected_with_tolerance(
 ) -> None:
     """Test _match_and_remove_expected matches within tolerance."""
     entity_id = "light.test_tolerance"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     hass.states.async_set(
         entity_id,
@@ -110,19 +99,17 @@ async def test_match_and_remove_expected_with_tolerance(
         {ATTR_BRIGHTNESS: 102, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     state = hass.states.get(entity_id)
-    result = _match_and_remove_expected(entity_id, state)
+    result = coordinator._match_and_remove_expected(entity_id, state)
 
     assert result is True
-    assert not _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    assert not _has_brightness(entity.expected_state, 100)
 
 
 async def test_match_and_remove_expected_off_state(
@@ -131,6 +118,7 @@ async def test_match_and_remove_expected_off_state(
 ) -> None:
     """Test _match_and_remove_expected matches OFF state."""
     entity_id = "light.test_off"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     hass.states.async_set(
         entity_id,
@@ -138,19 +126,17 @@ async def test_match_and_remove_expected_off_state(
         {ATTR_BRIGHTNESS: None, ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=0), time.monotonic())],
     )
 
     state = hass.states.get(entity_id)
-    result = _match_and_remove_expected(entity_id, state)
+    result = coordinator._match_and_remove_expected(entity_id, state)
 
     assert result is True
-    assert not _has_brightness(FADE_EXPECTED_STATE[entity_id], 0)
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    assert not _has_brightness(entity.expected_state, 0)
 
 
 async def test_match_and_remove_expected_notifies_condition(
@@ -159,6 +145,7 @@ async def test_match_and_remove_expected_notifies_condition(
 ) -> None:
     """Test _match_and_remove_expected notifies condition when empty."""
     entity_id = "light.test_notify"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     hass.states.async_set(
         entity_id,
@@ -171,7 +158,8 @@ async def test_match_and_remove_expected_notifies_condition(
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
     condition = expected_state.get_condition()  # Create condition via method
-    FADE_EXPECTED_STATE[entity_id] = expected_state
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = expected_state
 
     notified = asyncio.Event()
 
@@ -184,7 +172,7 @@ async def test_match_and_remove_expected_notifies_condition(
     await asyncio.sleep(0.01)  # Let wait_task start
 
     state = hass.states.get(entity_id)
-    _match_and_remove_expected(entity_id, state)
+    coordinator._match_and_remove_expected(entity_id, state)
 
     await asyncio.sleep(0.05)  # Let notification propagate
 
@@ -193,9 +181,6 @@ async def test_match_and_remove_expected_notifies_condition(
     wait_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await wait_task
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_get_condition_prunes_stale_values(
@@ -272,11 +257,10 @@ async def test_wait_until_stale_events_flushed_returns_immediately_when_empty(
 ) -> None:
     """Test _wait_until_stale_events_flushed returns immediately when no expected values."""
     entity_id = "light.test_empty"
-
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     start = time.monotonic()
-    await _wait_until_stale_events_flushed(entity_id)
+    await coordinator._wait_until_stale_events_flushed(entity_id)
     elapsed = time.monotonic() - start
 
     # Should return almost immediately
@@ -289,22 +273,21 @@ async def test_wait_until_stale_events_flushed_times_out(
 ) -> None:
     """Test _wait_until_stale_events_flushed times out when events don't arrive."""
     entity_id = "light.test_timeout"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     start = time.monotonic()
-    await _wait_until_stale_events_flushed(entity_id, timeout=0.2)
+    await coordinator._wait_until_stale_events_flushed(entity_id, timeout=0.2)
     elapsed = time.monotonic() - start
 
     # Should wait approximately the timeout duration
     assert elapsed >= 0.2
     assert elapsed < 0.5
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_wait_until_stale_events_flushed_returns_when_notified(
@@ -313,13 +296,15 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
 ) -> None:
     """Test _wait_until_stale_events_flushed returns early when condition is notified."""
     entity_id = "light.test_early_return"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
     condition = expected_state.get_condition()  # Create condition via method
-    FADE_EXPECTED_STATE[entity_id] = expected_state
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = expected_state
 
     async def clear_and_notify() -> None:
         await asyncio.sleep(0.1)
@@ -330,14 +315,11 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
     asyncio.create_task(clear_and_notify())
 
     start = time.monotonic()
-    await _wait_until_stale_events_flushed(entity_id, timeout=5.0)
+    await coordinator._wait_until_stale_events_flushed(entity_id, timeout=5.0)
     elapsed = time.monotonic() - start
 
     # Should return well before the 5 second timeout
     assert elapsed < 0.5
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
 
 
 async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness(
@@ -346,6 +328,7 @@ async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness
 ) -> None:
     """Test _match_and_remove_expected returns False when ON state has no brightness."""
     entity_id = "light.test_no_brightness"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
 
     # Create state with ON but no brightness attribute
     hass.states.async_set(
@@ -354,18 +337,16 @@ async def test_match_and_remove_expected_returns_false_for_on_with_no_brightness
         {ATTR_SUPPORTED_COLOR_MODES: [ColorMode.BRIGHTNESS]},
     )
 
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     state = hass.states.get(entity_id)
-    result = _match_and_remove_expected(entity_id, state)
+    result = coordinator._match_and_remove_expected(entity_id, state)
 
     # Should return False since brightness is None for ON state
     assert result is False
     # Expected value should remain unchanged
-    assert _has_brightness(FADE_EXPECTED_STATE[entity_id], 100)
-
-    # Clean up
-    FADE_EXPECTED_STATE.pop(entity_id, None)
+    assert _has_brightness(entity.expected_state, 100)

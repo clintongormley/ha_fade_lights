@@ -14,7 +14,8 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import ColorMode
 
-from custom_components.fado import DOMAIN
+from custom_components.fado.const import DOMAIN
+from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.fade_change import FadeChange, _clamp_mireds
 from custom_components.fado.fade_params import FadeParams
 
@@ -228,15 +229,23 @@ class TestExecuteFadeWithBounds:
     def mock_hass(self):
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
-        hass.data = {DOMAIN: {"data": {}, "store": MagicMock()}}
         hass.services = MagicMock()
         hass.services.async_call = AsyncMock()
         return hass
 
-    async def test_bounds_extracted_from_state(self, mock_hass) -> None:
-        """Test that min/max kelvin are extracted from state attributes."""
-        from custom_components.fado import _execute_fade
+    @pytest.fixture
+    def coordinator(self, mock_hass):
+        """Create a FadeCoordinator with mock hass."""
+        return FadeCoordinator(
+            hass=mock_hass,
+            entry=MagicMock(),
+            store=MagicMock(async_save=AsyncMock()),
+            data={},
+            min_step_delay_ms=100,
+        )
 
+    async def test_bounds_extracted_from_state(self, mock_hass, coordinator) -> None:
+        """Test that min/max kelvin are extracted from state attributes."""
         # Light with color temp bounds
         state = MagicMock()
         state.attributes = {
@@ -256,25 +265,21 @@ class TestExecuteFadeWithBounds:
         cancel_event = MagicMock()
         cancel_event.is_set.return_value = False
 
-        with patch(
-            "custom_components.fado._apply_step", new_callable=AsyncMock
-        ) as mock_apply:
-            await _execute_fade(mock_hass, "light.test", params, 50, cancel_event)
+        with patch.object(coordinator, "_apply_step", new_callable=AsyncMock) as mock_apply:
+            await coordinator._execute_fade("light.test", params, 50, cancel_event)
 
             # Verify _apply_step was called
             assert mock_apply.called
             # Get the LAST step that was applied (final target)
             call_args = mock_apply.call_args_list[-1]
-            step = call_args[0][2]  # Third arg is the step
+            step = call_args[0][1]  # Second arg is the step (entity_id, step)
 
             # The color temp should be clamped to min kelvin (2000K)
             # 1500K would be 666 mireds, clamped to 500 mireds = 2000K
             assert step.color_temp_kelvin == 2000
 
-    async def test_no_bounds_no_clamping(self, mock_hass) -> None:
+    async def test_no_bounds_no_clamping(self, mock_hass, coordinator) -> None:
         """Test that without bounds, color temp is not clamped."""
-        from custom_components.fado import _execute_fade
-
         # Light without color temp bounds
         state = MagicMock()
         state.attributes = {
@@ -293,16 +298,14 @@ class TestExecuteFadeWithBounds:
         cancel_event = MagicMock()
         cancel_event.is_set.return_value = False
 
-        with patch(
-            "custom_components.fado._apply_step", new_callable=AsyncMock
-        ) as mock_apply:
-            await _execute_fade(mock_hass, "light.test", params, 50, cancel_event)
+        with patch.object(coordinator, "_apply_step", new_callable=AsyncMock) as mock_apply:
+            await coordinator._execute_fade("light.test", params, 50, cancel_event)
 
             # Verify _apply_step was called
             assert mock_apply.called
             # Get the LAST step that was applied (final target)
             call_args = mock_apply.call_args_list[-1]
-            step = call_args[0][2]  # Third arg is the step
+            step = call_args[0][1]  # Second arg is the step (entity_id, step)
 
             # The color temp should NOT be clamped - 666 mireds = 1500K
             # (allowing for rounding: int(1_000_000/666) = 1501)

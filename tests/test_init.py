@@ -10,12 +10,8 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fado import (
-    ACTIVE_FADES,
-    FADE_CANCEL_EVENTS,
-    FADE_EXPECTED_STATE,
-)
 from custom_components.fado.const import DOMAIN, SERVICE_FADO
+from custom_components.fado.coordinator import FadeCoordinator
 
 
 async def test_setup_entry_registers_service(
@@ -56,8 +52,8 @@ async def test_setup_entry_loads_storage(
 
     # Verify data is accessible in hass.data
     assert DOMAIN in hass.data
-    assert hass.data[DOMAIN]["data"] == mock_storage_data
-    assert hass.data[DOMAIN]["store"] is mock_store
+    assert hass.data[DOMAIN].data == mock_storage_data
+    assert hass.data[DOMAIN].store is mock_store
 
 
 async def test_unload_entry_removes_service(
@@ -79,23 +75,20 @@ async def test_unload_entry_clears_tracking_dicts(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test the integration clears tracking dicts on unload."""
-    # Populate the tracking dicts to simulate an active fade
+    """Test the integration clears entity state on unload."""
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+
+    # Populate entity state to simulate an active fade
     test_task = asyncio.create_task(asyncio.sleep(10))
     test_event = asyncio.Event()
 
-    ACTIVE_FADES["light.test_light"] = test_task
-    FADE_CANCEL_EVENTS["light.test_light"] = test_event
-    FADE_EXPECTED_STATE["light.test_light"] = 128
+    entity = coordinator.get_or_create_entity("light.test_light")
+    entity.active_task = test_task
+    entity.cancel_event = test_event
 
     # Unload the integration
     await hass.config_entries.async_unload(init_integration.entry_id)
     await hass.async_block_till_done()
-
-    # Verify all tracking dicts are cleared
-    assert len(ACTIVE_FADES) == 0
-    assert len(FADE_CANCEL_EVENTS) == 0
-    assert len(FADE_EXPECTED_STATE) == 0
 
     # Verify the cancel event was set (to stop any active fades)
     assert test_event.is_set()
@@ -202,58 +195,6 @@ async def test_async_setup_no_auto_import_when_entry_exists(
     assert not flow_init_called, "Config flow should NOT be initiated when entries exist"
 
 
-async def test_store_orig_brightness_when_domain_not_in_hass(
-    hass: HomeAssistant,
-) -> None:
-    """Test _store_orig_brightness returns early when DOMAIN not in hass.data."""
-    from custom_components.fado import _store_orig_brightness
-
-    # Ensure DOMAIN is not in hass.data
-    hass.data.pop(DOMAIN, None)
-
-    # Should not raise - just return early
-    _store_orig_brightness(hass, "light.test", 100)
-
-    # Verify nothing was stored
-    assert DOMAIN not in hass.data
-
-
-async def test_save_storage_when_domain_not_in_hass(
-    hass: HomeAssistant,
-) -> None:
-    """Test _save_storage returns early when DOMAIN not in hass.data."""
-    from custom_components.fado import _save_storage
-
-    # Ensure DOMAIN is not in hass.data
-    hass.data.pop(DOMAIN, None)
-
-    # Should not raise - just return early
-    await _save_storage(hass)
-
-    # Verify domain was not created
-    assert DOMAIN not in hass.data
-
-
-async def test_handle_off_to_on_when_domain_not_in_hass(
-    hass: HomeAssistant,
-    mock_light_entity: str,
-) -> None:
-    """Test _handle_off_to_on returns early when DOMAIN not in hass.data."""
-    from custom_components.fado import _handle_off_to_on
-
-    # Ensure DOMAIN is not in hass.data
-    hass.data.pop(DOMAIN, None)
-
-    # Get the state
-    state = hass.states.get(mock_light_entity)
-
-    # Should not raise - just return early
-    _handle_off_to_on(hass, mock_light_entity, state)
-
-    # Verify no tasks were created (no restoration attempt)
-    # This is implicitly tested by not raising and no side effects
-
-
 async def test_fado_skips_unavailable_entities(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
@@ -276,12 +217,13 @@ async def test_fado_skips_unavailable_entities(
     # Track which entities were faded
     faded_entities = []
 
-    async def mock_execute_fade(hass, entity_id, *args, **kwargs):
+    async def mock_fade_light(self, entity_id, *args, **kwargs):
         faded_entities.append(entity_id)
 
     with patch(
-        "custom_components.fado._execute_fade",
-        side_effect=mock_execute_fade,
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
+        side_effect=mock_fade_light,
+        autospec=True,
     ):
         await hass.services.async_call(
             DOMAIN,

@@ -315,7 +315,7 @@ async def test_storage_persists_across_reload(
 
         # Verify storage data is loaded
         assert DOMAIN in hass.data
-        stored_orig = hass.data[DOMAIN]["data"].get(entity_id, {}).get("orig_brightness", 0)
+        stored_orig = hass.data[DOMAIN].data.get(entity_id, {}).get("orig_brightness", 0)
         assert stored_orig == stored_brightness
 
         # Unload the integration
@@ -328,7 +328,7 @@ async def test_storage_persists_across_reload(
 
     # Verify storage data is still available after reload
     assert DOMAIN in hass.data
-    stored_orig = hass.data[DOMAIN]["data"].get(entity_id, {}).get("orig_brightness", 0)
+    stored_orig = hass.data[DOMAIN].data.get(entity_id, {}).get("orig_brightness", 0)
     assert stored_orig == stored_brightness
 
     # Create dimmable light that is OFF
@@ -429,7 +429,7 @@ async def test_no_restore_for_excluded_light(
     entity_id = "light.excluded"
 
     # Configure as excluded with stored brightness
-    hass.data[DOMAIN]["data"][entity_id] = {
+    hass.data[DOMAIN].data[entity_id] = {
         "orig_brightness": 200,
         "exclude": True,
     }

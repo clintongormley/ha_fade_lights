@@ -10,10 +10,26 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.fado import async_setup_entry
 from custom_components.fado.const import DOMAIN, NOTIFICATION_ID
+from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.notifications import (
     _get_unconfigured_lights,
     _notify_unconfigured_lights,
 )
+
+
+def _make_coordinator(hass: HomeAssistant, data: dict | None = None) -> FadeCoordinator:
+    """Create a FadeCoordinator with mock store and given data."""
+    mock_store = MagicMock()
+    mock_store.async_save = AsyncMock()
+    coordinator = FadeCoordinator(
+        hass=hass,
+        entry=MagicMock(),
+        store=mock_store,
+        data=data if data is not None else {},
+        min_step_delay_ms=100,
+    )
+    hass.data[DOMAIN] = coordinator
+    return coordinator
 
 
 @pytest.fixture
@@ -28,25 +44,21 @@ class TestGetUnconfiguredLights:
 
     def test_returns_empty_when_domain_not_loaded(self, hass: HomeAssistant) -> None:
         """Test returns empty set when domain not in hass.data."""
-        with patch(
-            "custom_components.fado.notifications.er.async_get"
-        ) as mock_er:
+        with patch("custom_components.fado.notifications.er.async_get") as mock_er:
             mock_er.return_value.entities = {}
             result = _get_unconfigured_lights(hass)
         assert result == set()
 
     def test_returns_unconfigured_light(self, hass: HomeAssistant) -> None:
         """Test returns light missing min_delay_ms."""
-        hass.data[DOMAIN] = {"data": {}}
+        _make_coordinator(hass)
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "light.bedroom"
         mock_entry.domain = LIGHT_DOMAIN
         mock_entry.disabled = False
 
-        with patch(
-            "custom_components.fado.notifications.er.async_get"
-        ) as mock_er:
+        with patch("custom_components.fado.notifications.er.async_get") as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
 
@@ -54,16 +66,23 @@ class TestGetUnconfiguredLights:
 
     def test_excludes_configured_light(self, hass: HomeAssistant) -> None:
         """Test excludes light with all required fields configured."""
-        hass.data[DOMAIN] = {"data": {"light.bedroom": {"min_delay_ms": 100, "min_brightness": 1, "native_transitions": True}}}
+        _make_coordinator(
+            hass,
+            {
+                "light.bedroom": {
+                    "min_delay_ms": 100,
+                    "min_brightness": 1,
+                    "native_transitions": True,
+                }
+            },
+        )
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "light.bedroom"
         mock_entry.domain = LIGHT_DOMAIN
         mock_entry.disabled = False
 
-        with patch(
-            "custom_components.fado.notifications.er.async_get"
-        ) as mock_er:
+        with patch("custom_components.fado.notifications.er.async_get") as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
 
@@ -71,16 +90,14 @@ class TestGetUnconfiguredLights:
 
     def test_excludes_disabled_light(self, hass: HomeAssistant) -> None:
         """Test excludes disabled lights."""
-        hass.data[DOMAIN] = {"data": {}}
+        _make_coordinator(hass)
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "light.bedroom"
         mock_entry.domain = LIGHT_DOMAIN
         mock_entry.disabled = True
 
-        with patch(
-            "custom_components.fado.notifications.er.async_get"
-        ) as mock_er:
+        with patch("custom_components.fado.notifications.er.async_get") as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
 
@@ -88,16 +105,14 @@ class TestGetUnconfiguredLights:
 
     def test_excludes_excluded_light(self, hass: HomeAssistant) -> None:
         """Test excludes lights marked as excluded."""
-        hass.data[DOMAIN] = {"data": {"light.bedroom": {"exclude": True}}}
+        _make_coordinator(hass, {"light.bedroom": {"exclude": True}})
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "light.bedroom"
         mock_entry.domain = LIGHT_DOMAIN
         mock_entry.disabled = False
 
-        with patch(
-            "custom_components.fado.notifications.er.async_get"
-        ) as mock_er:
+        with patch("custom_components.fado.notifications.er.async_get") as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
 
@@ -105,16 +120,14 @@ class TestGetUnconfiguredLights:
 
     def test_excludes_non_light_entities(self, hass: HomeAssistant) -> None:
         """Test excludes non-light domain entities."""
-        hass.data[DOMAIN] = {"data": {}}
+        _make_coordinator(hass)
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "switch.bedroom"
         mock_entry.domain = "switch"
         mock_entry.disabled = False
 
-        with patch(
-            "custom_components.fado.notifications.er.async_get"
-        ) as mock_er:
+        with patch("custom_components.fado.notifications.er.async_get") as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
 
@@ -124,11 +137,9 @@ class TestGetUnconfiguredLights:
 class TestNotifyUnconfiguredLights:
     """Test _notify_unconfigured_lights function."""
 
-    async def test_creates_notification_when_unconfigured(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_creates_notification_when_unconfigured(self, hass: HomeAssistant) -> None:
         """Test creates notification when lights are unconfigured."""
-        hass.data[DOMAIN] = {"data": {}}
+        _make_coordinator(hass)
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "light.bedroom"
@@ -136,9 +147,7 @@ class TestNotifyUnconfiguredLights:
         mock_entry.disabled = False
 
         with (
-            patch(
-                "custom_components.fado.notifications.er.async_get"
-            ) as mock_er,
+            patch("custom_components.fado.notifications.er.async_get") as mock_er,
             patch(
                 "custom_components.fado.notifications.persistent_notification.async_create"
             ) as mock_create,
@@ -153,7 +162,7 @@ class TestNotifyUnconfiguredLights:
 
     async def test_creates_notification_plural(self, hass: HomeAssistant) -> None:
         """Test notification message is plural for multiple lights."""
-        hass.data[DOMAIN] = {"data": {}}
+        _make_coordinator(hass)
 
         mock_entries = []
         for name in ["bedroom", "kitchen"]:
@@ -164,9 +173,7 @@ class TestNotifyUnconfiguredLights:
             mock_entries.append(entry)
 
         with (
-            patch(
-                "custom_components.fado.notifications.er.async_get"
-            ) as mock_er,
+            patch("custom_components.fado.notifications.er.async_get") as mock_er,
             patch(
                 "custom_components.fado.notifications.persistent_notification.async_create"
             ) as mock_create,
@@ -177,11 +184,18 @@ class TestNotifyUnconfiguredLights:
         call_args = mock_create.call_args
         assert "2 lights" in call_args[0][1]
 
-    async def test_dismisses_notification_when_all_configured(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_dismisses_notification_when_all_configured(self, hass: HomeAssistant) -> None:
         """Test dismisses notification when no unconfigured lights."""
-        hass.data[DOMAIN] = {"data": {"light.bedroom": {"min_delay_ms": 100, "min_brightness": 1, "native_transitions": True}}}
+        _make_coordinator(
+            hass,
+            {
+                "light.bedroom": {
+                    "min_delay_ms": 100,
+                    "min_brightness": 1,
+                    "native_transitions": True,
+                }
+            },
+        )
 
         mock_entry = MagicMock()
         mock_entry.entity_id = "light.bedroom"
@@ -189,9 +203,7 @@ class TestNotifyUnconfiguredLights:
         mock_entry.disabled = False
 
         with (
-            patch(
-                "custom_components.fado.notifications.er.async_get"
-            ) as mock_er,
+            patch("custom_components.fado.notifications.er.async_get") as mock_er,
             patch(
                 "custom_components.fado.notifications.persistent_notification.async_dismiss"
             ) as mock_dismiss,
@@ -201,16 +213,12 @@ class TestNotifyUnconfiguredLights:
 
         mock_dismiss.assert_called_once_with(hass, NOTIFICATION_ID)
 
-    async def test_dismisses_notification_when_no_lights(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_dismisses_notification_when_no_lights(self, hass: HomeAssistant) -> None:
         """Test dismisses notification when no lights exist."""
-        hass.data[DOMAIN] = {"data": {}}
+        _make_coordinator(hass)
 
         with (
-            patch(
-                "custom_components.fado.notifications.er.async_get"
-            ) as mock_er,
+            patch("custom_components.fado.notifications.er.async_get") as mock_er,
             patch(
                 "custom_components.fado.notifications.persistent_notification.async_dismiss"
             ) as mock_dismiss,
@@ -232,15 +240,9 @@ class TestSetupNotification:
         mock_entry.async_on_unload = MagicMock()
 
         with (
-            patch(
-                "custom_components.fado.async_register_websocket_api"
-            ),
-            patch(
-                "custom_components.fado._notify_unconfigured_lights"
-            ) as mock_notify,
-            patch(
-                "custom_components.fado._apply_stored_log_level"
-            ),
+            patch("custom_components.fado.async_register_websocket_api"),
+            patch("custom_components.fado._notify_unconfigured_lights") as mock_notify,
+            patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None  # Skip panel registration
             await async_setup_entry(hass, mock_entry)
@@ -262,9 +264,7 @@ class TestEntityRegistryNotification:
 
         with (
             patch("custom_components.fado.async_register_websocket_api"),
-            patch(
-                "custom_components.fado._notify_unconfigured_lights"
-            ) as mock_notify,
+            patch("custom_components.fado._notify_unconfigured_lights") as mock_notify,
             patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
@@ -293,9 +293,7 @@ class TestEntityRegistryNotification:
 
         with (
             patch("custom_components.fado.async_register_websocket_api"),
-            patch(
-                "custom_components.fado._notify_unconfigured_lights"
-            ) as mock_notify,
+            patch("custom_components.fado._notify_unconfigured_lights") as mock_notify,
             patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
@@ -328,9 +326,7 @@ class TestEntityRegistryNotification:
 
         with (
             patch("custom_components.fado.async_register_websocket_api"),
-            patch(
-                "custom_components.fado._notify_unconfigured_lights"
-            ) as mock_notify,
+            patch("custom_components.fado._notify_unconfigured_lights") as mock_notify,
             patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
@@ -359,9 +355,7 @@ class TestEntityRegistryNotification:
 
         with (
             patch("custom_components.fado.async_register_websocket_api"),
-            patch(
-                "custom_components.fado._notify_unconfigured_lights"
-            ) as mock_notify,
+            patch("custom_components.fado._notify_unconfigured_lights") as mock_notify,
             patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
@@ -379,9 +373,7 @@ class TestEntityRegistryNotification:
 
             mock_notify.assert_not_called()
 
-    async def test_ignores_update_without_disabled_change(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_ignores_update_without_disabled_change(self, hass: HomeAssistant) -> None:
         """Test ignores updates that don't change disabled state."""
         from homeassistant.helpers import entity_registry as er
 
@@ -392,9 +384,7 @@ class TestEntityRegistryNotification:
 
         with (
             patch("custom_components.fado.async_register_websocket_api"),
-            patch(
-                "custom_components.fado._notify_unconfigured_lights"
-            ) as mock_notify,
+            patch("custom_components.fado._notify_unconfigured_lights") as mock_notify,
             patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
@@ -432,9 +422,7 @@ class TestDailyNotificationTimer:
             patch("custom_components.fado.async_register_websocket_api"),
             patch("custom_components.fado._notify_unconfigured_lights"),
             patch("custom_components.fado._apply_stored_log_level"),
-            patch(
-                "custom_components.fado.async_track_time_interval"
-            ) as mock_timer,
+            patch("custom_components.fado.async_track_time_interval") as mock_timer,
         ):
             hass.http = None
             await async_setup_entry(hass, mock_entry)
@@ -453,8 +441,7 @@ class TestSaveConfigNotification:
         """Test notification check is called after saving config."""
         from custom_components.fado.websocket_api import async_save_light_config
 
-        hass.data[DOMAIN] = {"data": {}, "store": MagicMock()}
-        hass.data[DOMAIN]["store"].async_save = AsyncMock()
+        _make_coordinator(hass)
 
         with patch(
             "custom_components.fado.websocket_api._notify_unconfigured_lights"

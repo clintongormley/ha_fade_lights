@@ -994,7 +994,9 @@ class TestFadeChangeResolveMinBrightness:
         while fade.has_next():
             step = fade.next_step()
             assert step.brightness is not None
-            assert step.brightness >= 10, f"Step brightness {step.brightness} is below min_brightness"
+            assert step.brightness >= 10, (
+                f"Step brightness {step.brightness} is below min_brightness"
+            )
 
     def test_default_min_brightness_is_1(self) -> None:
         """Test that default min_brightness is 1 (backward compatibility)."""

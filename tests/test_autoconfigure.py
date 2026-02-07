@@ -17,16 +17,22 @@ from custom_components.fado.autoconfigure import (
     async_autoconfigure_light,
 )
 from custom_components.fado.const import DOMAIN
+from custom_components.fado.coordinator import FadeCoordinator
 
 
 @pytest.fixture
 def hass_with_storage(hass: HomeAssistant) -> HomeAssistant:
     """Set up hass with storage data."""
-    hass.data[DOMAIN] = {
-        "data": {},
-        "store": MagicMock(),
-    }
-    hass.data[DOMAIN]["store"].async_save = AsyncMock()
+    mock_store = MagicMock()
+    mock_store.async_save = AsyncMock()
+    coordinator = FadeCoordinator(
+        hass=hass,
+        entry=MagicMock(),
+        store=mock_store,
+        data={},
+        min_step_delay_ms=100,
+    )
+    hass.data[DOMAIN] = coordinator
     return hass
 
 
@@ -212,13 +218,13 @@ class TestLightDelay:
         result = await async_autoconfigure_light(hass_with_storage, mock_light_on)
 
         # Check that storage was updated
-        assert mock_light_on in hass_with_storage.data[DOMAIN]["data"]
-        stored_config = hass_with_storage.data[DOMAIN]["data"][mock_light_on]
+        assert mock_light_on in hass_with_storage.data[DOMAIN].data
+        stored_config = hass_with_storage.data[DOMAIN].data[mock_light_on]
         assert "min_delay_ms" in stored_config
         assert stored_config["min_delay_ms"] == result["min_delay_ms"]
 
         # Verify store.async_save was called
-        hass_with_storage.data[DOMAIN]["store"].async_save.assert_called()
+        hass_with_storage.data[DOMAIN].store.async_save.assert_called()
 
     async def test_round_up_to_nearest_10ms(
         self,
@@ -650,7 +656,7 @@ class TestWsAutoconfigure:
         )
 
         # Mark one light as excluded in storage
-        hass.data[DOMAIN]["data"][excluded_light] = {"exclude": True}
+        hass.data[DOMAIN].data[excluded_light] = {"exclude": True}
 
         tested_entities: list[str] = []
 
@@ -894,8 +900,8 @@ class TestMinBrightness:
         result = await async_autoconfigure_light(hass_with_storage, mock_light_on)
 
         # Check that storage was updated with min_brightness
-        assert mock_light_on in hass_with_storage.data[DOMAIN]["data"]
-        stored_config = hass_with_storage.data[DOMAIN]["data"][mock_light_on]
+        assert mock_light_on in hass_with_storage.data[DOMAIN].data
+        stored_config = hass_with_storage.data[DOMAIN].data[mock_light_on]
         assert "min_brightness" in stored_config
         assert stored_config["min_brightness"] == result["min_brightness"]
 
@@ -1008,9 +1014,7 @@ class TestMinBrightness:
     ) -> None:
         """Test autoconfigure skips native transitions test when stored value is 'disable'."""
         # Set native_transitions to "disable" in storage
-        hass_with_storage.data[DOMAIN]["data"][mock_light_on] = {
-            "native_transitions": "disable"
-        }
+        hass_with_storage.data[DOMAIN].data[mock_light_on] = {"native_transitions": "disable"}
 
         test_order: list[str] = []
 
@@ -1056,9 +1060,7 @@ class TestMinBrightness:
         mock_light_on: str,
     ) -> None:
         """Test 'disable' value is preserved in storage after autoconfigure."""
-        hass_with_storage.data[DOMAIN]["data"][mock_light_on] = {
-            "native_transitions": "disable"
-        }
+        hass_with_storage.data[DOMAIN].data[mock_light_on] = {"native_transitions": "disable"}
 
         async def mock_native_transitions(hass, entity_id):
             return {"entity_id": entity_id, "supports_native_transitions": True}
@@ -1086,5 +1088,5 @@ class TestMinBrightness:
             await async_autoconfigure_light(hass_with_storage, mock_light_on)
 
         # Storage should still have "disable"
-        stored = hass_with_storage.data[DOMAIN]["data"][mock_light_on]
+        stored = hass_with_storage.data[DOMAIN].data[mock_light_on]
         assert stored["native_transitions"] == "disable"

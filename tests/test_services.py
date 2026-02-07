@@ -30,7 +30,7 @@ async def test_service_accepts_single_entity(
 ) -> None:
     """Test service works with a single entity_id target."""
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -61,7 +61,7 @@ async def test_service_accepts_entity_list(
 ) -> None:
     """Test service works with a list of entity_ids in target."""
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -98,7 +98,7 @@ async def test_service_expands_light_groups(
 ) -> None:
     """Test service expands light groups to individual lights."""
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Call with the group entity
@@ -132,7 +132,7 @@ async def test_service_accepts_missing_brightness(
 ) -> None:
     """Test service accepts missing brightness_pct (passes None to fade)."""
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Call with from brightness but no target brightness_pct
@@ -164,7 +164,7 @@ async def test_service_uses_default_transition(
 ) -> None:
     """Test service uses default transition when transition is not provided."""
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Call without transition
@@ -197,7 +197,7 @@ async def test_service_deduplicates_entities(
     it should only be faded once.
     """
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # mock_light_entity is both specified directly and is part of mock_light_group
@@ -255,7 +255,7 @@ async def test_service_expands_nested_groups(
     )
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -320,7 +320,7 @@ async def test_service_expands_group_with_string_entity_id(
     )
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -362,7 +362,7 @@ async def test_service_filters_non_light_entities_from_target(
     )
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -421,7 +421,7 @@ async def test_service_accepts_device_id_target(
     )
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -474,7 +474,7 @@ async def test_service_accepts_area_id_target(
     )
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -526,7 +526,7 @@ async def test_service_accepts_multiple_target_types(
     )
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Target both a specific entity and an area
@@ -600,7 +600,7 @@ async def test_service_filters_non_light_entities_from_device(
     hass.states.async_set(sensor_id, "25")
 
     with patch(
-        "custom_components.fado._fade_light",
+        "custom_components.fado.coordinator.FadeCoordinator._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
@@ -642,7 +642,7 @@ async def test_service_excludes_configured_lights(
     await hass.async_block_till_done()
 
     # Configure one light as excluded
-    hass.data[DOMAIN]["data"]["light.excluded"] = {"exclude": True}
+    hass.data[DOMAIN].data["light.excluded"] = {"exclude": True}
 
     # Call service targeting both
     await hass.services.async_call(

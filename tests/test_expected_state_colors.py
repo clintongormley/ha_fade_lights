@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_components.fado import ExpectedState
+from custom_components.fado.expected_state import ExpectedState
 from custom_components.fado.expected_state import ExpectedValues
 
 
@@ -237,10 +237,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition from (100, 50) -> (150, 80)
-        expected = ExpectedValues(
-            hs_color=(150.0, 80.0),
-            from_hs_color=(100.0, 50.0)
-        )
+        expected = ExpectedValues(hs_color=(150.0, 80.0), from_hs_color=(100.0, 50.0))
         expected_state.add(expected)
 
         # Intermediate value
@@ -255,10 +252,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition from (350, 50) -> (10, 50)
-        expected = ExpectedValues(
-            hs_color=(10.0, 50.0),
-            from_hs_color=(350.0, 50.0)
-        )
+        expected = ExpectedValues(hs_color=(10.0, 50.0), from_hs_color=(350.0, 50.0))
         expected_state.add(expected)
 
         # Intermediate values in wraparound range (not near target)
@@ -279,10 +273,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition from (350, 50) -> (10, 50)
-        expected = ExpectedValues(
-            hs_color=(10.0, 50.0),
-            from_hs_color=(350.0, 50.0)
-        )
+        expected = ExpectedValues(hs_color=(10.0, 50.0), from_hs_color=(350.0, 50.0))
         expected_state.add(expected)
 
         # Value in the gap (should be rejected)
@@ -296,10 +287,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition with range
-        expected = ExpectedValues(
-            hs_color=(150.0, 80.0),
-            from_hs_color=(100.0, 50.0)
-        )
+        expected = ExpectedValues(hs_color=(150.0, 80.0), from_hs_color=(100.0, 50.0))
         expected_state.add(expected)
 
         # Target value (within tolerance)
@@ -314,10 +302,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition from 2700K -> 6500K
-        expected = ExpectedValues(
-            color_temp_kelvin=6500,
-            from_color_temp_kelvin=2700
-        )
+        expected = ExpectedValues(color_temp_kelvin=6500, from_color_temp_kelvin=2700)
         expected_state.add(expected)
 
         # Intermediate value
@@ -332,10 +317,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition from 2700K -> 6500K
-        expected = ExpectedValues(
-            color_temp_kelvin=6500,
-            from_color_temp_kelvin=2700
-        )
+        expected = ExpectedValues(color_temp_kelvin=6500, from_color_temp_kelvin=2700)
         expected_state.add(expected)
 
         # Target value (within tolerance)
@@ -350,10 +332,7 @@ class TestExpectedStateColorMatching:
         expected_state = ExpectedState(entity_id="light.test")
 
         # Transition from 2700K -> 6500K
-        expected = ExpectedValues(
-            color_temp_kelvin=6500,
-            from_color_temp_kelvin=2700
-        )
+        expected = ExpectedValues(color_temp_kelvin=6500, from_color_temp_kelvin=2700)
         expected_state.add(expected)
 
         # Out of range

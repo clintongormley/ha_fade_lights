@@ -74,7 +74,7 @@ async def test_get_lights_returns_grouped_data(
     from custom_components.fado.websocket_api import async_get_lights
 
     # Set up storage with config for one light
-    hass.data[DOMAIN]["data"]["light.bedroom_ceiling"] = {
+    hass.data[DOMAIN].data["light.bedroom_ceiling"] = {
         "min_delay_ms": 150,
         "exclude": False,
     }
@@ -188,8 +188,8 @@ async def test_save_light_config_creates_entry(
     )
 
     # Verify data was saved
-    assert hass.data[DOMAIN]["data"]["light.new_light"]["min_delay_ms"] == 200
-    assert hass.data[DOMAIN]["data"]["light.new_light"]["exclude"] is True
+    assert hass.data[DOMAIN].data["light.new_light"]["min_delay_ms"] == 200
+    assert hass.data[DOMAIN].data["light.new_light"]["exclude"] is True
 
     # Verify result
     assert result == {"success": True}
@@ -203,7 +203,7 @@ async def test_save_light_config_updates_existing(
     from custom_components.fado.websocket_api import async_save_light_config
 
     # Set up existing config
-    hass.data[DOMAIN]["data"]["light.existing"] = {
+    hass.data[DOMAIN].data["light.existing"] = {
         "orig_brightness": 200,
         "min_delay_ms": 100,
         "exclude": False,
@@ -216,9 +216,9 @@ async def test_save_light_config_updates_existing(
     )
 
     # Verify only min_delay_ms was updated, orig_brightness preserved
-    assert hass.data[DOMAIN]["data"]["light.existing"]["min_delay_ms"] == 150
-    assert hass.data[DOMAIN]["data"]["light.existing"]["orig_brightness"] == 200
-    assert hass.data[DOMAIN]["data"]["light.existing"]["exclude"] is False
+    assert hass.data[DOMAIN].data["light.existing"]["min_delay_ms"] == 150
+    assert hass.data[DOMAIN].data["light.existing"]["orig_brightness"] == 200
+    assert hass.data[DOMAIN].data["light.existing"]["exclude"] is False
 
 
 async def test_save_light_config_clears_min_delay_with_none(
@@ -229,7 +229,7 @@ async def test_save_light_config_clears_min_delay_with_none(
     from custom_components.fado.websocket_api import async_save_light_config
 
     # Set up existing config with min_delay_ms
-    hass.data[DOMAIN]["data"]["light.test"] = {
+    hass.data[DOMAIN].data["light.test"] = {
         "min_delay_ms": 150,
     }
 
@@ -241,7 +241,7 @@ async def test_save_light_config_clears_min_delay_with_none(
     )
 
     # Verify min_delay_ms was removed
-    assert "min_delay_ms" not in hass.data[DOMAIN]["data"]["light.test"]
+    assert "min_delay_ms" not in hass.data[DOMAIN].data["light.test"]
 
 
 async def test_register_websocket_api(
@@ -455,7 +455,7 @@ async def test_get_light_config(hass: HomeAssistant, init_integration) -> None:
     from custom_components.fado.websocket_api import _get_light_config
 
     # Set up config
-    hass.data[DOMAIN]["data"]["light.configured"] = {
+    hass.data[DOMAIN].data["light.configured"] = {
         "min_delay_ms": 150,
         "exclude": True,
     }
@@ -569,7 +569,7 @@ async def test_get_lights_includes_min_brightness(
     from custom_components.fado.websocket_api import async_get_lights
 
     # Set up storage with min_brightness for one light
-    hass.data[DOMAIN]["data"]["light.bedroom_ceiling"] = {
+    hass.data[DOMAIN].data["light.bedroom_ceiling"] = {
         "min_delay_ms": 150,
         "min_brightness": 3,
     }
@@ -622,7 +622,7 @@ async def test_save_light_config_saves_min_brightness(
     )
 
     # Verify data was saved
-    assert hass.data[DOMAIN]["data"]["light.test"]["min_brightness"] == 5
+    assert hass.data[DOMAIN].data["light.test"]["min_brightness"] == 5
     assert result == {"success": True}
 
 
@@ -634,7 +634,7 @@ async def test_save_light_config_clears_min_brightness_with_flag(
     from custom_components.fado.websocket_api import async_save_light_config
 
     # Set up existing config with min_brightness
-    hass.data[DOMAIN]["data"]["light.test"] = {
+    hass.data[DOMAIN].data["light.test"] = {
         "min_brightness": 5,
     }
 
@@ -646,7 +646,7 @@ async def test_save_light_config_clears_min_brightness_with_flag(
     )
 
     # Verify min_brightness was removed
-    assert "min_brightness" not in hass.data[DOMAIN]["data"]["light.test"]
+    assert "min_brightness" not in hass.data[DOMAIN].data["light.test"]
 
 
 async def test_autoconfigure_result_includes_min_brightness(

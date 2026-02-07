@@ -11,7 +11,7 @@ from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fado import _can_apply_fade_params
+from custom_components.fado.coordinator import _can_apply_fade_params
 from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_COLOR_TEMP_KELVIN,
