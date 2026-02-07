@@ -14,7 +14,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import ColorMode
 
-from custom_components.fado.const import DOMAIN
 from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.fade_change import FadeChange, _clamp_mireds
 from custom_components.fado.fade_params import FadeParams

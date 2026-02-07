@@ -1327,8 +1327,7 @@ async def test_native_transition_no_false_intervention(
     turn_on_count = 0
 
     # Intercept light.turn_on to simulate intermediate brightness reports
-    original_turn_on = None
-    for call in service_calls:
+    for _call in service_calls:
         pass  # Just to reference the fixture
 
     async def mock_turn_on_with_intermediates(call: ServiceCall) -> None:

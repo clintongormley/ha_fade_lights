@@ -556,7 +556,7 @@ class TestFadeChangeEasing:
         # First diff: steps[0].brightness - 0 (start)
         # Since brightness 1 is skipped to 2, first step is at eased position
         first_step_brightness = brightnesses[0]
-        last_diff = brightnesses[-1] - brightnesses[-2]
+        brightnesses[-1] - brightnesses[-2]
 
         # ease_out_quad at t=0.2 gives 0.36, so first step ~36 brightness
         # Linear would give 20. So ease_out should have larger first step.

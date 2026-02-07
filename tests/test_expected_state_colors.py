@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from custom_components.fado.expected_state import ExpectedState
-from custom_components.fado.expected_state import ExpectedValues
+from custom_components.fado.expected_state import ExpectedState, ExpectedValues
 
 
 class TestExpectedStateColorMatching:

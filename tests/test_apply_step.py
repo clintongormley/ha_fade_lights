@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.fado.const import DOMAIN
 from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.fade_change import FadeStep
 
