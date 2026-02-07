@@ -1,0 +1,12 @@
+{
+  "domain": "fado",
+  "name": "Fado",
+  "codeowners": ["@clintongormley"],
+  "config_flow": true,
+  "documentation": "https://github.com/clintongormley/ha-fado",
+  "issue_tracker": "https://github.com/clintongormley/ha-fado/issues",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.0.2"
+}

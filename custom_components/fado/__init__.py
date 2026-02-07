@@ -1,4 +1,4 @@
-"""The Fade Lights integration."""
+"""The Fado integration."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ from .const import (
     NATIVE_TRANSITION_MS,
     OPTION_LOG_LEVEL,
     OPTION_MIN_STEP_DELAY_MS,
-    SERVICE_FADE_LIGHTS,
+    SERVICE_FADO,
     STORAGE_KEY,
     UNCONFIGURED_CHECK_INTERVAL_HOURS,
 )
@@ -121,7 +121,7 @@ RESTORE_TASKS: dict[str, asyncio.Task] = {}
 
 
 async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
-    """Set up the Fade Lights component."""
+    """Set up the Fado component."""
     if not hass.config_entries.async_entries(DOMAIN):
         hass.async_create_task(
             hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"})
@@ -130,7 +130,7 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Fade Lights from a config entry."""
+    """Set up Fado from a config entry."""
     store: Store[dict[str, int]] = Store(hass, 1, STORAGE_KEY)
     storage_data = await store.async_load() or {}
 
@@ -142,9 +142,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "testing_lights": set(),  # Lights currently being autoconfigured
     }
 
-    async def handle_fade_lights(call: ServiceCall) -> None:
+    async def handle_fado(call: ServiceCall) -> None:
         """Service handler wrapper."""
-        await _handle_fade_lights(hass, call)
+        await _handle_fado(hass, call)
 
     @callback
     def handle_light_state_change(event: Event[EventStateChangedData]) -> None:
@@ -164,8 +164,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(
         DOMAIN,
-        SERVICE_FADE_LIGHTS,
-        handle_fade_lights,
+        SERVICE_FADO,
+        handle_fado,
         schema=cv.make_entity_service_schema(
             {vol.Optional("easing", default="auto"): vol.In(valid_easing)},
             extra=vol.ALLOW_EXTRA,
@@ -232,7 +232,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.http.async_register_static_paths(
             [
                 StaticPathConfig(
-                    "/fade_lights_panel",
+                    "/fado_panel",
                     str(Path(__file__).parent / "frontend"),
                     cache_headers=False,  # Disable caching during development
                 )
@@ -242,11 +242,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Register the panel
         await panel_custom.async_register_panel(
             hass,
-            frontend_url_path="fade-lights",
-            webcomponent_name="fade-lights-panel",
-            sidebar_title="Fade Lights",
+            frontend_url_path="fado",
+            webcomponent_name="fado-panel",
+            sidebar_title="Fado",
             sidebar_icon="mdi:lightbulb-variant",
-            module_url="/fade_lights_panel/panel.js",
+            module_url="/fado_panel/panel.js",
             require_admin=False,
         )
 
@@ -367,22 +367,22 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     INTENDED_STATE_QUEUE.clear()
     RESTORE_TASKS.clear()
 
-    hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
+    hass.services.async_remove(DOMAIN, SERVICE_FADO)
     hass.data.pop(DOMAIN, None)
 
     # Remove the panel
-    frontend.async_remove_panel(hass, "fade-lights")
+    frontend.async_remove_panel(hass, "fado")
 
     return True
 
 
 # =============================================================================
-# Service Handler: fade_lights
+# Service Handler: fado
 # =============================================================================
 
 
-async def _handle_fade_lights(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Handle the fade_lights service call."""
+async def _handle_fado(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the fado service call."""
     domain_data = hass.data.get(DOMAIN, {})
     min_step_delay_ms = domain_data.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
 

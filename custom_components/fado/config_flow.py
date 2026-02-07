@@ -1,4 +1,4 @@
-"""Config flow for Fade Lights integration."""
+"""Config flow for Fado integration."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from .const import DOMAIN
 
 
-class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Fade Lights."""
+class FadoConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Fado."""
 
     VERSION = 1
     MINOR_VERSION = 1
@@ -23,7 +23,7 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Create entry immediately without showing a form
         return self.async_create_entry(
-            title="Fade Lights",
+            title="Fado",
             data={},
         )
 
@@ -36,6 +36,6 @@ class FadeLightsConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="single_instance_allowed")
 
         return self.async_create_entry(
-            title="Fade Lights",
+            title="Fado",
             data={},
         )

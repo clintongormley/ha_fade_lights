@@ -1,4 +1,4 @@
-"""FadeParams model for the Fade Lights integration."""
+"""FadeParams model for the Fado integration."""
 
 from __future__ import annotations
 

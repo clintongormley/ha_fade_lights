@@ -11,12 +11,12 @@ from homeassistant.components.light.const import ColorMode
 from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 
-from custom_components.fade_lights.autoconfigure import (
+from custom_components.fado.autoconfigure import (
     _async_test_light_delay,
     _async_test_min_brightness,
     async_autoconfigure_light,
 )
-from custom_components.fade_lights.const import DOMAIN
+from custom_components.fado.const import DOMAIN
 
 
 @pytest.fixture
@@ -137,7 +137,7 @@ class TestLightDelay:
         service_calls_with_state_update: list[ServiceCall],
     ) -> None:
         """Test that correct number of iterations are performed."""
-        from custom_components.fade_lights.const import AUTOCONFIGURE_ITERATIONS
+        from custom_components.fado.const import AUTOCONFIGURE_ITERATIONS
 
         await _async_test_light_delay(hass_with_storage, mock_light_on)
 
@@ -154,7 +154,7 @@ class TestLightDelay:
         service_calls_with_state_update: list[ServiceCall],
     ) -> None:
         """Test brightness alternates between 10 and 255."""
-        from custom_components.fade_lights.const import AUTOCONFIGURE_ITERATIONS
+        from custom_components.fado.const import AUTOCONFIGURE_ITERATIONS
 
         await _async_test_light_delay(hass_with_storage, mock_light_on)
 
@@ -282,7 +282,7 @@ class TestLightDelayTimeout:
 
         # Use short timeout for test
         with patch(
-            "custom_components.fade_lights.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
+            "custom_components.fado.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
             0.1,
         ):
             result = await _async_test_light_delay(hass_with_storage, mock_light_on)
@@ -308,7 +308,7 @@ class TestLightDelayTimeout:
 
         # Use very short timeout for test
         with patch(
-            "custom_components.fade_lights.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
+            "custom_components.fado.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
             0.05,
         ):
             result = await _async_test_light_delay(hass_with_storage, mock_light_on)
@@ -359,7 +359,7 @@ class TestLightDelayCalculation:
         # With 25ms delay, the p90 would be around 25-35ms, which rounds up to 30-40ms
         # However, the global minimum is 100ms (DEFAULT_MIN_STEP_DELAY_MS)
         # So the result should be clamped to 100ms
-        from custom_components.fade_lights.const import DEFAULT_MIN_STEP_DELAY_MS
+        from custom_components.fado.const import DEFAULT_MIN_STEP_DELAY_MS
 
         assert result["min_delay_ms"] == DEFAULT_MIN_STEP_DELAY_MS
 
@@ -428,7 +428,7 @@ class TestWsAutoconfigure:
         mock_multiple_lights: list[str],
     ) -> None:
         """Verify semaphore limits concurrency to AUTOCONFIGURE_MAX_PARALLEL (5)."""
-        from custom_components.fade_lights.const import AUTOCONFIGURE_MAX_PARALLEL
+        from custom_components.fado.const import AUTOCONFIGURE_MAX_PARALLEL
 
         # Track maximum concurrent tests
         current_concurrent = 0
@@ -451,7 +451,7 @@ class TestWsAutoconfigure:
             return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            "custom_components.fado.autoconfigure.async_autoconfigure_light",
             side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
@@ -460,7 +460,7 @@ class TestWsAutoconfigure:
             await client.send_json(
                 {
                     "id": 1,
-                    "type": "fade_lights/autoconfigure",
+                    "type": "fado/autoconfigure",
                     "entity_ids": mock_multiple_lights,
                 }
             )
@@ -520,7 +520,7 @@ class TestWsAutoconfigure:
                 return {"entity_id": entity_id, "error": "Test error message"}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            "custom_components.fado.autoconfigure.async_autoconfigure_light",
             side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
@@ -528,7 +528,7 @@ class TestWsAutoconfigure:
             await client.send_json(
                 {
                     "id": 1,
-                    "type": "fade_lights/autoconfigure",
+                    "type": "fado/autoconfigure",
                     "entity_ids": [entity_id_success, entity_id_error],
                 }
             )
@@ -592,7 +592,7 @@ class TestWsAutoconfigure:
             return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            "custom_components.fado.autoconfigure.async_autoconfigure_light",
             side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
@@ -601,7 +601,7 @@ class TestWsAutoconfigure:
             await client.send_json(
                 {
                     "id": 1,
-                    "type": "fade_lights/autoconfigure",
+                    "type": "fado/autoconfigure",
                     "entity_ids": [mock_light_group_for_ws],
                 }
             )
@@ -660,7 +660,7 @@ class TestWsAutoconfigure:
             return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            "custom_components.fado.autoconfigure.async_autoconfigure_light",
             side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
@@ -668,7 +668,7 @@ class TestWsAutoconfigure:
             await client.send_json(
                 {
                     "id": 1,
-                    "type": "fade_lights/autoconfigure",
+                    "type": "fado/autoconfigure",
                     "entity_ids": [included_light, excluded_light],
                 }
             )
@@ -704,7 +704,7 @@ class TestWsAutoconfigure:
             return {"entity_id": entity_id, "min_delay_ms": 100, "native_transitions": True}
 
         with patch(
-            "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+            "custom_components.fado.autoconfigure.async_autoconfigure_light",
             side_effect=mock_autoconfigure_light,
         ):
             client = await hass_ws_client(hass)
@@ -713,7 +713,7 @@ class TestWsAutoconfigure:
             await client.send_json(
                 {
                     "id": 1,
-                    "type": "fade_lights/autoconfigure",
+                    "type": "fado/autoconfigure",
                     "entity_ids": mock_multiple_lights,
                 }
             )
@@ -874,7 +874,7 @@ class TestMinBrightness:
 
         # Use short timeout for test
         with patch(
-            "custom_components.fade_lights.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
+            "custom_components.fado.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
             0.1,
         ):
             result = await _async_test_min_brightness(hass_with_storage, mock_light_on)
@@ -985,15 +985,15 @@ class TestMinBrightness:
 
         with (
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_native_transitions",
+                "custom_components.fado.autoconfigure._async_test_native_transitions",
                 side_effect=mock_native_transitions,
             ),
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_min_brightness",
+                "custom_components.fado.autoconfigure._async_test_min_brightness",
                 side_effect=mock_min_brightness,
             ),
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_light_delay",
+                "custom_components.fado.autoconfigure._async_test_light_delay",
                 side_effect=mock_delay,
             ),
         ):
@@ -1029,15 +1029,15 @@ class TestMinBrightness:
 
         with (
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_native_transitions",
+                "custom_components.fado.autoconfigure._async_test_native_transitions",
                 side_effect=mock_native_transitions,
             ),
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_min_brightness",
+                "custom_components.fado.autoconfigure._async_test_min_brightness",
                 side_effect=mock_min_brightness,
             ),
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_light_delay",
+                "custom_components.fado.autoconfigure._async_test_light_delay",
                 side_effect=mock_delay,
             ),
         ):
@@ -1071,15 +1071,15 @@ class TestMinBrightness:
 
         with (
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_native_transitions",
+                "custom_components.fado.autoconfigure._async_test_native_transitions",
                 side_effect=mock_native_transitions,
             ),
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_min_brightness",
+                "custom_components.fado.autoconfigure._async_test_min_brightness",
                 side_effect=mock_min_brightness,
             ),
             patch(
-                "custom_components.fade_lights.autoconfigure._async_test_light_delay",
+                "custom_components.fado.autoconfigure._async_test_light_delay",
                 side_effect=mock_delay,
             ),
         ):

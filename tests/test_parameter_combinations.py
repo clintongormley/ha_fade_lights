@@ -1,4 +1,4 @@
-"""Tests for all parameter combinations in the fade_lights integration.
+"""Tests for all parameter combinations in the fado integration.
 
 This file tests all combinations from the parameter matrix:
 - From: off, on with HS, on with CT
@@ -13,8 +13,8 @@ from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COL
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 from homeassistant.components.light.const import ColorMode
 
-from custom_components.fade_lights.fade_change import FadeChange
-from custom_components.fade_lights.fade_params import FadeParams
+from custom_components.fado.fade_change import FadeChange
+from custom_components.fado.fade_params import FadeParams
 
 
 class TestFromOffState:

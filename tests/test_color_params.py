@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import (
+from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
@@ -17,7 +17,7 @@ from custom_components.fade_lights.const import (
     ATTR_TRANSITION,
     ATTR_XY_COLOR,
     DOMAIN,
-    SERVICE_FADE_LIGHTS,
+    SERVICE_FADO,
 )
 
 
@@ -34,7 +34,7 @@ class TestColorParameterValidation:
         with pytest.raises(ServiceValidationError, match="Only one color parameter"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_COLOR_TEMP_KELVIN: 4000,
@@ -53,7 +53,7 @@ class TestColorParameterValidation:
         with pytest.raises(ServiceValidationError, match="Only one color parameter"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_RGB_COLOR: [255, 128, 0],
@@ -72,7 +72,7 @@ class TestColorParameterValidation:
         # Should not raise
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_HS_COLOR: [200, 80],
                 ATTR_TRANSITION: 0.1,
@@ -90,7 +90,7 @@ class TestColorParameterValidation:
         """Test service accepts a single color_temp_kelvin parameter."""
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_COLOR_TEMP_KELVIN: 4000,
                 ATTR_TRANSITION: 0.1,
@@ -108,7 +108,7 @@ class TestColorParameterValidation:
         """Test service accepts brightness_pct alongside a color parameter."""
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_HS_COLOR: [200, 80],
@@ -129,7 +129,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test rgb_color is converted to hs_color internally."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data({ATTR_RGB_COLOR: [255, 0, 0]})
 
@@ -145,7 +145,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test rgbw_color is converted to hs_color internally."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # Green with some white
         params = FadeParams.from_service_data({ATTR_RGBW_COLOR: [0, 255, 0, 50]})
@@ -161,7 +161,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test rgbww_color is converted to hs_color internally."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # Blue with some whites
         params = FadeParams.from_service_data({ATTR_RGBWW_COLOR: [0, 0, 255, 30, 20]})
@@ -177,7 +177,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test xy_color is converted to hs_color internally."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # Red-ish xy coordinates
         params = FadeParams.from_service_data({ATTR_XY_COLOR: [0.64, 0.33]})
@@ -193,7 +193,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test hs_color passes through unchanged."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data({ATTR_HS_COLOR: [180, 75]})
 
@@ -206,7 +206,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test color_temp_kelvin is stored directly (no conversion)."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data({ATTR_COLOR_TEMP_KELVIN: 4000})
 
@@ -220,7 +220,7 @@ class TestColorConversions:
         mock_light_entity: str,
     ) -> None:
         """Test no color params returns None for both."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data({ATTR_BRIGHTNESS_PCT: 50})
 
@@ -238,8 +238,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with brightness_pct."""
-        from custom_components.fade_lights.const import ATTR_FROM
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.const import ATTR_FROM
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -258,8 +258,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with hs_color."""
-        from custom_components.fade_lights.const import ATTR_FROM
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.const import ATTR_FROM
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -278,8 +278,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter with color_temp_kelvin."""
-        from custom_components.fade_lights.const import ATTR_FROM
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.const import ATTR_FROM
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -298,8 +298,8 @@ class TestFromParameter:
         mock_light_entity: str,
     ) -> None:
         """Test from: parameter converts rgb_color to hs."""
-        from custom_components.fade_lights.const import ATTR_FROM
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.const import ATTR_FROM
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams.from_service_data(
             {
@@ -321,7 +321,7 @@ class TestFromParameter:
         with pytest.raises(ServiceValidationError, match="Only one color parameter"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     "from": {
@@ -347,7 +347,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Hh]ue"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_HS_COLOR: [400, 50],  # Invalid hue
                 },
@@ -365,7 +365,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Ss]aturation"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_HS_COLOR: [200, 150],  # Invalid saturation
                 },
@@ -383,7 +383,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="RGB"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_RGB_COLOR: [300, 128, 0],  # Invalid R
                 },
@@ -401,7 +401,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Cc]olor temp"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     ATTR_COLOR_TEMP_KELVIN: 500,  # Too low
                 },
@@ -419,7 +419,7 @@ class TestValueRangeValidation:
         # Should not raise
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_HS_COLOR: [360, 100],  # Max valid values
                 ATTR_TRANSITION: 0.1,

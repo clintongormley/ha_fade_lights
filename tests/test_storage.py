@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.fade_lights import (
+from custom_components.fado import (
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_COMPLETE_CONDITIONS,
@@ -18,8 +18,8 @@ from custom_components.fade_lights import (
     _get_orig_brightness,
     _store_orig_brightness,
 )
-from custom_components.fade_lights.const import DOMAIN
-from custom_components.fade_lights.expected_state import ExpectedState, ExpectedValues
+from custom_components.fado.const import DOMAIN
+from custom_components.fado.expected_state import ExpectedState, ExpectedValues
 
 
 @pytest.fixture

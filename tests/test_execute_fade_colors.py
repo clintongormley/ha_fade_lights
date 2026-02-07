@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.fade_lights import _execute_fade
-from custom_components.fade_lights.fade_params import FadeParams
+from custom_components.fado import _execute_fade
+from custom_components.fado.fade_params import FadeParams
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def mock_hass():
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
     hass.data = {
-        "fade_lights": {
+        "fado": {
             "data": {},
             "store": MagicMock(),
             "min_step_delay_ms": 100,
@@ -62,7 +62,7 @@ class TestExecuteFadeWithColors:
         )
 
         params.transition_ms = 1000
-        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
+        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
@@ -92,7 +92,7 @@ class TestExecuteFadeWithColors:
         )
 
         params.transition_ms = 1000
-        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
+        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
@@ -123,7 +123,7 @@ class TestExecuteFadeWithColors:
         )
 
         params.transition_ms = 1000
-        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
+        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",
@@ -154,7 +154,7 @@ class TestExecuteFadeWithColors:
             transition_ms=500,
         )
 
-        with patch("custom_components.fade_lights._save_storage", new_callable=AsyncMock):
+        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
             await _execute_fade(
                 mock_hass,
                 "light.test",

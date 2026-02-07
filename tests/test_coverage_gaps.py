@@ -11,18 +11,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import (
+from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_FROM,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
     ATTR_XY_COLOR,
     DOMAIN,
-    SERVICE_FADE_LIGHTS,
+    SERVICE_FADO,
 )
-from custom_components.fade_lights.expected_state import ExpectedValues
-from custom_components.fade_lights.fade_change import FadeChange
-from custom_components.fade_lights.fade_params import FadeParams
+from custom_components.fado.expected_state import ExpectedValues
+from custom_components.fado.fade_change import FadeChange
+from custom_components.fado.fade_params import FadeParams
 
 
 class TestNoFadeParameters:
@@ -36,13 +36,13 @@ class TestNoFadeParameters:
     ) -> None:
         """Test service returns early when no fade parameters specified."""
         with patch(
-            "custom_components.fade_lights._fade_light",
+            "custom_components.fado._fade_light",
             new_callable=AsyncMock,
         ) as mock_fade_light:
             # Call with only target, no brightness, colors, or from params
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADE_LIGHTS,
+                SERVICE_FADO,
                 {
                     # No brightness_pct, no color params, no from params
                 },

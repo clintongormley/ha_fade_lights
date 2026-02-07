@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.fade_lights.fade_change import FadeChange, FadeStep
+from custom_components.fado.fade_change import FadeChange, FadeStep
 
 
 class TestFadeChangeStepCount:
@@ -511,7 +511,7 @@ class TestFadeChangeEasing:
 
     def test_linear_easing_produces_uniform_steps(self) -> None:
         """Test linear easing produces evenly spaced brightness values."""
-        from custom_components.fade_lights.easing import linear
+        from custom_components.fado.easing import linear
 
         change = FadeChange(
             start_brightness=0,
@@ -536,7 +536,7 @@ class TestFadeChangeEasing:
 
     def test_ease_out_quad_faster_at_start(self) -> None:
         """Test ease_out_quad produces larger steps at the start."""
-        from custom_components.fade_lights.easing import ease_out_quad
+        from custom_components.fado.easing import ease_out_quad
 
         change = FadeChange(
             start_brightness=0,
@@ -564,7 +564,7 @@ class TestFadeChangeEasing:
 
     def test_ease_in_quad_slower_at_start(self) -> None:
         """Test ease_in_quad produces smaller steps at the start."""
-        from custom_components.fade_lights.easing import ease_in_quad
+        from custom_components.fado.easing import ease_in_quad
 
         change = FadeChange(
             start_brightness=0,
@@ -589,7 +589,7 @@ class TestFadeChangeEasing:
 
     def test_easing_applied_only_to_brightness(self) -> None:
         """Test that easing is applied to brightness but not to HS or mireds."""
-        from custom_components.fade_lights.easing import ease_out_quad
+        from custom_components.fado.easing import ease_out_quad
 
         change = FadeChange(
             start_brightness=0,
@@ -619,7 +619,7 @@ class TestFadeChangeEasing:
 
     def test_easing_final_step_hits_target(self) -> None:
         """Test that final step always hits target exactly regardless of easing."""
-        from custom_components.fade_lights.easing import (
+        from custom_components.fado.easing import (
             ease_in_cubic,
             ease_in_out_sine,
             ease_out_cubic,
@@ -641,7 +641,7 @@ class TestFadeChangeEasing:
 
     def test_easing_mireds_uses_linear(self) -> None:
         """Test that color temperature interpolation is always linear."""
-        from custom_components.fade_lights.easing import ease_out_quad
+        from custom_components.fado.easing import ease_out_quad
 
         change = FadeChange(
             start_mireds=200,  # 5000K
@@ -676,7 +676,7 @@ class TestFadeChangeEasing:
         Note: The last step is always emitted to ensure target is hit, so it may
         duplicate the previous step if the penultimate step already hit target.
         """
-        from custom_components.fade_lights.easing import ease_in_cubic
+        from custom_components.fado.easing import ease_in_cubic
 
         # Very slow fade: 5 unit brightness change over 20 steps (50ms delay over 1000ms)
         # With ease_in_cubic (aggressive easing), early steps will round to same value
@@ -741,7 +741,7 @@ class TestFadeChangeResolveMinBrightness:
         Normal conversion: 1% of 255 = 2.55 -> rounds to 3.
         When min_brightness > 3, use min_brightness instead (special case).
         """
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=1, transition_ms=1000)
         state = {
@@ -761,7 +761,7 @@ class TestFadeChangeResolveMinBrightness:
         Normal conversion: 1% of 255 = 2.55 -> truncated to 2.
         When min_brightness=1, just use normal conversion (clamped to min 1).
         """
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=1, transition_ms=1000)
         state = {
@@ -777,7 +777,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_brightness_pct_converts_correctly_to_255_scale(self) -> None:
         """Test brightness_pct values convert correctly to 0-255 scale."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # Test various percentages (using int() for truncation)
         test_cases = [
@@ -803,7 +803,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_raw_brightness_used_directly(self) -> None:
         """Test brightness (raw 1-255) values are used directly without conversion."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness=150, transition_ms=1000)
         state = {
@@ -818,7 +818,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_raw_brightness_clamped_to_min_brightness(self) -> None:
         """Test raw brightness value is clamped to min_brightness floor."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness=5, transition_ms=1000)
         state = {
@@ -834,7 +834,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_brightness_pct_clamped_to_min_brightness_floor(self) -> None:
         """Test converted brightness_pct value is clamped to min_brightness floor."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # 5% of 255 = 12.75 -> 12, but min_brightness=20 should clamp it
         params = FadeParams(brightness_pct=5, transition_ms=1000)
@@ -850,7 +850,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_start_brightness_clamped_when_fading_from_off(self) -> None:
         """Test starting brightness is clamped to min_brightness when light is off."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=50, transition_ms=1000)
         state = {
@@ -866,7 +866,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_start_brightness_clamped_when_current_brightness_is_low(self) -> None:
         """Test starting brightness is clamped when current brightness < min_brightness."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=50, transition_ms=1000)
         state = {
@@ -882,7 +882,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_from_brightness_pct_handling(self) -> None:
         """Test from_brightness_pct is converted and clamped correctly."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # from_brightness_pct=2 -> 5 (int(2*255/100)=5), but min_brightness=10
         params = FadeParams(
@@ -902,7 +902,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_from_brightness_raw_handling(self) -> None:
         """Test from_brightness (raw) is used directly and clamped correctly."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(
             brightness_pct=50,
@@ -921,7 +921,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_from_brightness_pct_1_special_case(self) -> None:
         """Test from_brightness_pct=1 maps to min_brightness when min_brightness > 2."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(
             brightness_pct=100,
@@ -940,7 +940,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_both_endpoints_clamped_same_value_returns_none(self) -> None:
         """Test that when both endpoints clamp to same value, nothing to fade."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(
             brightness=5,  # Below min_brightness, will clamp to 10
@@ -960,7 +960,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_end_brightness_zero_not_clamped(self) -> None:
         """Test that end brightness of 0 is NOT clamped (allows fade to off)."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=0, transition_ms=1000)
         state = {
@@ -976,7 +976,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_fade_respects_min_brightness_during_interpolation(self) -> None:
         """Test that fading from min_brightness ensures all steps stay above min."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=100, transition_ms=500)
         state = {
@@ -998,7 +998,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_default_min_brightness_is_1(self) -> None:
         """Test that default min_brightness is 1 (backward compatibility)."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         params = FadeParams(brightness_pct=1, transition_ms=1000)
         state = {
@@ -1014,7 +1014,7 @@ class TestFadeChangeResolveMinBrightness:
 
     def test_min_brightness_with_stored_brightness_auto_turn_on(self) -> None:
         """Test min_brightness is used when auto-turning on with stored brightness."""
-        from custom_components.fade_lights.fade_params import FadeParams
+        from custom_components.fado.fade_params import FadeParams
 
         # Only targeting color (no explicit brightness)
         params = FadeParams(hs_color=(180.0, 50.0), transition_ms=1000)

@@ -1,7 +1,7 @@
-# Fade Lights Custom Integration
+# Fado Custom Integration
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![GitHub Release](https://img.shields.io/github/v/release/clintongormley/ha_fade_lights)](https://github.com/clintongormley/ha_fade_lights/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/clintongormley/ha-fado)](https://github.com/clintongormley/ha-fado/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A Home Assistant custom integration that provides smooth light fading for brightness and colors with automatic brightness restoration.
@@ -43,17 +43,17 @@ When you fade a light down to off and then manually turn it back on, the integra
 1. Open HACS in your Home Assistant instance
 2. Click the 3 dots in the top right corner
 3. Select "Custom repositories"
-4. Add `https://github.com/clintongormley/ha_fade_lights` as an integration
+4. Add `https://github.com/clintongormley/ha-fado` as an integration
 5. Click "Explore & Download Repositories"
-6. Search for "Fade Lights"
+6. Search for "Fado"
 7. Click "Download"
 8. Restart Home Assistant
 
 ### Manual Installation
 
-1. Copy the `custom_components/fade_lights` folder to your Home Assistant installation:
+1. Copy the `custom_components/fado` folder to your Home Assistant installation:
    ```
-   <config_directory>/custom_components/fade_lights/
+   <config_directory>/custom_components/fado/
    ```
 2. Restart Home Assistant
 
@@ -63,14 +63,14 @@ After installation and restart, add the integration via the Home Assistant UI:
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
-3. Search for "Fade Lights"
+3. Search for "Fado"
 4. Click to add it
 
-Once configured, the `fade_lights.fade_lights` service will be available in **Developer Tools** → **Actions**.
+Once configured, the `fado.fado` service will be available in **Developer Tools** → **Actions**.
 
 ### Configuration Panel
 
-After installation, **Fade Lights** appears in your Home Assistant sidebar. Click it to access the configuration panel where you can:
+After installation, **Fado** appears in your Home Assistant sidebar. Click it to access the configuration panel where you can:
 
 - **View all lights** organized by floor and area
 - **Set per-light minimum delay** values for smoother fading on slower devices
@@ -99,7 +99,7 @@ This ensures smooth fading without overwhelming slower devices.
 
 ## Usage
 
-### Service: `fade_lights.fade_lights`
+### Service: `fado.fado`
 
 Fades one or more lights to a target brightness and/or color over a transition period.
 
@@ -142,7 +142,7 @@ You can specify starting values to override the current light state:
 **Basic fade:**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   entity_id: light.bedroom
 data:
@@ -153,7 +153,7 @@ data:
 **Fade multiple lights:**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   entity_id:
     - light.bedroom
@@ -166,7 +166,7 @@ data:
 **Fade all lights in an area:**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   area_id: living_room
 data:
@@ -177,7 +177,7 @@ data:
 **Fade a light group:**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   entity_id: light.all_downstairs
 data:
@@ -188,7 +188,7 @@ data:
 **Fade color temperature (warm to cool white):**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   entity_id: light.bedroom
 data:
@@ -201,7 +201,7 @@ data:
 **Fade to a specific color:**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   entity_id: light.accent
 data:
@@ -213,7 +213,7 @@ data:
 **Fade from color temperature to saturated color (hybrid transition):**
 
 ```yaml
-service: fade_lights.fade_lights
+service: fado.fado
 target:
   entity_id: light.living_room
 data:
@@ -233,7 +233,7 @@ automation:
         event: sunset
         offset: "-00:30:00"
     action:
-      - service: fade_lights.fade_lights
+      - service: fado.fado
         target:
           area_id: living_room
         data:
@@ -297,7 +297,7 @@ For most troubleshooting, **INFO** level is sufficient and easier to follow.
 
 ### Enable Logging via UI
 
-1. Go to **Settings** > **Devices & Services** > **Fade Lights**
+1. Go to **Settings** > **Devices & Services** > **Fado**
 2. Click **Enable debug logging**
 3. Reproduce the issue
 4. Click **Disable debug logging** to download the log file
@@ -312,14 +312,14 @@ Add to your `configuration.yaml`:
 # INFO level - recommended for general troubleshooting
 logger:
   logs:
-    custom_components.fade_lights: info
+    custom_components.fado: info
 ```
 
 ```yaml
 # DEBUG level - for detailed investigation
 logger:
   logs:
-    custom_components.fade_lights: debug
+    custom_components.fado: debug
 ```
 
 After editing, restart Home Assistant or call the `logger.set_level` action.
@@ -331,7 +331,7 @@ You can also enable logging temporarily via **Developer Tools** > **Actions**:
 ```yaml
 action: logger.set_level
 data:
-  custom_components.fade_lights: info
+  custom_components.fado: info
 ```
 
 Or for debug level:
@@ -339,14 +339,14 @@ Or for debug level:
 ```yaml
 action: logger.set_level
 data:
-  custom_components.fade_lights: debug
+  custom_components.fado: debug
 ```
 
 To view logs, go to **Settings** > **System** > **Logs**, click the three-dot menu, and select **Load full logs**.
 
 ### Reporting Issues
 
-If you encounter a bug, please [open an issue](https://github.com/clintongormley/ha_fade_lights/issues/new/choose) with:
+If you encounter a bug, please [open an issue](https://github.com/clintongormley/ha-fado/issues/new/choose) with:
 
 - Your Home Assistant version
 - The integration version
@@ -380,7 +380,7 @@ pytest tests/ -v
 Run tests with coverage report:
 
 ```bash
-pytest tests/ --cov=custom_components.fade_lights --cov-report=term-missing -v
+pytest tests/ --cov=custom_components.fado --cov-report=term-missing -v
 ```
 
 Run a specific test file:

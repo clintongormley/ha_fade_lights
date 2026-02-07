@@ -1,4 +1,4 @@
-"""Fixtures for Fade Lights integration tests."""
+"""Fixtures for Fado integration tests."""
 
 from __future__ import annotations
 
@@ -12,14 +12,14 @@ from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import DOMAIN
+from custom_components.fado.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
 def clear_module_state() -> Generator[None]:
     """Clear module-level state between tests to prevent state leakage."""
     # Import here to avoid circular imports
-    from custom_components.fade_lights import (
+    from custom_components.fado import (
         ACTIVE_FADES,
         FADE_CANCEL_EVENTS,
         FADE_COMPLETE_CONDITIONS,
@@ -51,13 +51,13 @@ def auto_enable_custom_integrations(
 
 @pytest.fixture
 def mock_config_entry() -> MockConfigEntry:
-    """Create a mock config entry for the Fade Lights integration."""
+    """Create a mock config entry for the Fado integration."""
     return MockConfigEntry(
         domain=DOMAIN,
-        title="Fade Lights",
+        title="Fado",
         data={},
         options={},
-        unique_id="fade_lights_unique",
+        unique_id="fado_unique",
     )
 
 
@@ -66,11 +66,11 @@ async def init_integration(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
 ) -> MockConfigEntry:
-    """Set up the Fade Lights integration for testing."""
+    """Set up the Fado integration for testing."""
     mock_config_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=AsyncMock(async_load=AsyncMock(return_value={}), async_save=AsyncMock()),
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)

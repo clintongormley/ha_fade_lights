@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.fade_lights.const import DOMAIN
+from custom_components.fado.const import DOMAIN
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ async def test_get_lights_returns_grouped_data(
     mock_registries,
 ) -> None:
     """Test get_lights returns lights grouped by area."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     # Set up storage with config for one light
     hass.data[DOMAIN]["data"]["light.bedroom_ceiling"] = {
@@ -102,7 +102,7 @@ async def test_get_lights_areas_sorted_alphabetically(
     mock_registries,
 ) -> None:
     """Test get_lights returns areas sorted alphabetically."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     result = await async_get_lights(hass)
 
@@ -116,7 +116,7 @@ async def test_get_lights_returns_defaults_for_unconfigured(
     mock_registries,
 ) -> None:
     """Test get_lights returns default values for unconfigured lights."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     result = await async_get_lights(hass)
 
@@ -137,7 +137,7 @@ async def test_get_lights_excludes_light_groups(
     init_integration,
 ) -> None:
     """Test get_lights excludes light groups (entities with entity_id attribute)."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     # Mock a light group entity
     light_group = MagicMock()
@@ -178,7 +178,7 @@ async def test_save_light_config_creates_entry(
     init_integration,
 ) -> None:
     """Test save_light_config creates entry for new light."""
-    from custom_components.fade_lights.websocket_api import async_save_light_config
+    from custom_components.fado.websocket_api import async_save_light_config
 
     result = await async_save_light_config(
         hass,
@@ -200,7 +200,7 @@ async def test_save_light_config_updates_existing(
     init_integration,
 ) -> None:
     """Test save_light_config updates existing light config."""
-    from custom_components.fade_lights.websocket_api import async_save_light_config
+    from custom_components.fado.websocket_api import async_save_light_config
 
     # Set up existing config
     hass.data[DOMAIN]["data"]["light.existing"] = {
@@ -226,7 +226,7 @@ async def test_save_light_config_clears_min_delay_with_none(
     init_integration,
 ) -> None:
     """Test save_light_config clears min_delay_ms when clear_min_delay is True."""
-    from custom_components.fade_lights.websocket_api import async_save_light_config
+    from custom_components.fado.websocket_api import async_save_light_config
 
     # Set up existing config with min_delay_ms
     hass.data[DOMAIN]["data"]["light.test"] = {
@@ -249,7 +249,7 @@ async def test_register_websocket_api(
     init_integration,
 ) -> None:
     """Test WebSocket commands are registered."""
-    from custom_components.fade_lights.websocket_api import async_register_websocket_api
+    from custom_components.fado.websocket_api import async_register_websocket_api
 
     with patch("homeassistant.components.websocket_api.async_register_command") as mock_register:
         async_register_websocket_api(hass)
@@ -265,7 +265,7 @@ async def test_get_lights_skips_non_light_entities(
     init_integration,
 ) -> None:
     """Test get_lights skips entities that don't start with 'light.'."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     # Mock entity that's not a light
     switch_entity = MagicMock()
@@ -298,7 +298,7 @@ async def test_get_lights_gets_area_from_device(
     init_integration,
 ) -> None:
     """Test get_lights gets area from device when entity has no area."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     # Mock device with area
     device = MagicMock()
@@ -352,7 +352,7 @@ async def test_get_lights_uses_state_friendly_name_and_icon(
     init_integration,
 ) -> None:
     """Test get_lights uses friendly_name and icon from state."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     light_entity = MagicMock()
     light_entity.entity_id = "light.test_light"
@@ -396,7 +396,7 @@ async def test_get_lights_uses_state_friendly_name_and_icon(
 
 async def test_expand_light_groups(hass: HomeAssistant) -> None:
     """Test _expand_light_groups expands groups to individual lights."""
-    from custom_components.fade_lights.websocket_api import _expand_light_groups
+    from custom_components.fado.websocket_api import _expand_light_groups
 
     # Set up a group and individual lights
     hass.states.async_set(
@@ -420,7 +420,7 @@ async def test_expand_light_groups(hass: HomeAssistant) -> None:
 
 async def test_expand_light_groups_handles_string_entity_id(hass: HomeAssistant) -> None:
     """Test _expand_light_groups handles single string entity_id attribute."""
-    from custom_components.fade_lights.websocket_api import _expand_light_groups
+    from custom_components.fado.websocket_api import _expand_light_groups
 
     # Set up a group with single string entity_id
     hass.states.async_set(
@@ -438,7 +438,7 @@ async def test_expand_light_groups_handles_string_entity_id(hass: HomeAssistant)
 
 async def test_expand_light_groups_skips_missing_entities(hass: HomeAssistant) -> None:
     """Test _expand_light_groups skips entities with no state."""
-    from custom_components.fade_lights.websocket_api import _expand_light_groups
+    from custom_components.fado.websocket_api import _expand_light_groups
 
     # Only set up one light, not the other
     hass.states.async_set("light.exists", "on", {"brightness": 200})
@@ -452,7 +452,7 @@ async def test_expand_light_groups_skips_missing_entities(hass: HomeAssistant) -
 
 async def test_get_light_config(hass: HomeAssistant, init_integration) -> None:
     """Test _get_light_config returns config from storage."""
-    from custom_components.fade_lights.websocket_api import _get_light_config
+    from custom_components.fado.websocket_api import _get_light_config
 
     # Set up config
     hass.data[DOMAIN]["data"]["light.configured"] = {
@@ -471,11 +471,11 @@ async def test_get_light_config(hass: HomeAssistant, init_integration) -> None:
 
 async def test_get_settings(hass: HomeAssistant, init_integration) -> None:
     """Test ws_get_settings returns current settings."""
-    from custom_components.fade_lights.const import (
+    from custom_components.fado.const import (
         DEFAULT_LOG_LEVEL,
         DEFAULT_MIN_STEP_DELAY_MS,
     )
-    from custom_components.fade_lights.websocket_api import _get_config_entry
+    from custom_components.fado.websocket_api import _get_config_entry
 
     entry = _get_config_entry(hass)
     assert entry is not None
@@ -490,8 +490,8 @@ async def test_get_settings(hass: HomeAssistant, init_integration) -> None:
 
 async def test_save_settings_updates_min_delay(hass: HomeAssistant, init_integration) -> None:
     """Test save_settings updates min_step_delay_ms."""
-    from custom_components.fade_lights.const import OPTION_MIN_STEP_DELAY_MS
-    from custom_components.fade_lights.websocket_api import _get_config_entry
+    from custom_components.fado.const import OPTION_MIN_STEP_DELAY_MS
+    from custom_components.fado.websocket_api import _get_config_entry
 
     entry = _get_config_entry(hass)
 
@@ -508,7 +508,7 @@ async def test_save_settings_updates_min_delay(hass: HomeAssistant, init_integra
 async def test_apply_log_level(hass: HomeAssistant, init_integration) -> None:
     """Test _apply_log_level calls logger service."""
 
-    from custom_components.fade_lights.websocket_api import _apply_log_level
+    from custom_components.fado.websocket_api import _apply_log_level
 
     # Register a mock logger service to capture the call
     calls = []
@@ -521,12 +521,12 @@ async def test_apply_log_level(hass: HomeAssistant, init_integration) -> None:
     await _apply_log_level(hass, "debug")
 
     assert len(calls) == 1
-    assert calls[0] == {"custom_components.fade_lights": "debug"}
+    assert calls[0] == {"custom_components.fado": "debug"}
 
 
 async def test_apply_log_level_warning(hass: HomeAssistant, init_integration) -> None:
     """Test _apply_log_level with warning level."""
-    from custom_components.fade_lights.websocket_api import _apply_log_level
+    from custom_components.fado.websocket_api import _apply_log_level
 
     calls = []
 
@@ -538,14 +538,14 @@ async def test_apply_log_level_warning(hass: HomeAssistant, init_integration) ->
     await _apply_log_level(hass, "warning")
 
     assert len(calls) == 1
-    assert calls[0] == {"custom_components.fade_lights": "warning"}
+    assert calls[0] == {"custom_components.fado": "warning"}
 
 
 async def test_apply_log_level_unknown_defaults_to_warning(
     hass: HomeAssistant, init_integration
 ) -> None:
     """Test _apply_log_level defaults to warning for unknown level."""
-    from custom_components.fade_lights.websocket_api import _apply_log_level
+    from custom_components.fado.websocket_api import _apply_log_level
 
     calls = []
 
@@ -557,7 +557,7 @@ async def test_apply_log_level_unknown_defaults_to_warning(
     await _apply_log_level(hass, "unknown_level")
 
     assert len(calls) == 1
-    assert calls[0] == {"custom_components.fade_lights": "warning"}
+    assert calls[0] == {"custom_components.fado": "warning"}
 
 
 async def test_get_lights_includes_min_brightness(
@@ -566,7 +566,7 @@ async def test_get_lights_includes_min_brightness(
     mock_registries,
 ) -> None:
     """Test get_lights includes min_brightness in response."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     # Set up storage with min_brightness for one light
     hass.data[DOMAIN]["data"]["light.bedroom_ceiling"] = {
@@ -593,7 +593,7 @@ async def test_get_lights_returns_none_for_unconfigured_min_brightness(
     mock_registries,
 ) -> None:
     """Test get_lights returns None for min_brightness when not configured."""
-    from custom_components.fade_lights.websocket_api import async_get_lights
+    from custom_components.fado.websocket_api import async_get_lights
 
     result = await async_get_lights(hass)
 
@@ -613,7 +613,7 @@ async def test_save_light_config_saves_min_brightness(
     init_integration,
 ) -> None:
     """Test save_light_config saves min_brightness."""
-    from custom_components.fade_lights.websocket_api import async_save_light_config
+    from custom_components.fado.websocket_api import async_save_light_config
 
     result = await async_save_light_config(
         hass,
@@ -631,7 +631,7 @@ async def test_save_light_config_clears_min_brightness_with_flag(
     init_integration,
 ) -> None:
     """Test save_light_config clears min_brightness when clear_min_brightness is True."""
-    from custom_components.fade_lights.websocket_api import async_save_light_config
+    from custom_components.fado.websocket_api import async_save_light_config
 
     # Set up existing config with min_brightness
     hass.data[DOMAIN]["data"]["light.test"] = {
@@ -669,7 +669,7 @@ async def test_autoconfigure_result_includes_min_brightness(
         }
 
     with patch(
-        "custom_components.fade_lights.autoconfigure.async_autoconfigure_light",
+        "custom_components.fado.autoconfigure.async_autoconfigure_light",
         side_effect=mock_autoconfigure_light,
     ):
         client = await hass_ws_client(hass)
@@ -677,7 +677,7 @@ async def test_autoconfigure_result_includes_min_brightness(
         await client.send_json(
             {
                 "id": 1,
-                "type": "fade_lights/autoconfigure",
+                "type": "fado/autoconfigure",
                 "entity_ids": [entity_id],
             }
         )

@@ -1,4 +1,4 @@
-"""Tests for Fade Lights config flow."""
+"""Tests for Fado config flow."""
 
 from __future__ import annotations
 
@@ -7,17 +7,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import DOMAIN
+from custom_components.fado.const import DOMAIN
 
 
 async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
-    """Test user flow creates config entry with title 'Fade Lights'."""
+    """Test user flow creates config entry with title 'Fado'."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Fade Lights"
+    assert result["title"] == "Fado"
     assert result["data"] == {}
 
 
@@ -43,7 +43,7 @@ async def test_import_flow_creates_entry(hass: HomeAssistant) -> None:
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Fade Lights"
+    assert result["title"] == "Fado"
     assert result["data"] == {}
 
 
