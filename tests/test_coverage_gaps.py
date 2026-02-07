@@ -36,7 +36,7 @@ class TestNoFadeParameters:
     ) -> None:
         """Test service returns early when no fade parameters specified."""
         with patch(
-            "custom_components.fado._fade_light",
+            "custom_components.fado.coordinator.FadeCoordinator._fade_light",
             new_callable=AsyncMock,
         ) as mock_fade_light:
             # Call with only target, no brightness, colors, or from params
