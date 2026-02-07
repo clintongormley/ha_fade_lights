@@ -834,18 +834,29 @@ class TestMinBrightness:
         assert len(turn_off_calls) >= 1
         assert turn_off_calls[0].data.get(ATTR_ENTITY_ID) == mock_light_on
 
-    async def test_min_brightness_timeout_returns_error(
+    async def test_min_brightness_timeout_continues_to_next(
         self,
         hass_with_storage: HomeAssistant,
         mock_light_on: str,
     ) -> None:
-        """Test that timeout waiting for state change returns error."""
+        """Test that timeout at one brightness continues to the next value."""
         calls: list[ServiceCall] = []
+        # Simulate a light that doesn't respond at brightness=1 but works at brightness=2
+        working_brightness = 2
 
-        async def mock_turn_on_never_updates(call: ServiceCall) -> None:
-            """Mock turn_on that never updates state."""
+        async def mock_turn_on_selective(call: ServiceCall) -> None:
+            """Mock turn_on that only responds at brightness >= 2."""
             calls.append(call)
-            # Don't update state - simulates device not responding
+            entity_id = call.data.get(ATTR_ENTITY_ID)
+            if entity_id:
+                brightness = call.data.get(ATTR_BRIGHTNESS, 255)
+                current_state = hass_with_storage.states.get(entity_id)
+                if current_state:
+                    current_attrs = dict(current_state.attributes)
+                    if brightness >= working_brightness:
+                        current_attrs[ATTR_BRIGHTNESS] = brightness
+                        hass_with_storage.states.async_set(entity_id, STATE_ON, current_attrs)
+                    # brightness=1: don't update state at all (simulates no response)
 
         async def mock_turn_off(call: ServiceCall) -> None:
             """Mock turn_off that updates state."""
@@ -858,19 +869,20 @@ class TestMinBrightness:
                     current_attrs[ATTR_BRIGHTNESS] = None
                     hass_with_storage.states.async_set(entity_id, STATE_OFF, current_attrs)
 
-        hass_with_storage.services.async_register("light", "turn_on", mock_turn_on_never_updates)
+        hass_with_storage.services.async_register("light", "turn_on", mock_turn_on_selective)
         hass_with_storage.services.async_register("light", "turn_off", mock_turn_off)
 
         # Use short timeout for test
         with patch(
             "custom_components.fade_lights.autoconfigure.AUTOCONFIGURE_TIMEOUT_S",
-            0.05,
+            0.1,
         ):
             result = await _async_test_min_brightness(hass_with_storage, mock_light_on)
 
-        assert "error" in result
+        # Should skip brightness=1 (timeout) and detect brightness=2
+        assert "error" not in result
         assert result["entity_id"] == mock_light_on
-        assert "Timeout" in result["error"]
+        assert result["min_brightness"] == working_brightness
 
     async def test_min_brightness_saved_to_storage(
         self,
