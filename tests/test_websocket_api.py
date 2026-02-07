@@ -11,21 +11,16 @@ from custom_components.fade_lights.const import DOMAIN
 @pytest.fixture
 def mock_registries(hass: HomeAssistant):
     """Set up mock registries with test data."""
-    # Mock floor registry
-    floor_upstairs = MagicMock()
-    floor_upstairs.floor_id = "upstairs"
-    floor_upstairs.name = "Upstairs"
-
     # Mock area registry
     area_bedroom = MagicMock()
     area_bedroom.id = "bedroom"
     area_bedroom.name = "Bedroom"
-    area_bedroom.floor_id = "upstairs"
+    area_bedroom.icon = None
 
     area_kitchen = MagicMock()
     area_kitchen.id = "kitchen"
     area_kitchen.name = "Kitchen"
-    area_kitchen.floor_id = None  # No floor
+    area_kitchen.icon = None
 
     # Mock entity registry
     entity_bedroom_light = MagicMock()
@@ -47,10 +42,6 @@ def mock_registries(hass: HomeAssistant):
     entity_kitchen_light.platform = "hue"
 
     with (
-        patch(
-            "homeassistant.helpers.floor_registry.async_get",
-            return_value=MagicMock(floors={"upstairs": floor_upstairs}),
-        ),
         patch(
             "homeassistant.helpers.area_registry.async_get",
             return_value=MagicMock(
@@ -79,7 +70,7 @@ async def test_get_lights_returns_grouped_data(
     init_integration,
     mock_registries,
 ) -> None:
-    """Test get_lights returns lights grouped by floor and area."""
+    """Test get_lights returns lights grouped by area."""
     from custom_components.fade_lights.websocket_api import async_get_lights
 
     # Set up storage with config for one light
@@ -90,14 +81,10 @@ async def test_get_lights_returns_grouped_data(
 
     result = await async_get_lights(hass)
 
-    assert "floors" in result
-    # Find upstairs floor
-    upstairs = next((f for f in result["floors"] if f["floor_id"] == "upstairs"), None)
-    assert upstairs is not None
-    assert upstairs["name"] == "Upstairs"
+    assert "areas" in result
 
     # Find bedroom area
-    bedroom = next((a for a in upstairs["areas"] if a["area_id"] == "bedroom"), None)
+    bedroom = next((a for a in result["areas"] if a["area_id"] == "bedroom"), None)
     assert bedroom is not None
 
     # Find bedroom light
@@ -109,25 +96,18 @@ async def test_get_lights_returns_grouped_data(
     assert light["min_delay_ms"] == 150
 
 
-async def test_get_lights_handles_no_floor(
+async def test_get_lights_areas_sorted_alphabetically(
     hass: HomeAssistant,
     init_integration,
     mock_registries,
 ) -> None:
-    """Test get_lights handles lights with no floor assignment."""
+    """Test get_lights returns areas sorted alphabetically."""
     from custom_components.fade_lights.websocket_api import async_get_lights
 
     result = await async_get_lights(hass)
 
-    # Find "No Floor" entry
-    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
-    assert no_floor is not None
-    assert no_floor["name"] == "No Floor"
-
-    # Kitchen should be in "No Floor"
-    kitchen = next((a for a in no_floor["areas"] if a["area_id"] == "kitchen"), None)
-    assert kitchen is not None
-    assert kitchen["name"] == "Kitchen"
+    area_names = [a["name"] for a in result["areas"]]
+    assert area_names == ["Bedroom", "Kitchen"]
 
 
 async def test_get_lights_returns_defaults_for_unconfigured(
@@ -141,8 +121,7 @@ async def test_get_lights_returns_defaults_for_unconfigured(
     result = await async_get_lights(hass)
 
     # Find kitchen light (unconfigured)
-    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
-    kitchen = next((a for a in no_floor["areas"] if a["area_id"] == "kitchen"), None)
+    kitchen = next((a for a in result["areas"] if a["area_id"] == "kitchen"), None)
     light = next(
         (lt for lt in kitchen["lights"] if lt["entity_id"] == "light.kitchen_main"),
         None,
@@ -176,10 +155,6 @@ async def test_get_lights_excludes_light_groups(
 
     with (
         patch(
-            "homeassistant.helpers.floor_registry.async_get",
-            return_value=MagicMock(floors={}),
-        ),
-        patch(
             "homeassistant.helpers.area_registry.async_get",
             return_value=MagicMock(areas={}, async_get_area=lambda aid: None),
         ),
@@ -192,9 +167,8 @@ async def test_get_lights_excludes_light_groups(
 
     # Should not include the light group
     all_lights = []
-    for floor in result["floors"]:
-        for area in floor["areas"]:
-            all_lights.extend(area["lights"])
+    for area in result["areas"]:
+        all_lights.extend(area["lights"])
 
     assert not any(lt["entity_id"] == "light.living_room_group" for lt in all_lights)
 
@@ -281,7 +255,8 @@ async def test_register_websocket_api(
         async_register_websocket_api(hass)
 
         # Verify all six commands were registered
-        # (get_lights, save_light_config, autoconfigure, test_native_transitions, get_settings, save_settings)
+        # (get_lights, save_light_config, autoconfigure,
+        #  test_native_transitions, get_settings, save_settings)
         assert mock_register.call_count == 6
 
 
@@ -301,10 +276,6 @@ async def test_get_lights_skips_non_light_entities(
 
     with (
         patch(
-            "homeassistant.helpers.floor_registry.async_get",
-            return_value=MagicMock(floors={}),
-        ),
-        patch(
             "homeassistant.helpers.area_registry.async_get",
             return_value=MagicMock(areas={}, async_get_area=lambda aid: None),
         ),
@@ -317,9 +288,8 @@ async def test_get_lights_skips_non_light_entities(
 
     # Should have no lights
     all_lights = []
-    for floor in result["floors"]:
-        for area in floor["areas"]:
-            all_lights.extend(area["lights"])
+    for area in result["areas"]:
+        all_lights.extend(area["lights"])
     assert len(all_lights) == 0
 
 
@@ -338,7 +308,6 @@ async def test_get_lights_gets_area_from_device(
     area = MagicMock()
     area.id = "living_room"
     area.name = "Living Room"
-    area.floor_id = None
     area.icon = None
 
     # Mock light with device but no direct area
@@ -354,10 +323,6 @@ async def test_get_lights_gets_area_from_device(
     hass.states.async_set("light.device_light", "on", {"brightness": 200})
 
     with (
-        patch(
-            "homeassistant.helpers.floor_registry.async_get",
-            return_value=MagicMock(floors={}),
-        ),
         patch(
             "homeassistant.helpers.area_registry.async_get",
             return_value=MagicMock(
@@ -377,9 +342,7 @@ async def test_get_lights_gets_area_from_device(
         result = await async_get_lights(hass)
 
     # Find living room area
-    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
-    assert no_floor is not None
-    living_room = next((a for a in no_floor["areas"] if a["area_id"] == "living_room"), None)
+    living_room = next((a for a in result["areas"] if a["area_id"] == "living_room"), None)
     assert living_room is not None
     assert living_room["name"] == "Living Room"
 
@@ -409,10 +372,6 @@ async def test_get_lights_uses_state_friendly_name_and_icon(
 
     with (
         patch(
-            "homeassistant.helpers.floor_registry.async_get",
-            return_value=MagicMock(floors={}),
-        ),
-        patch(
             "homeassistant.helpers.area_registry.async_get",
             return_value=MagicMock(areas={}, async_get_area=lambda aid: None),
         ),
@@ -427,9 +386,8 @@ async def test_get_lights_uses_state_friendly_name_and_icon(
     ):
         result = await async_get_lights(hass)
 
-    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
-    no_area = next((a for a in no_floor["areas"] if a["area_id"] is None), None)
-    light = next((lt for lt in no_area["lights"] if lt["entity_id"] == "light.test_light"), None)
+    unknown = next((a for a in result["areas"] if a["area_id"] is None), None)
+    light = next((lt for lt in unknown["lights"] if lt["entity_id"] == "light.test_light"), None)
 
     # Should prefer state values
     assert light["name"] == "State Friendly Name"
@@ -513,18 +471,20 @@ async def test_get_light_config(hass: HomeAssistant, init_integration) -> None:
 
 async def test_get_settings(hass: HomeAssistant, init_integration) -> None:
     """Test ws_get_settings returns current settings."""
-    from custom_components.fade_lights.websocket_api import _get_config_entry
-
     from custom_components.fade_lights.const import (
         DEFAULT_LOG_LEVEL,
         DEFAULT_MIN_STEP_DELAY_MS,
     )
+    from custom_components.fade_lights.websocket_api import _get_config_entry
 
     entry = _get_config_entry(hass)
     assert entry is not None
 
     # Defaults should be returned when no options set
-    assert entry.options.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS) == DEFAULT_MIN_STEP_DELAY_MS
+    assert (
+        entry.options.get("min_step_delay_ms", DEFAULT_MIN_STEP_DELAY_MS)
+        == DEFAULT_MIN_STEP_DELAY_MS
+    )
     assert entry.options.get("log_level", DEFAULT_LOG_LEVEL) == DEFAULT_LOG_LEVEL
 
 
@@ -547,7 +507,6 @@ async def test_save_settings_updates_min_delay(hass: HomeAssistant, init_integra
 
 async def test_apply_log_level(hass: HomeAssistant, init_integration) -> None:
     """Test _apply_log_level calls logger service."""
-    from unittest.mock import AsyncMock
 
     from custom_components.fade_lights.websocket_api import _apply_log_level
 
@@ -617,9 +576,8 @@ async def test_get_lights_includes_min_brightness(
 
     result = await async_get_lights(hass)
 
-    # Find upstairs floor and bedroom area
-    upstairs = next((f for f in result["floors"] if f["floor_id"] == "upstairs"), None)
-    bedroom = next((a for a in upstairs["areas"] if a["area_id"] == "bedroom"), None)
+    # Find bedroom area
+    bedroom = next((a for a in result["areas"] if a["area_id"] == "bedroom"), None)
     light = next(
         (lt for lt in bedroom["lights"] if lt["entity_id"] == "light.bedroom_ceiling"),
         None,
@@ -640,8 +598,7 @@ async def test_get_lights_returns_none_for_unconfigured_min_brightness(
     result = await async_get_lights(hass)
 
     # Find kitchen light (unconfigured)
-    no_floor = next((f for f in result["floors"] if f["floor_id"] is None), None)
-    kitchen = next((a for a in no_floor["areas"] if a["area_id"] == "kitchen"), None)
+    kitchen = next((a for a in result["areas"] if a["area_id"] == "kitchen"), None)
     light = next(
         (lt for lt in kitchen["lights"] if lt["entity_id"] == "light.kitchen_main"),
         None,

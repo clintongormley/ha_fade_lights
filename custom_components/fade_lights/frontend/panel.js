@@ -228,15 +228,6 @@ class FadeLightsPanel extends LitElement {
         --mdc-checkbox-unchecked-color: var(--secondary-text-color);
       }
 
-      .floor-row td {
-        background: var(--primary-background-color);
-        font-size: var(--paper-font-subhead_-_font-size, 16px);
-        font-weight: 500;
-        color: var(--primary-text-color);
-        cursor: pointer;
-        user-select: none;
-      }
-
       .area-row td {
         background: var(--secondary-background-color, rgba(0,0,0,0.05));
         font-size: var(--paper-font-body1_-_font-size, 14px);
@@ -244,10 +235,6 @@ class FadeLightsPanel extends LitElement {
         color: var(--primary-text-color);
         cursor: pointer;
         user-select: none;
-      }
-
-      .area-row.with-floor .group-cell {
-        padding-left: 24px;
       }
 
       .group-cell {
@@ -543,15 +530,13 @@ class FadeLightsPanel extends LitElement {
 
   async _enforceGlobalMinimum(globalMin) {
     // Find all lights with per-light delays below the new global minimum and update them
-    if (!this._data?.floors) return;
+    if (!this._data?.areas) return;
 
-    for (const floor of this._data.floors) {
-      for (const area of floor.areas) {
-        for (const light of area.lights) {
-          if (light.min_delay_ms && light.min_delay_ms < globalMin) {
-            light.min_delay_ms = globalMin;
-            await this._saveConfig(light.entity_id, "min_delay_ms", globalMin);
-          }
+    for (const area of this._data.areas) {
+      for (const light of area.lights) {
+        if (light.min_delay_ms && light.min_delay_ms < globalMin) {
+          light.min_delay_ms = globalMin;
+          await this._saveConfig(light.entity_id, "min_delay_ms", globalMin);
         }
       }
     }
@@ -573,23 +558,17 @@ class FadeLightsPanel extends LitElement {
 
       // Auto-check lights that don't have a custom delay and are not excluded
       const toCheck = new Set();
-      // Set default collapsed state for all floors and areas (collapsed by default)
+      // Set default collapsed state for areas (collapsed by default)
       const newCollapsed = { ...this._collapsed };
-      if (result && result.floors) {
-        for (const floor of result.floors) {
-          const floorKey = `floor_${floor.floor_id || "none"}`;
-          if (!(floorKey in newCollapsed)) {
-            newCollapsed[floorKey] = true; // Collapsed by default
+      if (result && result.areas) {
+        for (const area of result.areas) {
+          const areaKey = `area_${area.area_id || "none"}`;
+          if (!(areaKey in newCollapsed)) {
+            newCollapsed[areaKey] = true; // Collapsed by default
           }
-          for (const area of floor.areas) {
-            const areaKey = `area_${floor.floor_id || "none"}_${area.area_id || "none"}`;
-            if (!(areaKey in newCollapsed)) {
-              newCollapsed[areaKey] = true; // Collapsed by default
-            }
-            for (const light of area.lights) {
-              if (!light.min_delay_ms && !light.exclude) {
-                toCheck.add(light.entity_id);
-              }
+          for (const light of area.lights) {
+            if (!light.min_delay_ms && !light.exclude) {
+              toCheck.add(light.entity_id);
             }
           }
         }
@@ -669,15 +648,13 @@ class FadeLightsPanel extends LitElement {
 
   _findLight(entityId) {
     // Find a light object by entity_id in _data
-    if (!this._data || !this._data.floors) {
+    if (!this._data || !this._data.areas) {
       return null;
     }
-    for (const floor of this._data.floors) {
-      for (const area of floor.areas) {
-        for (const light of area.lights) {
-          if (light.entity_id === entityId) {
-            return light;
-          }
+    for (const area of this._data.areas) {
+      for (const light of area.lights) {
+        if (light.entity_id === entityId) {
+          return light;
         }
       }
     }
@@ -704,33 +681,20 @@ class FadeLightsPanel extends LitElement {
     this.dispatchEvent(event);
   }
 
-  _getFloorLightIds(floor) {
-    // Returns all entity_ids in the floor
-    const entityIds = [];
-    for (const area of floor.areas) {
-      for (const light of area.lights) {
-        entityIds.push(light.entity_id);
-      }
-    }
-    return entityIds;
-  }
-
   _getAreaLightIds(area) {
     // Returns all entity_ids in the area
     return area.lights.map((light) => light.entity_id);
   }
 
   _getAllLightIds() {
-    // Returns all entity_ids across all floors and areas
-    if (!this._data || !this._data.floors) {
+    // Returns all entity_ids across all areas
+    if (!this._data || !this._data.areas) {
       return [];
     }
     const entityIds = [];
-    for (const floor of this._data.floors) {
-      for (const area of floor.areas) {
-        for (const light of area.lights) {
-          entityIds.push(light.entity_id);
-        }
+    for (const area of this._data.areas) {
+      for (const light of area.lights) {
+        entityIds.push(light.entity_id);
       }
     }
     return entityIds;
@@ -749,26 +713,6 @@ class FadeLightsPanel extends LitElement {
       return "all";
     }
     return "some";
-  }
-
-  _handleFloorCheckboxChange(floor, e) {
-    e.stopPropagation(); // Prevent collapse toggle
-    const entityIds = this._getFloorLightIds(floor);
-    const currentState = this._getCheckboxState(entityIds);
-    const newSet = new Set(this._configureChecked);
-
-    if (currentState === "all") {
-      // Uncheck all
-      for (const id of entityIds) {
-        newSet.delete(id);
-      }
-    } else {
-      // Check all (for "none" or "some")
-      for (const id of entityIds) {
-        newSet.add(id);
-      }
-    }
-    this._configureChecked = newSet;
   }
 
   _handleAreaCheckboxChange(area, e) {
@@ -810,17 +754,6 @@ class FadeLightsPanel extends LitElement {
     this._configureChecked = newSet;
   }
 
-  _getFloorLights(floor) {
-    // Returns all light objects in the floor
-    const lights = [];
-    for (const area of floor.areas) {
-      for (const light of area.lights) {
-        lights.push(light);
-      }
-    }
-    return lights;
-  }
-
   _getExcludeState(lights) {
     // Returns "all" | "none" | "some" based on how many are excluded
     if (lights.length === 0) {
@@ -834,26 +767,6 @@ class FadeLightsPanel extends LitElement {
       return "all";
     }
     return "some";
-  }
-
-  async _handleFloorExcludeChange(floor, e) {
-    e.stopPropagation(); // Prevent collapse toggle
-    const lights = this._getFloorLights(floor);
-    const currentState = this._getExcludeState(lights);
-    const newExclude = currentState !== "all";
-
-    // Save exclude state for all lights in floor
-    const newConfigureSet = new Set(this._configureChecked);
-    for (const light of lights) {
-      light.exclude = newExclude;
-      await this._saveConfig(light.entity_id, "exclude", newExclude);
-      // Uncheck from configure when excluding
-      if (newExclude) {
-        newConfigureSet.delete(light.entity_id);
-      }
-    }
-    this._configureChecked = newConfigureSet;
-    this.requestUpdate();
   }
 
   async _handleAreaExcludeChange(area, e) {
@@ -875,11 +788,6 @@ class FadeLightsPanel extends LitElement {
     this.requestUpdate();
   }
 
-  _hasRealFloors() {
-    // Check if there are any floors with a real floor_id (not null/none)
-    if (!this._data || !this._data.floors) return false;
-    return this._data.floors.some((floor) => floor.floor_id !== null);
-  }
 
   _getButtonText() {
     const checkedCount = this._configureChecked.size;
@@ -973,22 +881,20 @@ class FadeLightsPanel extends LitElement {
 
   _updateLightConfig(entityId, minDelayMs, nativeTransitions, minBrightness) {
     // Find and update the light in _data
-    if (!this._data?.floors) return;
+    if (!this._data?.areas) return;
 
-    for (const floor of this._data.floors) {
-      for (const area of floor.areas) {
-        const light = area.lights.find((l) => l.entity_id === entityId);
-        if (light) {
-          light.min_delay_ms = minDelayMs;
-          if (nativeTransitions !== undefined) {
-            light.native_transitions = nativeTransitions;
-          }
-          if (minBrightness !== undefined) {
-            light.min_brightness = minBrightness;
-          }
-          this.requestUpdate(); // Trigger re-render
-          return;
+    for (const area of this._data.areas) {
+      const light = area.lights.find((l) => l.entity_id === entityId);
+      if (light) {
+        light.min_delay_ms = minDelayMs;
+        if (nativeTransitions !== undefined) {
+          light.native_transitions = nativeTransitions;
         }
+        if (minBrightness !== undefined) {
+          light.min_brightness = minBrightness;
+        }
+        this.requestUpdate(); // Trigger re-render
+        return;
       }
     }
   }
@@ -1061,11 +967,9 @@ class FadeLightsPanel extends LitElement {
       `;
     }
 
-    if (!this._data || !this._data.floors) {
+    if (!this._data || !this._data.areas) {
       return html`${this._renderHeader()}<p>No lights found.</p>`;
     }
-
-    const hasRealFloors = this._hasRealFloors();
 
     return html`
       ${this._refreshing ? html`<div class="refresh-overlay"><div class="spinner"></div></div>` : ""}
@@ -1088,9 +992,7 @@ class FadeLightsPanel extends LitElement {
           </tr>
         </thead>
         <tbody>
-          ${hasRealFloors
-            ? this._data.floors.map((floor) => this._renderFloor(floor))
-            : this._renderAreasOnly()}
+          ${this._data.areas.map((area) => this._renderAreaRows(area))}
         </tbody>
       </table>
       <div class="settings-row">
@@ -1109,55 +1011,8 @@ class FadeLightsPanel extends LitElement {
     `;
   }
 
-  _renderAreasOnly() {
-    // When no real floors exist, render areas directly without floor grouping
-    const allAreas = this._data.floors.flatMap((floor) => floor.areas);
-    return allAreas.map((area) => this._renderAreaRows(area, null, false));
-  }
-
-  _renderFloor(floor) {
-    const floorKey = `floor_${floor.floor_id || "none"}`;
-    const isCollapsed = this._collapsed[floorKey];
-    const floorIcon = floor.icon || "mdi:floor-plan";
-    const floorLights = this._getFloorLights(floor);
-    const floorLightIds = this._getFloorLightIds(floor);
-    const configureState = this._getCheckboxState(floorLightIds);
-    const excludeState = this._getExcludeState(floorLights);
-
-    return html`
-      <tr class="floor-row" @click=${() => this._toggleCollapse(floorKey)}>
-        <td colspan="2">
-          <div class="group-cell">
-            <span class="chevron ${isCollapsed ? "collapsed" : ""}">▼</span>
-            <ha-icon class="header-icon" icon="${floorIcon}"></ha-icon>
-            ${floor.name}
-          </div>
-        </td>
-        <td class="col-min-brightness"></td>
-        <td class="col-native-transitions"></td>
-        <td class="col-exclude">
-          <ha-checkbox
-            .checked=${excludeState === "all"}
-            .indeterminate=${excludeState === "some"}
-            @click=${(e) => e.stopPropagation()}
-            @change=${(e) => this._handleFloorExcludeChange(floor, e)}
-          ></ha-checkbox>
-        </td>
-        <td class="col-configure">
-          <ha-checkbox
-            .checked=${configureState === "all"}
-            .indeterminate=${configureState === "some"}
-            @click=${(e) => e.stopPropagation()}
-            @change=${(e) => this._handleFloorCheckboxChange(floor, e)}
-          ></ha-checkbox>
-        </td>
-      </tr>
-      ${isCollapsed ? "" : floor.areas.map((area) => this._renderAreaRows(area, floor.floor_id, true))}
-    `;
-  }
-
-  _renderAreaRows(area, floorId, withFloor) {
-    const areaKey = `area_${floorId || "none"}_${area.area_id || "none"}`;
+  _renderAreaRows(area) {
+    const areaKey = `area_${area.area_id || "none"}`;
     const isCollapsed = this._collapsed[areaKey];
     const areaIcon = area.icon || "mdi:texture-box";
     const areaLightIds = this._getAreaLightIds(area);
@@ -1165,7 +1020,7 @@ class FadeLightsPanel extends LitElement {
     const excludeState = this._getExcludeState(area.lights);
 
     return html`
-      <tr class="area-row ${withFloor ? "with-floor" : ""}" @click=${() => this._toggleCollapse(areaKey)}>
+      <tr class="area-row" @click=${() => this._toggleCollapse(areaKey)}>
         <td colspan="2">
           <div class="group-cell">
             <span class="chevron ${isCollapsed ? "collapsed" : ""}">▼</span>
@@ -1195,23 +1050,22 @@ class FadeLightsPanel extends LitElement {
       ${isCollapsed
         ? ""
         : area.lights.length > 0
-          ? area.lights.map((light) => this._renderLightRow(light, withFloor))
+          ? area.lights.map((light) => this._renderLightRow(light))
           : html`<tr><td colspan="6" class="no-lights">No lights in this area</td></tr>`}
     `;
   }
 
-  _renderLightRow(light, withFloor) {
+  _renderLightRow(light) {
     const lightIcon = light.icon || "mdi:lightbulb";
     const state = this.hass.states[light.entity_id];
     const isOn = state && state.state === "on";
     const isTesting = this._testing.has(light.entity_id);
     const errorMessage = this._testErrors.get(light.entity_id);
-    const indent = withFloor ? "padding-left: 48px;" : "padding-left: 24px;";
     const isExcluded = light.exclude;
 
     return html`
       <tr class="light-row ${isExcluded ? "excluded" : ""}">
-        <td class="col-light" style="${indent}">
+        <td class="col-light" style="padding-left: 24px;">
           <div class="light-cell" @click=${() => this._openLightDialog(light.entity_id)}>
             <ha-icon class="light-icon ${isOn ? "on" : ""}" icon="${lightIcon}"></ha-icon>
             <div class="light-info">

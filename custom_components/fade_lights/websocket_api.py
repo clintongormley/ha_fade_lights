@@ -19,9 +19,6 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
-from homeassistant.helpers import (
-    floor_registry as fr,
-)
 
 from .const import (
     AUTOCONFIGURE_MAX_PARALLEL,
@@ -49,16 +46,15 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
 
 
 async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
-    """Get all lights grouped by floor and area."""
+    """Get all lights grouped by area."""
     entity_reg = er.async_get(hass)
     device_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
-    floor_reg = fr.async_get(hass)
 
     storage_data = hass.data.get(DOMAIN, {}).get("data", {})
 
-    # Build floor -> area -> lights structure
-    floors_dict: dict[str | None, dict] = {}
+    # Build area -> lights structure
+    areas_dict: dict[str | None, dict] = {}
 
     for entity in entity_reg.entities.values():
         # Only include lights (not groups)
@@ -81,26 +77,15 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
             if device:
                 area_id = device.area_id
 
-        # Get area and floor info
+        # Get area info
         area = area_reg.async_get_area(area_id) if area_id else None
-        floor_id = area.floor_id if area else None
-
-        # Get or create floor entry
-        if floor_id not in floors_dict:
-            floor = floor_reg.floors.get(floor_id) if floor_id else None
-            floors_dict[floor_id] = {
-                "floor_id": floor_id,
-                "name": floor.name if floor else "No Floor",
-                "icon": floor.icon if floor else None,
-                "areas": {},
-            }
 
         # Get or create area entry
         area_key = area.id if area else None
-        if area_key not in floors_dict[floor_id]["areas"]:
-            floors_dict[floor_id]["areas"][area_key] = {
+        if area_key not in areas_dict:
+            areas_dict[area_key] = {
                 "area_id": area_key,
-                "name": area.name if area else "No Area",
+                "name": area.name if area else "Unknown",
                 "icon": area.icon if area else None,
                 "lights": [],
             }
@@ -123,7 +108,7 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
             icon = entity.icon
 
         # Add light to area
-        floors_dict[floor_id]["areas"][area_key]["lights"].append(
+        areas_dict[area_key]["lights"].append(
             {
                 "entity_id": entity.entity_id,
                 "name": friendly_name,
@@ -135,16 +120,13 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
             }
         )
 
-    # Convert to list format
-    result = []
-    for floor_data in floors_dict.values():
-        floor_data["areas"] = list(floor_data["areas"].values())
-        result.append(floor_data)
+    # Convert to sorted list: alphabetical with "Unknown" (area_id=None) at the bottom
+    result = sorted(
+        areas_dict.values(),
+        key=lambda a: (a["area_id"] is None, a["name"]),
+    )
 
-    # Sort: floors with names first, then "No Floor"
-    result.sort(key=lambda f: (f["floor_id"] is None, f["name"]))
-
-    return {"floors": result}
+    return {"areas": result}
 
 
 @websocket_api.websocket_command({"type": "fade_lights/get_lights"})
