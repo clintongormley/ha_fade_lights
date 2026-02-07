@@ -1,4 +1,4 @@
-"""ExpectedState and ExpectedValues models for the Fade Lights integration."""
+"""ExpectedState and ExpectedValues models for the Fado integration."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from custom_components.fade_lights.easing import (
+from custom_components.fado.easing import (
     EASING_FUNCTIONS,
     auto_select_easing,
     ease_in_cubic,

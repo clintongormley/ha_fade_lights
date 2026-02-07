@@ -1,1 +1,1 @@
-"""Tests for the Fade Lights integration."""
+"""Tests for the Fado integration."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_components.fade_lights.fade_change import (
+from custom_components.fado.fade_change import (
     _hs_to_mireds,
     _is_on_planckian_locus,
     _mireds_to_hs,

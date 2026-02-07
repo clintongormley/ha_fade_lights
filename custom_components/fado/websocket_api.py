@@ -1,4 +1,4 @@
-"""WebSocket API for Fade Lights panel."""
+"""WebSocket API for Fado panel."""
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
     return {"areas": result}
 
 
-@websocket_api.websocket_command({"type": "fade_lights/get_lights"})
+@websocket_api.websocket_command({"type": "fado/get_lights"})
 @websocket_api.async_response
 async def ws_get_lights(
     hass: HomeAssistant,
@@ -205,7 +205,7 @@ async def async_save_light_config(
 
 @websocket_api.websocket_command(
     {
-        "type": "fade_lights/save_light_config",
+        "type": "fado/save_light_config",
         vol.Required("entity_id"): str,
         vol.Optional("min_delay_ms"): vol.Any(None, vol.All(int, vol.Range(min=50, max=1000))),
         vol.Optional("exclude"): bool,
@@ -294,7 +294,7 @@ def _get_light_config(hass: HomeAssistant, entity_id: str) -> dict[str, Any]:
 
 @websocket_api.websocket_command(
     {
-        "type": "fade_lights/autoconfigure",
+        "type": "fado/autoconfigure",
         vol.Required("entity_ids"): [str],
     }
 )
@@ -432,7 +432,7 @@ async def ws_autoconfigure(
 
 @websocket_api.websocket_command(
     {
-        "type": "fade_lights/test_native_transitions",
+        "type": "fado/test_native_transitions",
         vol.Required("entity_id"): str,
         vol.Optional("transition_s", default=2.0): vol.Coerce(float),
     }
@@ -462,12 +462,12 @@ async def ws_test_native_transitions(
 
 
 def _get_config_entry(hass: HomeAssistant):
-    """Get the Fade Lights config entry."""
+    """Get the Fado config entry."""
     entries = hass.config_entries.async_entries(DOMAIN)
     return entries[0] if entries else None
 
 
-@websocket_api.websocket_command({"type": "fade_lights/get_settings"})
+@websocket_api.websocket_command({"type": "fado/get_settings"})
 @websocket_api.async_response
 async def ws_get_settings(
     hass: HomeAssistant,
@@ -494,7 +494,7 @@ async def ws_get_settings(
 
 @websocket_api.websocket_command(
     {
-        "type": "fade_lights/save_settings",
+        "type": "fado/save_settings",
         vol.Optional("default_min_delay_ms"): vol.All(
             int, vol.Range(min=MIN_STEP_DELAY_MS, max=1000)
         ),

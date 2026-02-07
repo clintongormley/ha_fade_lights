@@ -14,9 +14,9 @@ from homeassistant.components.light import (
 )
 from homeassistant.components.light.const import ColorMode
 
-from custom_components.fade_lights import DOMAIN
-from custom_components.fade_lights.fade_change import FadeChange, _clamp_mireds
-from custom_components.fade_lights.fade_params import FadeParams
+from custom_components.fado import DOMAIN
+from custom_components.fado.fade_change import FadeChange, _clamp_mireds
+from custom_components.fado.fade_params import FadeParams
 
 
 class TestClampMireds:
@@ -235,7 +235,7 @@ class TestExecuteFadeWithBounds:
 
     async def test_bounds_extracted_from_state(self, mock_hass) -> None:
         """Test that min/max kelvin are extracted from state attributes."""
-        from custom_components.fade_lights import _execute_fade
+        from custom_components.fado import _execute_fade
 
         # Light with color temp bounds
         state = MagicMock()
@@ -257,7 +257,7 @@ class TestExecuteFadeWithBounds:
         cancel_event.is_set.return_value = False
 
         with patch(
-            "custom_components.fade_lights._apply_step", new_callable=AsyncMock
+            "custom_components.fado._apply_step", new_callable=AsyncMock
         ) as mock_apply:
             await _execute_fade(mock_hass, "light.test", params, 50, cancel_event)
 
@@ -273,7 +273,7 @@ class TestExecuteFadeWithBounds:
 
     async def test_no_bounds_no_clamping(self, mock_hass) -> None:
         """Test that without bounds, color temp is not clamped."""
-        from custom_components.fade_lights import _execute_fade
+        from custom_components.fado import _execute_fade
 
         # Light without color temp bounds
         state = MagicMock()
@@ -294,7 +294,7 @@ class TestExecuteFadeWithBounds:
         cancel_event.is_set.return_value = False
 
         with patch(
-            "custom_components.fade_lights._apply_step", new_callable=AsyncMock
+            "custom_components.fado._apply_step", new_callable=AsyncMock
         ) as mock_apply:
             await _execute_fade(mock_hass, "light.test", params, 50, cancel_event)
 

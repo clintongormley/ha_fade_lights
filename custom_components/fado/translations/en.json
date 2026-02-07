@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up Fade Lights",
+        "title": "Set up Fado",
         "description": "This integration provides smooth light fading for brightness and colors with automatic brightness restoration."
       }
     },
@@ -13,7 +13,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Configure fade lights",
+        "title": "Configure Fado",
         "description": "Customize how lights fade.",
         "data": {
           "min_step_delay_ms": "Minimum delay between steps"
@@ -25,7 +25,7 @@
     }
   },
   "services": {
-    "fade_lights": {
+    "fado": {
       "name": "Fade lights",
       "description": "Fades lights to a desired brightness and/or color over a specified transition period.",
       "fields": {

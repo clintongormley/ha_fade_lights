@@ -4,7 +4,7 @@ import {
   css,
 } from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
 
-class FadeLightsPanel extends LitElement {
+class FadoPanel extends LitElement {
   static get properties() {
     return {
       hass: { type: Object },
@@ -469,10 +469,10 @@ class FadeLightsPanel extends LitElement {
     // Version 2: Default to collapsed (v1 defaulted to expanded)
     const STORAGE_VERSION = 2;
     try {
-      const stored = JSON.parse(localStorage.getItem("fade_lights_collapsed") || "{}");
+      const stored = JSON.parse(localStorage.getItem("fado_collapsed") || "{}");
       // If version mismatch or missing, clear and start fresh
       if (stored._version !== STORAGE_VERSION) {
-        localStorage.removeItem("fade_lights_collapsed");
+        localStorage.removeItem("fado_collapsed");
         return {};
       }
       return stored;
@@ -483,7 +483,7 @@ class FadeLightsPanel extends LitElement {
 
   _saveCollapsedState() {
     const toSave = { ...this._collapsed, _version: 2 };
-    localStorage.setItem("fade_lights_collapsed", JSON.stringify(toSave));
+    localStorage.setItem("fado_collapsed", JSON.stringify(toSave));
   }
 
   async _fetchAll() {
@@ -495,7 +495,7 @@ class FadeLightsPanel extends LitElement {
 
   async _fetchSettings() {
     try {
-      const result = await this.hass.callWS({ type: "fade_lights/get_settings" });
+      const result = await this.hass.callWS({ type: "fado/get_settings" });
       this._globalMinDelayMs = result.default_min_delay_ms;
       this._logLevel = result.log_level || "warning";
     } catch (err) {
@@ -506,7 +506,7 @@ class FadeLightsPanel extends LitElement {
   async _saveLogLevel(value) {
     try {
       await this.hass.callWS({
-        type: "fade_lights/save_settings",
+        type: "fado/save_settings",
         log_level: value,
       });
       this._logLevel = value;
@@ -523,7 +523,7 @@ class FadeLightsPanel extends LitElement {
   async _saveGlobalMinDelay(value) {
     try {
       await this.hass.callWS({
-        type: "fade_lights/save_settings",
+        type: "fado/save_settings",
         default_min_delay_ms: value,
       });
       this._globalMinDelayMs = value;
@@ -560,7 +560,7 @@ class FadeLightsPanel extends LitElement {
   async _fetchLights() {
     this._loading = true;
     try {
-      const result = await this.hass.callWS({ type: "fade_lights/get_lights" });
+      const result = await this.hass.callWS({ type: "fado/get_lights" });
       this._data = result;
 
       // Auto-check lights that don't have a custom delay and are not excluded
@@ -599,7 +599,7 @@ class FadeLightsPanel extends LitElement {
   async _saveConfig(entityId, field, value) {
     try {
       await this.hass.callWS({
-        type: "fade_lights/save_light_config",
+        type: "fado/save_light_config",
         entity_id: entityId,
         [field]: value,
       });
@@ -830,7 +830,7 @@ class FadeLightsPanel extends LitElement {
     try {
       const unsub = await this.hass.connection.subscribeMessage(
         (event) => this._handleAutoconfigureEvent(event),
-        { type: "fade_lights/autoconfigure", entity_ids: entityIds }
+        { type: "fado/autoconfigure", entity_ids: entityIds }
       );
       // Store unsub function if we need to cancel later
       this._autoconfigureUnsub = unsub;
@@ -925,7 +925,7 @@ class FadeLightsPanel extends LitElement {
 
     // Save to backend
     await this.hass.callWS({
-      type: "fade_lights/save_light_config",
+      type: "fado/save_light_config",
       entity_id: entityId,
       native_transitions: nativeTransitions,
     });
@@ -935,7 +935,7 @@ class FadeLightsPanel extends LitElement {
     const isTesting = this._isTesting();
     return html`
       <div class="header-row">
-        <h1>Fade Lights</h1>
+        <h1>Fado</h1>
       </div>
       <div class="controls-row">
         <div class="log-level-selector">
@@ -965,7 +965,7 @@ class FadeLightsPanel extends LitElement {
     if (!this.hass || this._loading) {
       return html`
         <div class="header-row">
-          <h1>Fade Lights</h1>
+          <h1>Fado</h1>
         </div>
         <div class="loading-container">
           <div class="spinner"></div>
@@ -1136,4 +1136,4 @@ class FadeLightsPanel extends LitElement {
   }
 }
 
-customElements.define("fade-lights-panel", FadeLightsPanel);
+customElements.define("fado-panel", FadoPanel);

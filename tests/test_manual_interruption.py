@@ -16,7 +16,7 @@ from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights import (
+from custom_components.fado import (
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_EXPECTED_STATE,
@@ -24,13 +24,13 @@ from custom_components.fade_lights import (
     RESTORE_TASKS,
     ExpectedState,
 )
-from custom_components.fade_lights.const import (
+from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DOMAIN,
-    SERVICE_FADE_LIGHTS,
+    SERVICE_FADO,
 )
-from custom_components.fade_lights.expected_state import ExpectedValues
+from custom_components.fado.expected_state import ExpectedValues
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ async def test_manual_brightness_change_cancels_fade(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 20,  # Fade down to 51 brightness
                 ATTR_TRANSITION: 5,  # Long transition so we can interrupt
@@ -161,7 +161,7 @@ async def test_manual_turn_off_cancels_fade(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 5,
@@ -221,7 +221,7 @@ async def test_manual_turn_off_preserves_orig_brightness(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 10,  # Fade to 10%
                 ATTR_TRANSITION: 5,
@@ -284,7 +284,7 @@ async def test_new_fade_cancels_previous(
     first_fade = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
@@ -304,7 +304,7 @@ async def test_new_fade_cancels_previous(
     second_fade = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_TRANSITION: 0.5,
@@ -352,7 +352,7 @@ async def test_manual_change_during_fade_updates_orig(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
@@ -717,7 +717,7 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import INTENDED_STATE_QUEUE, _restore_intended_state
+    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
 
     entity_id = "light.test_restore_off"
 
@@ -924,7 +924,7 @@ async def test_cancel_and_wait_for_fade_task_already_done(
 
     This tests line 628 where task.done() is True.
     """
-    from custom_components.fade_lights import _cancel_and_wait_for_fade
+    from custom_components.fado import _cancel_and_wait_for_fade
 
     entity_id = "light.test_already_done"
 
@@ -986,7 +986,7 @@ async def test_get_intended_brightness_returns_none_when_integration_unloaded(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import _get_intended_brightness
+    from custom_components.fado import _get_intended_brightness
 
     # Ensure DOMAIN is not in hass.data (simulating unloaded integration)
     hass.data.pop(DOMAIN, None)
@@ -1013,7 +1013,7 @@ async def test_cancel_and_wait_for_fade_timeout(
     """
     from unittest.mock import patch
 
-    from custom_components.fade_lights import (
+    from custom_components.fado import (
         FADE_COMPLETE_CONDITIONS,
         _cancel_and_wait_for_fade,
     )
@@ -1038,7 +1038,7 @@ async def test_cancel_and_wait_for_fade_timeout(
 
     try:
         # Patch the FADE_CANCEL_TIMEOUT_S to be very short for the test
-        with patch("custom_components.fade_lights.FADE_CANCEL_TIMEOUT_S", 0.05):
+        with patch("custom_components.fado.FADE_CANCEL_TIMEOUT_S", 0.05):
             # Call should timeout but not raise
             await _cancel_and_wait_for_fade(entity_id)
 
@@ -1063,7 +1063,7 @@ async def test_restore_intended_state_when_domain_not_in_hass(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import INTENDED_STATE_QUEUE, _restore_intended_state
+    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
 
     # Ensure DOMAIN is not in hass.data
     hass.data.pop(DOMAIN, None)
@@ -1092,7 +1092,7 @@ async def test_restore_intended_state_when_intended_is_none(
     """
     from unittest.mock import MagicMock, patch
 
-    from custom_components.fade_lights import INTENDED_STATE_QUEUE, _restore_intended_state
+    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
 
     entity_id = "light.test_entity"
 
@@ -1117,7 +1117,7 @@ async def test_restore_intended_state_when_intended_is_none(
 
     try:
         # Make _get_intended_brightness return None
-        with patch("custom_components.fade_lights._get_intended_brightness", return_value=None):
+        with patch("custom_components.fado._get_intended_brightness", return_value=None):
             # Should return early without raising
             await _restore_intended_state(hass, entity_id)
     finally:
@@ -1135,7 +1135,7 @@ async def test_restore_intended_state_when_entity_removed(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fade_lights import INTENDED_STATE_QUEUE, _restore_intended_state
+    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
 
     entity_id = "light.test_removed"
 
@@ -1343,7 +1343,7 @@ async def test_native_transition_no_false_intervention(
     fade_task = asyncio.create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 "entity_id": entity_id,
                 "brightness_pct": 100,
@@ -1389,7 +1389,7 @@ async def test_native_transition_detects_real_intervention(
     fade_task = asyncio.create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 "entity_id": entity_id,
                 "brightness_pct": 100,
@@ -1403,7 +1403,7 @@ async def test_native_transition_detects_real_intervention(
     await asyncio.sleep(0.2)
 
     # Verify fade is active before intervention
-    from custom_components.fade_lights import ACTIVE_FADES
+    from custom_components.fado import ACTIVE_FADES
     assert entity_id in ACTIVE_FADES, "Fade should be active before intervention"
 
     # Manual intervention: jump to 1 (way outside current range - going backwards)

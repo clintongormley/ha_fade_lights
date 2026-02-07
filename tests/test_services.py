@@ -1,4 +1,4 @@
-"""Tests for Fade Lights service parameter handling."""
+"""Tests for Fado service parameter handling."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import (
+from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_FROM,
     ATTR_TRANSITION,
     DEFAULT_TRANSITION,
     DOMAIN,
-    SERVICE_FADE_LIGHTS,
+    SERVICE_FADO,
 )
 
 
@@ -30,12 +30,12 @@ async def test_service_accepts_single_entity(
 ) -> None:
     """Test service works with a single entity_id target."""
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 2,
@@ -61,12 +61,12 @@ async def test_service_accepts_entity_list(
 ) -> None:
     """Test service works with a list of entity_ids in target."""
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 75,
                 ATTR_TRANSITION: 5,
@@ -98,13 +98,13 @@ async def test_service_expands_light_groups(
 ) -> None:
     """Test service expands light groups to individual lights."""
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Call with the group entity
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 60,
                 ATTR_TRANSITION: 3,
@@ -132,13 +132,13 @@ async def test_service_accepts_missing_brightness(
 ) -> None:
     """Test service accepts missing brightness_pct (passes None to fade)."""
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Call with from brightness but no target brightness_pct
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_FROM: {ATTR_BRIGHTNESS_PCT: 20},
                 ATTR_TRANSITION: 2,
@@ -164,13 +164,13 @@ async def test_service_uses_default_transition(
 ) -> None:
     """Test service uses default transition when transition is not provided."""
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Call without transition
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
             },
@@ -197,13 +197,13 @@ async def test_service_deduplicates_entities(
     it should only be faded once.
     """
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # mock_light_entity is both specified directly and is part of mock_light_group
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -255,12 +255,12 @@ async def test_service_expands_nested_groups(
     )
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -292,7 +292,7 @@ async def test_service_requires_target(
     with pytest.raises(MultipleInvalid, match="must contain at least one of"):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -320,12 +320,12 @@ async def test_service_expands_group_with_string_entity_id(
     )
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -362,12 +362,12 @@ async def test_service_filters_non_light_entities_from_target(
     )
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -421,12 +421,12 @@ async def test_service_accepts_device_id_target(
     )
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -474,12 +474,12 @@ async def test_service_accepts_area_id_target(
     )
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -526,13 +526,13 @@ async def test_service_accepts_multiple_target_types(
     )
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         # Target both a specific entity and an area
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -600,12 +600,12 @@ async def test_service_filters_non_light_entities_from_device(
     hass.states.async_set(sensor_id, "25")
 
     with patch(
-        "custom_components.fade_lights._fade_light",
+        "custom_components.fado._fade_light",
         new_callable=AsyncMock,
     ) as mock_fade_light:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -647,7 +647,7 @@ async def test_service_excludes_configured_lights(
     # Call service targeting both
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADE_LIGHTS,
+        SERVICE_FADO,
         {
             "entity_id": ["light.included", "light.excluded"],
             ATTR_BRIGHTNESS_PCT: 50,

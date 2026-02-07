@@ -1,4 +1,4 @@
-"""Tests for Fade Lights brightness restoration logic."""
+"""Tests for Fado brightness restoration logic."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights.const import DOMAIN
+from custom_components.fado.const import DOMAIN
 
 
 @pytest.fixture
@@ -92,7 +92,7 @@ async def test_restore_brightness_on_turn_on(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -146,7 +146,7 @@ async def test_no_restore_if_no_stored_brightness(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -200,7 +200,7 @@ async def test_no_restore_if_already_at_orig(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -254,7 +254,7 @@ async def test_no_restore_for_non_dimmable(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -306,7 +306,7 @@ async def test_storage_persists_across_reload(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         # First setup
@@ -382,7 +382,7 @@ async def test_restore_uses_correct_brightness(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)

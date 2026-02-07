@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up Fade Lights",
+        "title": "Set up Fado",
         "description": "This integration provides smooth light fading with automatic brightness restoration."
       }
     },
@@ -11,7 +11,7 @@
     }
   },
   "services": {
-    "fade_lights": {
+    "fado": {
       "name": "Fade lights",
       "description": "Fades lights to a desired level over a specified transition period.",
       "fields": {

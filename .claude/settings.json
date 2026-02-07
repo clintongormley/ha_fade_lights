@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cp -r /tmp/ha_fade_lights/custom_components/fade_lights /workspaces/homeassistant-core/config/custom_components/)"
-    ]
-  }
+      "Bash(cp -r /tmp/ha-fado/custom_components/fado /workspaces/homeassistant-core/config/custom_components/)",
+    ],
+  },
 }

@@ -8,9 +8,9 @@ from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from custom_components.fade_lights import async_setup_entry
-from custom_components.fade_lights.const import DOMAIN, NOTIFICATION_ID
-from custom_components.fade_lights.notifications import (
+from custom_components.fado import async_setup_entry
+from custom_components.fado.const import DOMAIN, NOTIFICATION_ID
+from custom_components.fado.notifications import (
     _get_unconfigured_lights,
     _notify_unconfigured_lights,
 )
@@ -29,7 +29,7 @@ class TestGetUnconfiguredLights:
     def test_returns_empty_when_domain_not_loaded(self, hass: HomeAssistant) -> None:
         """Test returns empty set when domain not in hass.data."""
         with patch(
-            "custom_components.fade_lights.notifications.er.async_get"
+            "custom_components.fado.notifications.er.async_get"
         ) as mock_er:
             mock_er.return_value.entities = {}
             result = _get_unconfigured_lights(hass)
@@ -45,7 +45,7 @@ class TestGetUnconfiguredLights:
         mock_entry.disabled = False
 
         with patch(
-            "custom_components.fade_lights.notifications.er.async_get"
+            "custom_components.fado.notifications.er.async_get"
         ) as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
@@ -62,7 +62,7 @@ class TestGetUnconfiguredLights:
         mock_entry.disabled = False
 
         with patch(
-            "custom_components.fade_lights.notifications.er.async_get"
+            "custom_components.fado.notifications.er.async_get"
         ) as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
@@ -79,7 +79,7 @@ class TestGetUnconfiguredLights:
         mock_entry.disabled = True
 
         with patch(
-            "custom_components.fade_lights.notifications.er.async_get"
+            "custom_components.fado.notifications.er.async_get"
         ) as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
@@ -96,7 +96,7 @@ class TestGetUnconfiguredLights:
         mock_entry.disabled = False
 
         with patch(
-            "custom_components.fade_lights.notifications.er.async_get"
+            "custom_components.fado.notifications.er.async_get"
         ) as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
@@ -113,7 +113,7 @@ class TestGetUnconfiguredLights:
         mock_entry.disabled = False
 
         with patch(
-            "custom_components.fade_lights.notifications.er.async_get"
+            "custom_components.fado.notifications.er.async_get"
         ) as mock_er:
             mock_er.return_value.entities.values.return_value = [mock_entry]
             result = _get_unconfigured_lights(hass)
@@ -137,10 +137,10 @@ class TestNotifyUnconfiguredLights:
 
         with (
             patch(
-                "custom_components.fade_lights.notifications.er.async_get"
+                "custom_components.fado.notifications.er.async_get"
             ) as mock_er,
             patch(
-                "custom_components.fade_lights.notifications.persistent_notification.async_create"
+                "custom_components.fado.notifications.persistent_notification.async_create"
             ) as mock_create,
         ):
             mock_er.return_value.entities.values.return_value = [mock_entry]
@@ -149,7 +149,7 @@ class TestNotifyUnconfiguredLights:
         mock_create.assert_called_once()
         call_args = mock_create.call_args
         assert "1 light" in call_args[0][1]
-        assert "/fade-lights" in call_args[0][1]
+        assert "/fado" in call_args[0][1]
 
     async def test_creates_notification_plural(self, hass: HomeAssistant) -> None:
         """Test notification message is plural for multiple lights."""
@@ -165,10 +165,10 @@ class TestNotifyUnconfiguredLights:
 
         with (
             patch(
-                "custom_components.fade_lights.notifications.er.async_get"
+                "custom_components.fado.notifications.er.async_get"
             ) as mock_er,
             patch(
-                "custom_components.fade_lights.notifications.persistent_notification.async_create"
+                "custom_components.fado.notifications.persistent_notification.async_create"
             ) as mock_create,
         ):
             mock_er.return_value.entities.values.return_value = mock_entries
@@ -190,10 +190,10 @@ class TestNotifyUnconfiguredLights:
 
         with (
             patch(
-                "custom_components.fade_lights.notifications.er.async_get"
+                "custom_components.fado.notifications.er.async_get"
             ) as mock_er,
             patch(
-                "custom_components.fade_lights.notifications.persistent_notification.async_dismiss"
+                "custom_components.fado.notifications.persistent_notification.async_dismiss"
             ) as mock_dismiss,
         ):
             mock_er.return_value.entities.values.return_value = [mock_entry]
@@ -209,10 +209,10 @@ class TestNotifyUnconfiguredLights:
 
         with (
             patch(
-                "custom_components.fade_lights.notifications.er.async_get"
+                "custom_components.fado.notifications.er.async_get"
             ) as mock_er,
             patch(
-                "custom_components.fade_lights.notifications.persistent_notification.async_dismiss"
+                "custom_components.fado.notifications.persistent_notification.async_dismiss"
             ) as mock_dismiss,
         ):
             mock_er.return_value.entities.values.return_value = []
@@ -233,13 +233,13 @@ class TestSetupNotification:
 
         with (
             patch(
-                "custom_components.fade_lights.async_register_websocket_api"
+                "custom_components.fado.async_register_websocket_api"
             ),
             patch(
-                "custom_components.fade_lights._notify_unconfigured_lights"
+                "custom_components.fado._notify_unconfigured_lights"
             ) as mock_notify,
             patch(
-                "custom_components.fade_lights._apply_stored_log_level"
+                "custom_components.fado._apply_stored_log_level"
             ),
         ):
             hass.http = None  # Skip panel registration
@@ -261,11 +261,11 @@ class TestEntityRegistryNotification:
         mock_entry.async_on_unload = MagicMock()
 
         with (
-            patch("custom_components.fade_lights.async_register_websocket_api"),
+            patch("custom_components.fado.async_register_websocket_api"),
             patch(
-                "custom_components.fade_lights._notify_unconfigured_lights"
+                "custom_components.fado._notify_unconfigured_lights"
             ) as mock_notify,
-            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
             await async_setup_entry(hass, mock_entry)
@@ -292,11 +292,11 @@ class TestEntityRegistryNotification:
         mock_entry.async_on_unload = MagicMock()
 
         with (
-            patch("custom_components.fade_lights.async_register_websocket_api"),
+            patch("custom_components.fado.async_register_websocket_api"),
             patch(
-                "custom_components.fade_lights._notify_unconfigured_lights"
+                "custom_components.fado._notify_unconfigured_lights"
             ) as mock_notify,
-            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
             await async_setup_entry(hass, mock_entry)
@@ -327,11 +327,11 @@ class TestEntityRegistryNotification:
         mock_entry.async_on_unload = MagicMock()
 
         with (
-            patch("custom_components.fade_lights.async_register_websocket_api"),
+            patch("custom_components.fado.async_register_websocket_api"),
             patch(
-                "custom_components.fade_lights._notify_unconfigured_lights"
+                "custom_components.fado._notify_unconfigured_lights"
             ) as mock_notify,
-            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
             await async_setup_entry(hass, mock_entry)
@@ -358,11 +358,11 @@ class TestEntityRegistryNotification:
         mock_entry.async_on_unload = MagicMock()
 
         with (
-            patch("custom_components.fade_lights.async_register_websocket_api"),
+            patch("custom_components.fado.async_register_websocket_api"),
             patch(
-                "custom_components.fade_lights._notify_unconfigured_lights"
+                "custom_components.fado._notify_unconfigured_lights"
             ) as mock_notify,
-            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
             await async_setup_entry(hass, mock_entry)
@@ -391,11 +391,11 @@ class TestEntityRegistryNotification:
         mock_entry.async_on_unload = MagicMock()
 
         with (
-            patch("custom_components.fade_lights.async_register_websocket_api"),
+            patch("custom_components.fado.async_register_websocket_api"),
             patch(
-                "custom_components.fade_lights._notify_unconfigured_lights"
+                "custom_components.fado._notify_unconfigured_lights"
             ) as mock_notify,
-            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch("custom_components.fado._apply_stored_log_level"),
         ):
             hass.http = None
             await async_setup_entry(hass, mock_entry)
@@ -429,11 +429,11 @@ class TestDailyNotificationTimer:
         mock_entry.async_on_unload = lambda cb: unload_callbacks.append(cb)
 
         with (
-            patch("custom_components.fade_lights.async_register_websocket_api"),
-            patch("custom_components.fade_lights._notify_unconfigured_lights"),
-            patch("custom_components.fade_lights._apply_stored_log_level"),
+            patch("custom_components.fado.async_register_websocket_api"),
+            patch("custom_components.fado._notify_unconfigured_lights"),
+            patch("custom_components.fado._apply_stored_log_level"),
             patch(
-                "custom_components.fade_lights.async_track_time_interval"
+                "custom_components.fado.async_track_time_interval"
             ) as mock_timer,
         ):
             hass.http = None
@@ -451,13 +451,13 @@ class TestSaveConfigNotification:
 
     async def test_notifies_after_save(self, hass: HomeAssistant) -> None:
         """Test notification check is called after saving config."""
-        from custom_components.fade_lights.websocket_api import async_save_light_config
+        from custom_components.fado.websocket_api import async_save_light_config
 
         hass.data[DOMAIN] = {"data": {}, "store": MagicMock()}
         hass.data[DOMAIN]["store"].async_save = AsyncMock()
 
         with patch(
-            "custom_components.fade_lights.websocket_api._notify_unconfigured_lights"
+            "custom_components.fado.websocket_api._notify_unconfigured_lights"
         ) as mock_notify:
             await async_save_light_config(hass, "light.bedroom", min_delay_ms=100)
 

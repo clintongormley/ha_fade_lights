@@ -8,12 +8,12 @@ from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COL
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 from homeassistant.const import STATE_ON
 
-from custom_components.fade_lights import (
+from custom_components.fado import (
     FADE_EXPECTED_STATE,
     ExpectedState,
     _match_and_remove_expected,
 )
-from custom_components.fade_lights.expected_state import ExpectedValues
+from custom_components.fado.expected_state import ExpectedValues
 
 
 @pytest.fixture

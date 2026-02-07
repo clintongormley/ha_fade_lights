@@ -1,4 +1,4 @@
-"""Tests for Fade Lights integration initialization."""
+"""Tests for Fado integration initialization."""
 
 from __future__ import annotations
 
@@ -10,21 +10,21 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights import (
+from custom_components.fado import (
     ACTIVE_FADES,
     FADE_CANCEL_EVENTS,
     FADE_EXPECTED_STATE,
 )
-from custom_components.fade_lights.const import DOMAIN, SERVICE_FADE_LIGHTS
+from custom_components.fado.const import DOMAIN, SERVICE_FADO
 
 
 async def test_setup_entry_registers_service(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test the integration registers the fade_lights service."""
+    """Test the integration registers the fado service."""
     assert DOMAIN in hass.data
-    assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
+    assert hass.services.has_service(DOMAIN, SERVICE_FADO)
 
 
 async def test_setup_entry_loads_storage(
@@ -45,7 +45,7 @@ async def test_setup_entry_loads_storage(
     mock_store.async_save = AsyncMock()
 
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=mock_store,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -64,15 +64,15 @@ async def test_unload_entry_removes_service(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test the integration removes the fade_lights service on unload."""
+    """Test the integration removes the fado service on unload."""
     # Verify service exists before unload
-    assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
+    assert hass.services.has_service(DOMAIN, SERVICE_FADO)
 
     await hass.config_entries.async_unload(init_integration.entry_id)
     await hass.async_block_till_done()
 
     # Verify service is removed after unload
-    assert not hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
+    assert not hass.services.has_service(DOMAIN, SERVICE_FADO)
 
 
 async def test_unload_entry_clears_tracking_dicts(
@@ -134,7 +134,7 @@ async def test_options_update_reloads_entry(
 
     # Update options with a patch to track the reload
     with patch(
-        "custom_components.fade_lights.Store",
+        "custom_components.fado.Store",
         return_value=AsyncMock(async_load=AsyncMock(return_value={}), async_save=AsyncMock()),
     ):
         hass.config_entries.async_update_entry(
@@ -147,14 +147,14 @@ async def test_options_update_reloads_entry(
     assert init_integration.state is ConfigEntryState.LOADED
 
     # Verify the service is still available (entry was reloaded, not just unloaded)
-    assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
+    assert hass.services.has_service(DOMAIN, SERVICE_FADO)
 
 
 async def test_async_setup_auto_import_when_no_entries(
     hass: HomeAssistant,
 ) -> None:
     """Test async_setup triggers config flow when no entries exist."""
-    from custom_components.fade_lights import async_setup
+    from custom_components.fado import async_setup
 
     # Track if flow was initiated
     flow_init_called = False
@@ -180,7 +180,7 @@ async def test_async_setup_no_auto_import_when_entry_exists(
     mock_config_entry: MockConfigEntry,
 ) -> None:
     """Test async_setup does not trigger config flow when entries exist."""
-    from custom_components.fade_lights import async_setup
+    from custom_components.fado import async_setup
 
     # Add entry to hass before calling async_setup
     mock_config_entry.add_to_hass(hass)
@@ -206,7 +206,7 @@ async def test_store_orig_brightness_when_domain_not_in_hass(
     hass: HomeAssistant,
 ) -> None:
     """Test _store_orig_brightness returns early when DOMAIN not in hass.data."""
-    from custom_components.fade_lights import _store_orig_brightness
+    from custom_components.fado import _store_orig_brightness
 
     # Ensure DOMAIN is not in hass.data
     hass.data.pop(DOMAIN, None)
@@ -222,7 +222,7 @@ async def test_save_storage_when_domain_not_in_hass(
     hass: HomeAssistant,
 ) -> None:
     """Test _save_storage returns early when DOMAIN not in hass.data."""
-    from custom_components.fade_lights import _save_storage
+    from custom_components.fado import _save_storage
 
     # Ensure DOMAIN is not in hass.data
     hass.data.pop(DOMAIN, None)
@@ -239,7 +239,7 @@ async def test_handle_off_to_on_when_domain_not_in_hass(
     mock_light_entity: str,
 ) -> None:
     """Test _handle_off_to_on returns early when DOMAIN not in hass.data."""
-    from custom_components.fade_lights import _handle_off_to_on
+    from custom_components.fado import _handle_off_to_on
 
     # Ensure DOMAIN is not in hass.data
     hass.data.pop(DOMAIN, None)
@@ -254,11 +254,11 @@ async def test_handle_off_to_on_when_domain_not_in_hass(
     # This is implicitly tested by not raising and no side effects
 
 
-async def test_fade_lights_skips_unavailable_entities(
+async def test_fado_skips_unavailable_entities(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test that fade_lights service skips unavailable entities."""
+    """Test that fado service skips unavailable entities."""
     from homeassistant.const import STATE_UNAVAILABLE
 
     # Create two lights - one available, one unavailable
@@ -280,12 +280,12 @@ async def test_fade_lights_skips_unavailable_entities(
         faded_entities.append(entity_id)
 
     with patch(
-        "custom_components.fade_lights._execute_fade",
+        "custom_components.fado._execute_fade",
         side_effect=mock_execute_fade,
     ):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADE_LIGHTS,
+            SERVICE_FADO,
             {
                 "entity_id": ["light.available", "light.unavailable"],
                 "brightness_pct": 50,

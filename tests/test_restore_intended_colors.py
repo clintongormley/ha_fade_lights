@@ -8,7 +8,7 @@ from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COL
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 from homeassistant.const import STATE_ON
 
-from custom_components.fade_lights import (
+from custom_components.fado import (
     DOMAIN,
     INTENDED_STATE_QUEUE,
     _restore_intended_state,
@@ -57,11 +57,11 @@ class TestRestoreIntendedColors:
         try:
             with (
                 patch(
-                    "custom_components.fade_lights._cancel_and_wait_for_fade",
+                    "custom_components.fado._cancel_and_wait_for_fade",
                     new_callable=AsyncMock,
                 ),
                 patch(
-                    "custom_components.fade_lights._wait_until_stale_events_flushed",
+                    "custom_components.fado._wait_until_stale_events_flushed",
                     new_callable=AsyncMock,
                 ),
             ):
@@ -105,11 +105,11 @@ class TestRestoreIntendedColors:
         try:
             with (
                 patch(
-                    "custom_components.fade_lights._cancel_and_wait_for_fade",
+                    "custom_components.fado._cancel_and_wait_for_fade",
                     new_callable=AsyncMock,
                 ),
                 patch(
-                    "custom_components.fade_lights._wait_until_stale_events_flushed",
+                    "custom_components.fado._wait_until_stale_events_flushed",
                     new_callable=AsyncMock,
                 ),
             ):
@@ -151,11 +151,11 @@ class TestRestoreIntendedColors:
         try:
             with (
                 patch(
-                    "custom_components.fade_lights._cancel_and_wait_for_fade",
+                    "custom_components.fado._cancel_and_wait_for_fade",
                     new_callable=AsyncMock,
                 ),
                 patch(
-                    "custom_components.fade_lights._wait_until_stale_events_flushed",
+                    "custom_components.fado._wait_until_stale_events_flushed",
                     new_callable=AsyncMock,
                 ),
             ):

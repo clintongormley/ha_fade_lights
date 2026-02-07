@@ -6,13 +6,13 @@ from homeassistant.components.light import ATTR_BRIGHTNESS
 from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 
-from custom_components.fade_lights.fade_change import (
+from custom_components.fado.fade_change import (
     _resolve_end_brightness,
     _resolve_start_brightness,
     _resolve_start_hs,
     _resolve_start_mireds,
 )
-from custom_components.fade_lights.fade_params import FadeParams
+from custom_components.fado.fade_params import FadeParams
 
 
 class TestResolveStartBrightness:

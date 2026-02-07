@@ -12,14 +12,14 @@ from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fade_lights import (
+from custom_components.fado import (
     FADE_EXPECTED_STATE,
     ExpectedState,
     _add_expected_brightness,
     _match_and_remove_expected,
     _wait_until_stale_events_flushed,
 )
-from custom_components.fade_lights.expected_state import ExpectedValues
+from custom_components.fado.expected_state import ExpectedValues
 
 
 def _has_brightness(expected_state: ExpectedState, brightness: int) -> bool:

@@ -52,7 +52,7 @@ async def _notify_unconfigured_lights(hass: HomeAssistant) -> None:
     """Check for unconfigured lights and show/dismiss notification.
 
     If there are unconfigured lights, creates or updates a persistent notification
-    with a link to the Fade Lights panel. If all lights are configured, dismisses
+    with a link to the Fado panel. If all lights are configured, dismisses
     any existing notification.
     """
     unconfigured = _get_unconfigured_lights(hass)
@@ -61,12 +61,12 @@ async def _notify_unconfigured_lights(hass: HomeAssistant) -> None:
         count = len(unconfigured)
         message = (
             f"{count} light{'s' if count != 1 else ''} detected without configuration. "
-            "[Configure now](/fade-lights)"
+            "[Configure now](/fado)"
         )
         persistent_notification.async_create(
             hass,
             message,
-            title="Fade Lights: Autoconfiguration required",
+            title="Fado: Autoconfiguration required",
             notification_id=NOTIFICATION_ID,
         )
     else:
