@@ -132,11 +132,11 @@ class FadeCoordinator:
         return self._entities[entity_id]
 
     # --------------------------------------------------------------------- #
-    # Service handler: fado
+    # Service handler: fade_lights
     # --------------------------------------------------------------------- #
 
-    async def handle_fado(self, call: ServiceCall) -> None:
-        """Handle the fado service call."""
+    async def handle_fade_lights(self, call: ServiceCall) -> None:
+        """Handle the fade_lights service call."""
         # Remove target fields (entity_id, device_id, area_id, etc.) from service data
         # before parsing fade parameters - these are handled separately via TargetSelection
         service_data = remove_entity_service_fields(call)

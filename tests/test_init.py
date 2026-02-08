@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fado.const import DOMAIN, SERVICE_FADO
+from custom_components.fado.const import DOMAIN, SERVICE_FADE_LIGHTS
 from custom_components.fado.coordinator import FadeCoordinator
 
 
@@ -20,7 +20,7 @@ async def test_setup_entry_registers_service(
 ) -> None:
     """Test the integration registers the fado service."""
     assert DOMAIN in hass.data
-    assert hass.services.has_service(DOMAIN, SERVICE_FADO)
+    assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
 
 
 async def test_setup_entry_loads_storage(
@@ -62,13 +62,13 @@ async def test_unload_entry_removes_service(
 ) -> None:
     """Test the integration removes the fado service on unload."""
     # Verify service exists before unload
-    assert hass.services.has_service(DOMAIN, SERVICE_FADO)
+    assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
 
     await hass.config_entries.async_unload(init_integration.entry_id)
     await hass.async_block_till_done()
 
     # Verify service is removed after unload
-    assert not hass.services.has_service(DOMAIN, SERVICE_FADO)
+    assert not hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
 
 
 async def test_unload_entry_clears_tracking_dicts(
@@ -140,7 +140,7 @@ async def test_options_update_reloads_entry(
     assert init_integration.state is ConfigEntryState.LOADED
 
     # Verify the service is still available (entry was reloaded, not just unloaded)
-    assert hass.services.has_service(DOMAIN, SERVICE_FADO)
+    assert hass.services.has_service(DOMAIN, SERVICE_FADE_LIGHTS)
 
 
 async def test_async_setup_auto_import_when_no_entries(
@@ -227,7 +227,7 @@ async def test_fado_skips_unavailable_entities(
     ):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": ["light.available", "light.unavailable"],
                 "brightness_pct": 50,

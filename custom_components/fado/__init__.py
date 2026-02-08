@@ -38,7 +38,7 @@ from .const import (
     LOG_LEVEL_WARNING,
     OPTION_LOG_LEVEL,
     OPTION_MIN_STEP_DELAY_MS,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
     STORAGE_KEY,
     UNCONFIGURED_CHECK_INTERVAL_HOURS,
 )
@@ -79,9 +79,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN] = coordinator
 
-    async def handle_fado(call: ServiceCall) -> None:
+    async def handle_fade_lights(call: ServiceCall) -> None:
         """Service handler wrapper."""
-        await coordinator.handle_fado(call)
+        await coordinator.handle_fade_lights(call)
 
     @callback
     def handle_light_state_change(event: Event[EventStateChangedData]) -> None:
@@ -101,8 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(
         DOMAIN,
-        SERVICE_FADO,
-        handle_fado,
+        SERVICE_FADE_LIGHTS,
+        handle_fade_lights,
         schema=cv.make_entity_service_schema(
             {vol.Optional("easing", default="auto"): vol.In(valid_easing)},
             extra=vol.ALLOW_EXTRA,
@@ -223,7 +223,7 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     coordinator: FadeCoordinator = hass.data[DOMAIN]
     await coordinator.shutdown()
 
-    hass.services.async_remove(DOMAIN, SERVICE_FADO)
+    hass.services.async_remove(DOMAIN, SERVICE_FADE_LIGHTS)
     hass.data.pop(DOMAIN, None)
 
     # Remove the panel

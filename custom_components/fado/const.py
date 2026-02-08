@@ -3,7 +3,7 @@
 DOMAIN = "fado"
 
 # Services
-SERVICE_FADO = "fado"
+SERVICE_FADE_LIGHTS = "fade_lights"
 
 # Service attributes
 ATTR_BRIGHTNESS = "brightness"

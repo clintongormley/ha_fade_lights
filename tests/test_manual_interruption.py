@@ -20,7 +20,7 @@ from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
 from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.expected_state import ExpectedState, ExpectedValues
@@ -95,7 +95,7 @@ async def test_manual_brightness_change_cancels_fade(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 20,  # Fade down to 51 brightness
                 ATTR_TRANSITION: 5,  # Long transition so we can interrupt
@@ -157,7 +157,7 @@ async def test_manual_turn_off_cancels_fade(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 5,
@@ -220,7 +220,7 @@ async def test_manual_turn_off_preserves_orig_brightness(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 10,  # Fade to 10%
                 ATTR_TRANSITION: 5,
@@ -286,7 +286,7 @@ async def test_new_fade_cancels_previous(
     first_fade = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
@@ -308,7 +308,7 @@ async def test_new_fade_cancels_previous(
     second_fade = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_TRANSITION: 0.5,
@@ -356,7 +356,7 @@ async def test_manual_change_during_fade_updates_orig(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
@@ -1383,7 +1383,7 @@ async def test_native_transition_no_false_intervention(
     fade_task = asyncio.create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 "brightness_pct": 100,
@@ -1433,7 +1433,7 @@ async def test_native_transition_detects_real_intervention(
     fade_task = asyncio.create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 "brightness_pct": 100,

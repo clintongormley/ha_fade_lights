@@ -19,7 +19,7 @@ from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
 
 
@@ -112,7 +112,7 @@ async def test_fade_down_reaches_target(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 20,  # 20% of 255 = 51
             ATTR_TRANSITION: 0.5,  # Short transition for faster test
@@ -150,7 +150,7 @@ async def test_fade_up_reaches_target(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 80,  # 80% of 255 = 204
             ATTR_TRANSITION: 0.5,
@@ -186,7 +186,7 @@ async def test_fade_to_zero_turns_off(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 0.5,
@@ -225,7 +225,7 @@ async def test_fade_already_at_target_no_op(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 50,  # Same as current
             ATTR_TRANSITION: 1,
@@ -258,7 +258,7 @@ async def test_fade_skips_brightness_level_1(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 0.5,
@@ -292,7 +292,7 @@ async def test_fade_non_dimmable_to_zero(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 1,
@@ -329,7 +329,7 @@ async def test_fade_non_dimmable_to_nonzero(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 50,
             ATTR_TRANSITION: 1,
@@ -362,7 +362,7 @@ async def test_fade_unknown_entity_logs_warning(
     with caplog.at_level(logging.WARNING):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 1,
@@ -398,7 +398,7 @@ async def test_fade_stores_orig_brightness(
     # Fade to 60% (153 brightness)
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 60,
             ATTR_TRANSITION: 0.3,
@@ -432,7 +432,7 @@ async def test_fade_from_off_turns_on(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 50,
             ATTR_TRANSITION: 0.3,
@@ -481,7 +481,7 @@ async def test_fade_step_count_limited_by_brightness_levels(
     # Without the fix, this would try to do many more steps
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 75,  # 75% = 191, so ~9 levels difference
             ATTR_TRANSITION: 10,
@@ -519,7 +519,7 @@ async def test_fade_steps_spread_across_transition_time(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             ATTR_BRIGHTNESS_PCT: 0,
             ATTR_TRANSITION: 0.5,  # 500ms transition
@@ -586,7 +586,7 @@ async def test_fade_timing_accounts_for_service_call_duration(
     ):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 90,  # Small change for fewer steps
                 ATTR_TRANSITION: 0.5,  # 500ms
@@ -776,7 +776,7 @@ async def test_per_light_min_delay_overrides_global(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             "entity_id": entity_id,
             ATTR_BRIGHTNESS_PCT: 0,
@@ -821,7 +821,7 @@ async def test_native_transitions_adds_transition_to_turn_on(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             "entity_id": entity_id,
             ATTR_BRIGHTNESS_PCT: 50,
@@ -859,7 +859,7 @@ async def test_native_transitions_false_no_transition(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             "entity_id": entity_id,
             ATTR_BRIGHTNESS_PCT: 50,
@@ -899,7 +899,7 @@ async def test_native_transitions_skips_first_step_with_from(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             "entity_id": entity_id,
             ATTR_BRIGHTNESS_PCT: 80,
@@ -941,7 +941,7 @@ async def test_native_transitions_first_step_has_transition_without_from(
 
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             "entity_id": entity_id,
             ATTR_BRIGHTNESS_PCT: 50,
@@ -993,7 +993,7 @@ async def test_native_transition_tracks_range(
     with patch.object(ExpectedState, "add", track_add):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 ATTR_BRIGHTNESS_PCT: 100,
@@ -1072,7 +1072,7 @@ async def test_min_brightness_from_light_config_passed_to_resolve(
     with patch.object(FadeChange, "resolve", tracking_resolve):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 ATTR_BRIGHTNESS_PCT: 5,  # Low brightness target
@@ -1131,7 +1131,7 @@ async def test_min_brightness_defaults_to_1_when_not_configured(
     with patch.object(FadeChange, "resolve", tracking_resolve):
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 ATTR_BRIGHTNESS_PCT: 50,
@@ -1174,7 +1174,7 @@ async def test_min_brightness_clamps_fade_steps(
     # Fade to 1% (normally 2-3 brightness, but should clamp to 20)
     await hass.services.async_call(
         DOMAIN,
-        SERVICE_FADO,
+        SERVICE_FADE_LIGHTS,
         {
             "entity_id": entity_id,
             ATTR_BRIGHTNESS_PCT: 1,  # 1% = 2 brightness normally

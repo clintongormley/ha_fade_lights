@@ -17,7 +17,7 @@ from custom_components.fado.const import (
     ATTR_TRANSITION,
     ATTR_XY_COLOR,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
 
 
@@ -34,7 +34,7 @@ class TestColorParameterValidation:
         with pytest.raises(ServiceValidationError, match="Only one color parameter"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_COLOR_TEMP_KELVIN: 4000,
@@ -53,7 +53,7 @@ class TestColorParameterValidation:
         with pytest.raises(ServiceValidationError, match="Only one color parameter"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_RGB_COLOR: [255, 128, 0],
@@ -72,7 +72,7 @@ class TestColorParameterValidation:
         # Should not raise
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_HS_COLOR: [200, 80],
                 ATTR_TRANSITION: 0.1,
@@ -90,7 +90,7 @@ class TestColorParameterValidation:
         """Test service accepts a single color_temp_kelvin parameter."""
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_COLOR_TEMP_KELVIN: 4000,
                 ATTR_TRANSITION: 0.1,
@@ -108,7 +108,7 @@ class TestColorParameterValidation:
         """Test service accepts brightness_pct alongside a color parameter."""
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_HS_COLOR: [200, 80],
@@ -321,7 +321,7 @@ class TestFromParameter:
         with pytest.raises(ServiceValidationError, match="Only one color parameter"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     "from": {
@@ -347,7 +347,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Hh]ue"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [400, 50],  # Invalid hue
                 },
@@ -365,7 +365,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Ss]aturation"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 150],  # Invalid saturation
                 },
@@ -383,7 +383,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="RGB"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_RGB_COLOR: [300, 128, 0],  # Invalid R
                 },
@@ -401,7 +401,7 @@ class TestValueRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Cc]olor temp"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_COLOR_TEMP_KELVIN: 500,  # Too low
                 },
@@ -419,7 +419,7 @@ class TestValueRangeValidation:
         # Should not raise
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_HS_COLOR: [360, 100],  # Max valid values
                 ATTR_TRANSITION: 0.1,
