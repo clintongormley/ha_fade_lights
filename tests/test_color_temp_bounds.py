@@ -193,7 +193,7 @@ class TestHybridTransitionsWithBounds:
 
         assert change is not None
         # Should be hybrid transition
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
         # End mireds should be clamped to 500
         assert change.end_mireds == 500
 
@@ -216,7 +216,7 @@ class TestHybridTransitionsWithBounds:
 
         assert change is not None
         # Should be hybrid transition
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
         # Start mireds should be clamped to 500
         assert change.start_mireds == 500
 

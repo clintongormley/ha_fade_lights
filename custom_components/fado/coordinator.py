@@ -330,9 +330,9 @@ class FadeCoordinator:
             fade.end_hs,
             fade.start_mireds,
             fade.end_mireds,
-            fade._easing_name,
-            fade._hybrid_direction,
-            fade._crossover_step,
+            fade.easing_name,
+            fade.hybrid_direction,
+            fade.crossover_step,
             delay_ms,
             native_transitions,
         )

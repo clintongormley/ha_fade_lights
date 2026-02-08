@@ -79,8 +79,8 @@ class TestColorTempToHsFade:
 
         # Verify we get a hybrid FadeChange
         assert change is not None
-        assert change._hybrid_direction == "mireds_to_hs"
-        assert change._crossover_step is not None
+        assert change.hybrid_direction == "mireds_to_hs"
+        assert change.crossover_step is not None
 
         # Verify start mireds comes from state
         assert change.start_mireds == 333  # 3003K -> 333 mireds
@@ -126,7 +126,7 @@ class TestColorTempToHsFade:
 
         # Should be simple HS-to-HS fade (NOT hybrid)
         assert change is not None
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
         assert change.start_hs == (200.0, 50.0)
         assert change.end_hs == (0.0, 100.0)
 
@@ -161,7 +161,7 @@ class TestColorTempToHsFade:
 
         # Should be simple mireds fade (NOT hybrid)
         assert change is not None
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
         assert change.start_mireds == 333  # 3003K -> 333 mireds
         assert change.end_mireds == 200  # 5000K -> 200 mireds
 
@@ -192,7 +192,7 @@ class TestColorTempToHsFade:
         )
 
         assert change is not None
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
 
         # Iterate through all steps and verify we get both color types
         steps_with_color_temp = 0
@@ -242,8 +242,8 @@ class TestHsToColorTempFade:
 
         # Should be hybrid HS->mireds transition
         assert change is not None
-        assert change._hybrid_direction == "hs_to_mireds"
-        assert change._crossover_step is not None
+        assert change.hybrid_direction == "hs_to_mireds"
+        assert change.crossover_step is not None
         assert change.start_hs == (120.0, 100.0)
         assert change.end_mireds == 250  # 4000K = 250 mireds
 
@@ -281,4 +281,4 @@ class TestHsToColorTempFade:
 
         # Should NOT be hybrid (on locus can go directly to mireds)
         assert change is not None
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
