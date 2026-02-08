@@ -807,6 +807,12 @@ class FadeCoordinator:
         """
         return self.data.get(entity_id, {})
 
+    def get_or_create_light_config(self, entity_id: str) -> dict[str, Any]:
+        """Get per-light configuration, creating it if it doesn't exist."""
+        if entity_id not in self.data:
+            self.data[entity_id] = {}
+        return self.data[entity_id]
+
     def get_orig_brightness(self, entity_id: str) -> int:
         """Get stored original brightness for an entity."""
         return self.get_light_config(entity_id).get("orig_brightness", 0)

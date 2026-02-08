@@ -90,9 +90,7 @@ async def async_autoconfigure_light(hass: HomeAssistant, entity_id: str) -> dict
 
     # Temporarily exclude light to suppress main integration state monitoring
     coordinator: FadeCoordinator = hass.data[DOMAIN]
-    if entity_id not in coordinator.data:
-        coordinator.data[entity_id] = {}
-    light_config = coordinator.data[entity_id]
+    light_config = coordinator.get_or_create_light_config(entity_id)
     light_config["exclude"] = True
 
     try:
