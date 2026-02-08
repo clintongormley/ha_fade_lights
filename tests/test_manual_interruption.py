@@ -945,14 +945,11 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
             await fake_task
 
 
-async def test_cancel_and_wait_for_fade_task_already_done(
+async def test_cancel_and_wait_task_already_done(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _cancel_and_wait_for_fade handles task that is already done.
-
-    This tests line 628 where task.done() is True.
-    """
+    """Test cancel_and_wait handles task that is already done."""
     coordinator: FadeCoordinator = hass.data[DOMAIN]
     entity_id = "light.test_already_done"
 
@@ -969,11 +966,11 @@ async def test_cancel_and_wait_for_fade_task_already_done(
     entity.cancel_event = cancel_event
 
     try:
-        # Call _cancel_and_wait_for_fade with already-done task
-        await coordinator._cancel_and_wait_for_fade(entity_id)
+        # Call cancel_and_wait with already-done task
+        await entity.cancel_and_wait()
 
         # Should complete without error
-        # The task was already done, so it should just log and return
+        # The task was already done, so it should just return
 
     finally:
         # Clean up
@@ -1037,14 +1034,11 @@ async def test_get_intended_brightness_returns_none_when_integration_unloaded(
     assert result is None
 
 
-async def test_cancel_and_wait_for_fade_timeout(
+async def test_cancel_and_wait_timeout(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _cancel_and_wait_for_fade handles timeout waiting for cleanup.
-
-    This tests lines 768-769 where TimeoutError is caught.
-    """
+    """Test cancel_and_wait handles timeout waiting for cleanup."""
     from unittest.mock import patch
 
     coordinator: FadeCoordinator = hass.data[DOMAIN]
@@ -1071,9 +1065,9 @@ async def test_cancel_and_wait_for_fade_timeout(
         # Patch the FADE_CANCEL_TIMEOUT_S to be very short for the test
         with patch("custom_components.fado.coordinator.FADE_CANCEL_TIMEOUT_S", 0.05):
             # Call should timeout but not raise
-            await coordinator._cancel_and_wait_for_fade(entity_id)
+            await entity.cancel_and_wait()
 
-        # Should complete without raising - timeout is caught and logged
+        # Should complete without raising - timeout is suppressed
 
     finally:
         # Clean up

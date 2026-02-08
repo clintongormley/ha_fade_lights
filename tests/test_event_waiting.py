@@ -251,27 +251,28 @@ async def test_get_condition_keeps_fresh_values(
     assert _has_brightness(expected_state, 200)
 
 
-async def test_wait_until_stale_events_flushed_returns_immediately_when_empty(
+async def test_wait_for_expected_state_flush_returns_immediately_when_empty(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _wait_until_stale_events_flushed returns immediately when no expected values."""
+    """Test wait_for_expected_state_flush returns immediately when no expected values."""
     entity_id = "light.test_empty"
     coordinator: FadeCoordinator = hass.data[DOMAIN]
 
+    entity = coordinator.get_or_create_entity(entity_id)
     start = time.monotonic()
-    await coordinator._wait_until_stale_events_flushed(entity_id)
+    await entity.wait_for_expected_state_flush()
     elapsed = time.monotonic() - start
 
     # Should return almost immediately
     assert elapsed < 0.1
 
 
-async def test_wait_until_stale_events_flushed_times_out(
+async def test_wait_for_expected_state_flush_times_out(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _wait_until_stale_events_flushed times out when events don't arrive."""
+    """Test wait_for_expected_state_flush times out when events don't arrive."""
     entity_id = "light.test_timeout"
     coordinator: FadeCoordinator = hass.data[DOMAIN]
 
@@ -282,7 +283,7 @@ async def test_wait_until_stale_events_flushed_times_out(
     )
 
     start = time.monotonic()
-    await coordinator._wait_until_stale_events_flushed(entity_id, timeout=0.2)
+    await entity.wait_for_expected_state_flush(timeout=0.2)
     elapsed = time.monotonic() - start
 
     # Should wait approximately the timeout duration
@@ -290,11 +291,11 @@ async def test_wait_until_stale_events_flushed_times_out(
     assert elapsed < 0.5
 
 
-async def test_wait_until_stale_events_flushed_returns_when_notified(
+async def test_wait_for_expected_state_flush_returns_when_notified(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _wait_until_stale_events_flushed returns early when condition is notified."""
+    """Test wait_for_expected_state_flush returns early when condition is notified."""
     entity_id = "light.test_early_return"
     coordinator: FadeCoordinator = hass.data[DOMAIN]
 
@@ -315,7 +316,7 @@ async def test_wait_until_stale_events_flushed_returns_when_notified(
     asyncio.create_task(clear_and_notify())
 
     start = time.monotonic()
-    await coordinator._wait_until_stale_events_flushed(entity_id, timeout=5.0)
+    await entity.wait_for_expected_state_flush(timeout=5.0)
     elapsed = time.monotonic() - start
 
     # Should return well before the 5 second timeout

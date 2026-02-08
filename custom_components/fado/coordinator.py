@@ -140,25 +140,39 @@ class EntityFadeState:
         return tasks
 
     async def cancel_and_wait(self) -> None:
-        """Cancel the active fade and wait for it to finish."""
-        if self.active_task is None:
+        """Cancel the active fade, wait for cleanup, and flush stale events."""
+        if self.active_task is not None:
+            task = self.active_task
+            condition = self.complete_condition
+
+            self.signal_cancel()
+
+            if not task.done():
+                task.cancel()
+
+            if condition:
+                async with condition:
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(
+                            condition.wait_for(lambda: self.active_task is None),
+                            timeout=FADE_CANCEL_TIMEOUT_S,
+                        )
+
+        await self.wait_for_expected_state_flush()
+
+    async def wait_for_expected_state_flush(self, timeout: float = 5.0) -> None:
+        """Wait until all expected state values have been confirmed via state changes."""
+        expected_state = self.expected_state
+        if not expected_state or expected_state.is_empty:
             return
 
-        task = self.active_task
-        condition = self.complete_condition
-
-        self.signal_cancel()
-
-        if not task.done():
-            task.cancel()
-
-        if condition:
+        condition = expected_state.get_condition()
+        with contextlib.suppress(TimeoutError):
             async with condition:
-                with contextlib.suppress(TimeoutError):
-                    await asyncio.wait_for(
-                        condition.wait_for(lambda: self.active_task is None),
-                        timeout=FADE_CANCEL_TIMEOUT_S,
-                    )
+                await asyncio.wait_for(
+                    condition.wait_for(lambda: expected_state.is_empty),
+                    timeout=timeout,
+                )
 
     async def cleanup(self) -> None:
         """Full teardown: cancel tasks, signal events, clear all state."""
@@ -381,9 +395,8 @@ class FadeCoordinator:
         delay_ms = light_config.get("min_delay_ms") or min_step_delay_ms
 
         # Cancel any existing fade for this entity - only one fade per light at a time
-        await self._cancel_and_wait_for_fade(entity_id)
-
         entity = self.get_or_create_entity(entity_id)
+        await entity.cancel_and_wait()
 
         entity.start_fade(asyncio.current_task())
         assert entity.cancel_event is not None  # set by start_fade
@@ -642,47 +655,6 @@ class FadeCoordinator:
         """Register an expected brightness value (convenience wrapper)."""
         self._add_expected_values(entity_id, ExpectedValues(brightness=brightness))
 
-    async def _wait_until_stale_events_flushed(
-        self,
-        entity_id: str,
-        timeout: float = 5.0,
-    ) -> None:
-        """Wait until all expected brightness values have been confirmed via state changes."""
-        entity = self.get_entity(entity_id)
-        expected_state = entity.expected_state if entity else None
-        if not expected_state or expected_state.is_empty:
-            return
-
-        _LOGGER.debug(
-            "%s: waiting for expected state events to be flushed (remaining: %d)",
-            entity_id,
-            len(expected_state.values),
-        )
-        condition = expected_state.get_condition()
-        try:
-            async with condition:
-                await asyncio.wait_for(
-                    condition.wait_for(lambda: expected_state.is_empty),
-                    timeout=timeout,
-                )
-        except TimeoutError:
-            _LOGGER.warning(
-                "%s: Timed out waiting for state events to flush (remaining: %d)",
-                entity_id,
-                len(expected_state.values),
-            )
-
-    # --------------------------------------------------------------------- #
-    # Fade cancellation & synchronisation
-    # --------------------------------------------------------------------- #
-
-    async def _cancel_and_wait_for_fade(self, entity_id: str) -> None:
-        """Cancel any active fade for entity and wait for cleanup."""
-        entity = self.get_entity(entity_id)
-        if entity is not None:
-            await entity.cancel_and_wait()
-        await self._wait_until_stale_events_flushed(entity_id)
-
     # --------------------------------------------------------------------- #
     # OFF -> ON handling
     # --------------------------------------------------------------------- #
@@ -724,7 +696,8 @@ class FadeCoordinator:
             {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: brightness},
             blocking=True,
         )
-        await self._wait_until_stale_events_flushed(entity_id)
+        entity = self.get_or_create_entity(entity_id)
+        await entity.wait_for_expected_state_flush()
 
     # --------------------------------------------------------------------- #
     # Manual intervention / restore intended state
@@ -755,9 +728,8 @@ class FadeCoordinator:
                 "%s: Waiting for state events to flush before restoring intended state",
                 entity_id,
             )
-            await self._cancel_and_wait_for_fade(entity_id)
-
             entity = self.get_or_create_entity(entity_id)
+            await entity.cancel_and_wait()
 
             # Loop until no more intended states are queued
             # (handles case where another manual event arrives during restore)
@@ -832,7 +804,7 @@ class FadeCoordinator:
                             {ATTR_ENTITY_ID: entity_id},
                             blocking=True,
                         )
-                        await self._wait_until_stale_events_flushed(entity_id)
+                        await entity.wait_for_expected_state_flush()
                     else:
                         _LOGGER.debug("%s: already off, nothing to restore", entity_id)
                     continue  # Check for more intended states
@@ -888,7 +860,7 @@ class FadeCoordinator:
                         service_data,
                         blocking=True,
                     )
-                    await self._wait_until_stale_events_flushed(entity_id)
+                    await entity.wait_for_expected_state_flush()
                 else:
                     _LOGGER.debug("%s: already in intended state, nothing to restore", entity_id)
         finally:

@@ -64,7 +64,7 @@ class TestRestoreIntendedColors:
         entity = coordinator.get_or_create_entity(entity_id)
         entity.intended_queue = [old_state, new_state]
 
-        with patch.object(coordinator, "_cancel_and_wait_for_fade", new_callable=AsyncMock):
+        with patch.object(entity, "cancel_and_wait", new_callable=AsyncMock):
             await coordinator._restore_intended_state(entity_id)
 
         # Verify service call includes HS color
@@ -101,7 +101,7 @@ class TestRestoreIntendedColors:
         entity = coordinator.get_or_create_entity(entity_id)
         entity.intended_queue = [old_state, new_state]
 
-        with patch.object(coordinator, "_cancel_and_wait_for_fade", new_callable=AsyncMock):
+        with patch.object(entity, "cancel_and_wait", new_callable=AsyncMock):
             await coordinator._restore_intended_state(entity_id)
 
         # Verify service call includes color temp in kelvin
@@ -136,7 +136,7 @@ class TestRestoreIntendedColors:
         entity = coordinator.get_or_create_entity(entity_id)
         entity.intended_queue = [old_state, new_state]
 
-        with patch.object(coordinator, "_cancel_and_wait_for_fade", new_callable=AsyncMock):
+        with patch.object(entity, "cancel_and_wait", new_callable=AsyncMock):
             await coordinator._restore_intended_state(entity_id)
 
         # No restoration needed
