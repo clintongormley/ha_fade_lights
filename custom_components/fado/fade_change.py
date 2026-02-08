@@ -577,7 +577,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         # Auto-turn-on: when fading color from off state without explicit brightness,
         # automatically fade brightness from min_brightness to stored value (or full brightness)
         # Note: start_brightness is clamped to min_brightness, so check if it equals min_brightness
-        # and the light was off (no brightness in state) or state brightness was below min_brightness
+        # and the light was off (no brightness in state) or brightness was below min
         state_brightness = state_attributes.get(ATTR_BRIGHTNESS)
         light_was_off_or_dim = state_brightness is None or state_brightness < min_brightness
         if (
@@ -825,15 +825,18 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             is_last_step = self._current_step >= count
 
             # Skip if identical to last emitted step (unless it's the last step)
-            if not is_last_step and self._last_emitted_step is not None:
-                if self._steps_equal(step, self._last_emitted_step):
-                    _LOGGER.debug(
-                        "Skipping duplicate step %d/%d: %s",
-                        self._current_step,
-                        count,
-                        step,
-                    )
-                    continue
+            if (
+                not is_last_step
+                and self._last_emitted_step is not None
+                and self._steps_equal(step, self._last_emitted_step)
+            ):
+                _LOGGER.debug(
+                    "Skipping duplicate step %d/%d: %s",
+                    self._current_step,
+                    count,
+                    step,
+                )
+                continue
 
             self._last_emitted_step = step
             return step

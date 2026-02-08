@@ -565,7 +565,7 @@ class TestResolveFadeEdgeCases:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        # When light is off (no brightness in state), start_brightness is clamped to min_brightness (default=1)
+        # When light is off (no brightness), start_brightness is clamped to min (default=1)
         assert change.start_brightness == 1
         assert change.end_brightness == 127
 

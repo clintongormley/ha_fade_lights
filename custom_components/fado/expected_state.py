@@ -255,9 +255,10 @@ class ExpectedState:
             return "exact"
 
         # Phase 2: Range match (only if transitioning)
-        if expected.from_hs_color is not None:
-            if self._hs_range_match(expected.from_hs_color, expected.hs_color, actual.hs_color):
-                return "range"
+        if expected.from_hs_color is not None and self._hs_range_match(
+            expected.from_hs_color, expected.hs_color, actual.hs_color
+        ):
+            return "range"
 
         return None
 
