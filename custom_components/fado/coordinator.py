@@ -439,7 +439,7 @@ class FadeCoordinator:
             self.store_orig_brightness(entity_id, start_brightness)
 
         # Get stored brightness for auto-turn-on when fading color from off
-        stored_brightness = existing_orig if existing_orig > 0 else start_brightness
+        stored_brightness = start_brightness if start_brightness > 0 else existing_orig
 
         # Get per-light minimum brightness from config (detected by autoconfigure)
         light_config = self.get_light_config(entity_id)
