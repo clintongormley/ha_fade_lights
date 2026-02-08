@@ -91,6 +91,81 @@ class EntityFadeState:
     intended_queue: list[State] = field(default_factory=list)
     restore_task: asyncio.Task | None = None
 
+    @property
+    def is_fading(self) -> bool:
+        """True when a fade is actively running."""
+        return self.active_task is not None and self.expected_state is not None
+
+    @property
+    def is_restoring(self) -> bool:
+        """True when a restore task is running."""
+        return self.restore_task is not None
+
+    def start_fade(self, task: asyncio.Task | None) -> None:
+        """Set up state for a new fade operation."""
+        self.cancel_event = asyncio.Event()
+        self.complete_condition = asyncio.Condition()
+        if task is not None:
+            self.active_task = task
+
+    async def finish_fade(self) -> None:
+        """Clean up after a fade completes (success, cancel, or error).
+
+        Clears the active task and cancel event, then notifies any waiters
+        via the completion condition.
+        """
+        self.active_task = None
+        self.cancel_event = None
+
+        condition = self.complete_condition
+        self.complete_condition = None
+        if condition:
+            async with condition:
+                condition.notify_all()
+
+    def signal_cancel(self) -> None:
+        """Signal the active fade to stop early."""
+        if self.cancel_event is not None:
+            self.cancel_event.set()
+
+    def cancel_all_tasks(self) -> list[asyncio.Task]:
+        """Cancel active and restore tasks. Returns cancelled tasks for awaiting."""
+        tasks: list[asyncio.Task] = []
+        if self.active_task is not None:
+            self.active_task.cancel()
+            tasks.append(self.active_task)
+        if self.restore_task is not None:
+            self.restore_task.cancel()
+            tasks.append(self.restore_task)
+        return tasks
+
+    async def cleanup(self) -> None:
+        """Full teardown: cancel tasks, signal events, clear all state."""
+        if self.active_task is not None:
+            task = self.active_task
+            self.active_task = None
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        if self.cancel_event is not None:
+            self.cancel_event.set()
+            self.cancel_event = None
+
+        if self.expected_state is not None:
+            self.expected_state.values.clear()
+            self.expected_state = None
+
+        self.complete_condition = None
+        self.intended_queue = []
+
+        if self.restore_task is not None:
+            task = self.restore_task
+            self.restore_task = None
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
 
 # =============================================================================
 # FadeCoordinator
@@ -219,12 +294,8 @@ class FadeCoordinator:
 
         # During fade or restore: if we get here, state didn't match expected - manual intervention
         entity = self.get_entity(entity_id)
-        is_during_fade = (
-            entity is not None
-            and entity.active_task is not None
-            and entity.expected_state is not None
-        )
-        is_during_restore = entity is not None and entity.restore_task is not None
+        is_during_fade = entity is not None and entity.is_fading
+        is_during_restore = entity is not None and entity.is_restoring
         if is_during_fade or is_during_restore:
             # Manual intervention detected - add to intended state queue
             old_brightness = old_state.attributes.get(ATTR_BRIGHTNESS) if old_state else None
@@ -246,7 +317,7 @@ class FadeCoordinator:
             ent.intended_queue.append(new_state)
 
             # Only spawn restore task if one isn't already running
-            if ent.restore_task is None:
+            if not ent.is_restoring:
                 task = self.hass.async_create_task(self._restore_intended_state(entity_id))
                 ent.restore_task = task
             else:
@@ -293,38 +364,19 @@ class FadeCoordinator:
 
         entity = self.get_or_create_entity(entity_id)
 
-        # Create cancellation event for this fade. We use an Event rather than just
-        # Task.cancel() because we need to check for cancellation at specific points
-        # in the fade loop (between service calls), not interrupt mid-call.
-        cancel_event = asyncio.Event()
-        entity.cancel_event = cancel_event
-
-        # Create completion condition for waiters to know when cleanup is done
-        complete_condition = asyncio.Condition()
-        entity.complete_condition = complete_condition
-
-        # Track this task so external code can cancel it
-        current_task = asyncio.current_task()
-        if current_task:
-            entity.active_task = current_task
+        entity.start_fade(asyncio.current_task())
+        assert entity.cancel_event is not None  # set by start_fade
+        cancel_event = entity.cancel_event
 
         try:
             await self._execute_fade(entity_id, fade_params, delay_ms, cancel_event)
         except asyncio.CancelledError:
             pass  # Normal cancellation, not an error
         finally:
-            # Clean up tracking state regardless of how the fade ended
-            entity.active_task = None
-            entity.cancel_event = None
+            # Clean up tracking state regardless of how the fade ended.
             # Note: expected_state is NOT cleared here - values persist
-            # for event matching and are pruned when next fade starts
-
-            # Notify any waiters that cleanup is complete
-            condition = entity.complete_condition
-            entity.complete_condition = None
-            if condition:
-                async with condition:
-                    condition.notify_all()
+            # for event matching and are pruned when next fade starts.
+            await entity.finish_fade()
 
     async def _execute_fade(
         self,
@@ -619,10 +671,8 @@ class FadeCoordinator:
         task = entity.active_task
         condition = entity.complete_condition
 
-        # Signal cancellation via the cancel event if available
-        if entity.cancel_event is not None:
-            _LOGGER.debug("%s: Setting cancel event", entity_id)
-            entity.cancel_event.set()
+        # Signal cancellation via the cancel event
+        entity.signal_cancel()
 
         # Cancel the task
         if task.done():
@@ -981,37 +1031,7 @@ class FadeCoordinator:
 
         entity = self._entities.get(entity_id)
         if entity is not None:
-            # Cancel active fade if any
-            if entity.active_task is not None:
-                task = entity.active_task
-                entity.active_task = None
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
-
-            # Signal cancellation and remove event
-            if entity.cancel_event is not None:
-                entity.cancel_event.set()
-                entity.cancel_event = None
-
-            # Clear expected state
-            if entity.expected_state is not None:
-                entity.expected_state.values.clear()
-                entity.expected_state = None
-
-            # Remove completion condition
-            entity.complete_condition = None
-
-            # Clear intended state queue
-            entity.intended_queue = []
-
-            # Cancel restore task if any
-            if entity.restore_task is not None:
-                task = entity.restore_task
-                entity.restore_task = None
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+            await entity.cleanup()
 
         # Remove entity from tracking
         self._entities.pop(entity_id, None)
@@ -1026,16 +1046,10 @@ class FadeCoordinator:
     async def shutdown(self) -> None:
         """Shut down all active fades and clean up state."""
         for entity in self._entities.values():
-            if entity.cancel_event:
-                entity.cancel_event.set()
+            entity.signal_cancel()
         tasks = []
         for entity in self._entities.values():
-            if entity.active_task:
-                entity.active_task.cancel()
-                tasks.append(entity.active_task)
-            if entity.restore_task:
-                entity.restore_task.cancel()
-                tasks.append(entity.restore_task)
+            tasks.extend(entity.cancel_all_tasks())
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._entities.clear()
