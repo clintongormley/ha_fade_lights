@@ -187,23 +187,31 @@ class FadeCoordinator:
     # State change handler
     # --------------------------------------------------------------------- #
 
+    def _should_process_state_change(self, new_state: State | None) -> bool:
+        """Check if this state change should be processed."""
+        if not new_state:
+            return False
+        if new_state.domain != LIGHT_DOMAIN:
+            return False
+        # Ignore group helpers (lights that contain other lights)
+        if new_state.attributes.get(ATTR_ENTITY_ID) is not None:
+            return False
+        # Skip excluded lights
+        return not self.get_light_config(new_state.entity_id).get("exclude", False)
+
     @callback
     def handle_state_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle light state changes - detects manual intervention and tracks brightness."""
         new_state: State | None = event.data.get("new_state")
         old_state: State | None = event.data.get("old_state")
 
-        if not _should_process_state_change(new_state):
+        if not self._should_process_state_change(new_state):
             return
 
         # Type narrowing: new_state is guaranteed non-None after _should_process_state_change
         assert new_state is not None
 
         entity_id = new_state.entity_id
-
-        # Skip excluded lights entirely
-        if self.get_light_config(entity_id).get("exclude", False):
-            return
 
         # Check if this is an expected state change (from our service calls)
         if self._match_and_remove_expected(entity_id, new_state):
@@ -1036,16 +1044,6 @@ class FadeCoordinator:
 # =============================================================================
 # Module-level utility functions (stateless)
 # =============================================================================
-
-
-def _should_process_state_change(new_state: State | None) -> bool:
-    """Check if this state change should be processed."""
-    if not new_state:
-        return False
-    if new_state.domain != LIGHT_DOMAIN:
-        return False
-    # Ignore group helpers (lights that contain other lights)
-    return new_state.attributes.get(ATTR_ENTITY_ID) is None
 
 
 def _is_off_to_on_transition(old_state: State | None, new_state: State) -> bool:
