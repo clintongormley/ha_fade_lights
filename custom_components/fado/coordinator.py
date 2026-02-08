@@ -67,15 +67,22 @@ _LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class EntityFadeState:
-    """Per-entity state that replaces the 6 parallel global dicts.
+    """Transient state for a single entity's fade operations.
 
-    Each field corresponds to one of the former module-level dictionaries:
-    - active_task   -> ACTIVE_FADES[entity_id]
-    - cancel_event  -> FADE_CANCEL_EVENTS[entity_id]
-    - complete_condition -> FADE_COMPLETE_CONDITIONS[entity_id]
-    - expected_state -> FADE_EXPECTED_STATE[entity_id]
-    - intended_queue -> INTENDED_STATE_QUEUE[entity_id]
-    - restore_task  -> RESTORE_TASKS[entity_id]
+    Attributes:
+        active_task: The running asyncio.Task executing the current fade.
+            Cancelled when a new fade starts or the entity is cleaned up.
+        cancel_event: Signals the active fade loop to stop early, e.g. when
+            a new fade is requested or the integration is unloaded.
+        complete_condition: Allows callers to wait until the current fade
+            finishes (used by blocking service calls).
+        expected_state: Tracks brightness/state values the fade intends to
+            set, so that state-change listeners can distinguish our own
+            updates from external changes by the user.
+        intended_queue: Queued state snapshots representing the brightness
+            the light should reach once external interference is resolved.
+        restore_task: A delayed task that restores the light to its original
+            brightness after a temporary notification fade completes.
     """
 
     active_task: asyncio.Task | None = None
@@ -94,8 +101,8 @@ class EntityFadeState:
 class FadeCoordinator:
     """Coordinate all fade operations for the Fado integration.
 
-    Owns the per-entity fade state and the storage references that were
-    previously held in ``hass.data[DOMAIN]``.
+    Stored as ``hass.data[DOMAIN]``. Owns per-entity fade state, persistent
+    storage, and all fade/restore/notification logic.
     """
 
     def __init__(
