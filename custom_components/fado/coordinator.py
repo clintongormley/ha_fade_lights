@@ -151,10 +151,8 @@ class FadeCoordinator:
         selected = async_extract_referenced_entity_ids(self.hass, target_selection)
         all_entity_ids = selected.referenced | selected.indirectly_referenced
 
-        # Filter to light domain and expand groups
-        light_prefix = f"{LIGHT_DOMAIN}."
-        light_entity_ids = [eid for eid in all_entity_ids if eid.startswith(light_prefix)]
-        expanded_entities = self._expand_light_groups(light_entity_ids)
+        # Expand groups, filter to light domain, and remove excluded lights
+        expanded_entities = self._expand_light_groups(list(all_entity_ids))
 
         if not expanded_entities:
             _LOGGER.debug("No light entities found in target")
@@ -917,7 +915,7 @@ class FadeCoordinator:
                     group_members = [group_members]
                 # Filter to lights only (groups can technically contain non-lights)
                 pending.extend(m for m in group_members if m.startswith(light_prefix))
-            else:
+            elif entity_id.startswith(light_prefix):
                 result.add(entity_id)
 
         # Filter out excluded lights
