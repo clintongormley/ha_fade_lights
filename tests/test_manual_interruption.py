@@ -1018,7 +1018,6 @@ async def test_get_intended_brightness_returns_none_when_integration_unloaded(
     coordinator = FadeCoordinator(
         hass=mock_hass,
         store=MagicMock(async_save=AsyncMock()),
-        data={},
         min_step_delay_ms=100,
     )
 
@@ -1063,7 +1062,7 @@ async def test_cancel_and_wait_timeout(
 
     try:
         # Patch the FADE_CANCEL_TIMEOUT_S to be very short for the test
-        with patch("custom_components.fado.coordinator.FADE_CANCEL_TIMEOUT_S", 0.05):
+        with patch("custom_components.fado.entity_fade_state.FADE_CANCEL_TIMEOUT_S", 0.05):
             # Call should timeout but not raise
             await entity.cancel_and_wait()
 
@@ -1095,7 +1094,6 @@ async def test_restore_intended_state_when_domain_not_in_hass(
     coordinator = FadeCoordinator(
         hass=mock_hass,
         store=MagicMock(async_save=AsyncMock()),
-        data={},
         min_step_delay_ms=100,
     )
 
