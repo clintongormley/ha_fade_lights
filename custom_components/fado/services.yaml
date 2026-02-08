@@ -29,7 +29,7 @@
       - light.ColorMode.RGBW
       - light.ColorMode.RGBWW
 
-fado:
+fade_lights:
   name: Fade lights
   description: Fades lights to a desired brightness and/or color over a specified transition period.
   target:

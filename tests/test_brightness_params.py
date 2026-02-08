@@ -13,7 +13,7 @@ from custom_components.fado.const import (
     ATTR_FROM,
     ATTR_TRANSITION,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
 from custom_components.fado.fade_params import FadeParams
 
@@ -33,7 +33,7 @@ class TestBrightnessAndBrightnessPctMutualExclusion:
         ):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_BRIGHTNESS_PCT: 50,
                     ATTR_BRIGHTNESS: 128,
@@ -55,7 +55,7 @@ class TestBrightnessAndBrightnessPctMutualExclusion:
         ):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_BRIGHTNESS_PCT: 100,
                     ATTR_FROM: {
@@ -152,7 +152,7 @@ class TestBrightnessRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Bb]rightness.*between 1 and 255"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_BRIGHTNESS: 0,
                 },
@@ -170,7 +170,7 @@ class TestBrightnessRangeValidation:
         with pytest.raises(ServiceValidationError, match="[Bb]rightness.*between 1 and 255"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_BRIGHTNESS: 256,
                 },
@@ -188,7 +188,7 @@ class TestBrightnessRangeValidation:
         with pytest.raises(ServiceValidationError, match="from:.*[Bb]rightness.*between 1 and 255"):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_BRIGHTNESS: 255,
                     ATTR_FROM: {ATTR_BRIGHTNESS: 0},
@@ -207,7 +207,7 @@ class TestBrightnessRangeValidation:
         # Should not raise
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS: 1,
                 ATTR_TRANSITION: 0.1,
@@ -226,7 +226,7 @@ class TestBrightnessRangeValidation:
         # Should not raise
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS: 255,
                 ATTR_TRANSITION: 0.1,

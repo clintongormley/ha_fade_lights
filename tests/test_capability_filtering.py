@@ -11,15 +11,15 @@ from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fado import _can_apply_fade_params
 from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
     ATTR_TRANSITION,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
+from custom_components.fado.coordinator import _can_apply_fade_params
 from custom_components.fado.fade_params import FadeParams
 
 
@@ -155,7 +155,7 @@ class TestServiceHandlerFiltering:
         with caplog.at_level(logging.INFO):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_TRANSITION: 0.1,
@@ -184,7 +184,7 @@ class TestServiceHandlerFiltering:
         with caplog.at_level(logging.INFO):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_COLOR_TEMP_KELVIN: 4000,
                     ATTR_TRANSITION: 0.1,
@@ -213,7 +213,7 @@ class TestServiceHandlerFiltering:
         with caplog.at_level(logging.INFO):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_TRANSITION: 0.1,
@@ -258,7 +258,7 @@ class TestServiceHandlerFiltering:
         with caplog.at_level(logging.INFO):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_HS_COLOR: [200, 80],
                     ATTR_TRANSITION: 0.1,
@@ -287,7 +287,7 @@ class TestServiceHandlerFiltering:
         with caplog.at_level(logging.INFO):
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     ATTR_BRIGHTNESS_PCT: 50,
                     ATTR_TRANSITION: 0.1,

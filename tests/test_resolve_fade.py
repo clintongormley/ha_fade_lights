@@ -235,9 +235,9 @@ class TestResolveFadeHybridTransitions:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        # Should be hybrid - has _hybrid_direction set
-        assert change._hybrid_direction == "hs_to_mireds"
-        assert change._crossover_step is not None
+        # Should be hybrid - has hybrid_direction set
+        assert change.hybrid_direction == "hs_to_mireds"
+        assert change.crossover_step is not None
         assert change._crossover_hs is not None
         assert change._crossover_mireds is not None
 
@@ -255,9 +255,9 @@ class TestResolveFadeHybridTransitions:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        # Should be hybrid - has _hybrid_direction set
-        assert change._hybrid_direction == "mireds_to_hs"
-        assert change._crossover_step is not None
+        # Should be hybrid - has hybrid_direction set
+        assert change.hybrid_direction == "mireds_to_hs"
+        assert change.crossover_step is not None
         assert change._crossover_hs is not None
         assert change._crossover_mireds is not None
 
@@ -277,7 +277,7 @@ class TestResolveFadeHybridTransitions:
 
         assert change is not None
         # Should NOT be hybrid
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
 
     def test_hs_to_hs_is_not_hybrid(self) -> None:
         """Test that HS to HS is simple (not hybrid)."""
@@ -293,7 +293,7 @@ class TestResolveFadeHybridTransitions:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
 
     def test_both_targets_specified_is_not_hybrid(self) -> None:
         """Test that specifying both HS and color temp targets is not hybrid."""
@@ -310,7 +310,7 @@ class TestResolveFadeHybridTransitions:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
 
 
 class TestResolveFadeHybridStepGeneration:
@@ -330,7 +330,7 @@ class TestResolveFadeHybridStepGeneration:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
 
         # Get first step (should be HS)
         step = change.next_step()
@@ -380,7 +380,7 @@ class TestResolveFadeHybridStepGeneration:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
 
         # Get first step (should be color_temp)
         step = change.next_step()
@@ -565,7 +565,7 @@ class TestResolveFadeEdgeCases:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        # When light is off (no brightness in state), start_brightness is clamped to min_brightness (default=1)
+        # When light is off (no brightness), start_brightness is clamped to min (default=1)
         assert change.start_brightness == 1
         assert change.end_brightness == 127
 
@@ -585,7 +585,7 @@ class TestResolveFadeEdgeCases:
 
         assert change is not None
         # On locus means NOT hybrid
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None
 
     def test_saturation_threshold_boundary_off_locus(self) -> None:
         """Test saturation just above threshold is considered off locus."""
@@ -603,7 +603,7 @@ class TestResolveFadeEdgeCases:
 
         assert change is not None
         # Off locus means hybrid
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
 
 
 class TestResolveFadeFadeChangeIterator:

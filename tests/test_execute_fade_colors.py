@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.fado import _execute_fade
+from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.fade_params import FadeParams
 
 
@@ -17,14 +17,17 @@ def mock_hass():
     hass = MagicMock()
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
-    hass.data = {
-        "fado": {
-            "data": {},
-            "store": MagicMock(),
-            "min_step_delay_ms": 100,
-        }
-    }
     return hass
+
+
+@pytest.fixture
+def coordinator(mock_hass):
+    """Create a FadeCoordinator with mock hass."""
+    return FadeCoordinator(
+        hass=mock_hass,
+        store=MagicMock(async_save=AsyncMock()),
+        min_step_delay_ms=100,
+    )
 
 
 @pytest.fixture
@@ -52,7 +55,11 @@ class TestExecuteFadeWithColors:
 
     @pytest.mark.asyncio
     async def test_fade_hs_color_only(
-        self, mock_hass: MagicMock, cancel_event: asyncio.Event, mock_state_on: MagicMock
+        self,
+        mock_hass: MagicMock,
+        coordinator: FadeCoordinator,
+        cancel_event: asyncio.Event,
+        mock_state_on: MagicMock,
     ) -> None:
         """Test fading HS color without brightness change."""
         mock_hass.states.get = MagicMock(return_value=mock_state_on)
@@ -62,14 +69,12 @@ class TestExecuteFadeWithColors:
         )
 
         params.transition_ms = 1000
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                params,
-                100,  # min_step_delay_ms
-                cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            params,
+            100,  # min_step_delay_ms
+            cancel_event,
+        )
 
         # Should have called turn_on with hs_color
         calls = mock_hass.services.async_call.call_args_list
@@ -82,7 +87,11 @@ class TestExecuteFadeWithColors:
 
     @pytest.mark.asyncio
     async def test_fade_color_temp_only(
-        self, mock_hass: MagicMock, cancel_event: asyncio.Event, mock_state_on: MagicMock
+        self,
+        mock_hass: MagicMock,
+        coordinator: FadeCoordinator,
+        cancel_event: asyncio.Event,
+        mock_state_on: MagicMock,
     ) -> None:
         """Test fading color temperature without brightness change."""
         mock_hass.states.get = MagicMock(return_value=mock_state_on)
@@ -92,14 +101,12 @@ class TestExecuteFadeWithColors:
         )
 
         params.transition_ms = 1000
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                params,
-                100,  # min_step_delay_ms
-                cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            params,
+            100,  # min_step_delay_ms
+            cancel_event,
+        )
 
         # Should have called turn_on with color_temp_kelvin
         calls = mock_hass.services.async_call.call_args_list
@@ -112,7 +119,11 @@ class TestExecuteFadeWithColors:
 
     @pytest.mark.asyncio
     async def test_fade_brightness_and_hs_color(
-        self, mock_hass: MagicMock, cancel_event: asyncio.Event, mock_state_on: MagicMock
+        self,
+        mock_hass: MagicMock,
+        coordinator: FadeCoordinator,
+        cancel_event: asyncio.Event,
+        mock_state_on: MagicMock,
     ) -> None:
         """Test fading both brightness and HS color together."""
         mock_hass.states.get = MagicMock(return_value=mock_state_on)
@@ -123,14 +134,12 @@ class TestExecuteFadeWithColors:
         )
 
         params.transition_ms = 1000
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                params,
-                100,  # min_step_delay_ms
-                cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            params,
+            100,  # min_step_delay_ms
+            cancel_event,
+        )
 
         # Should have called turn_on with both brightness and hs_color
         calls = mock_hass.services.async_call.call_args_list
@@ -144,7 +153,11 @@ class TestExecuteFadeWithColors:
 
     @pytest.mark.asyncio
     async def test_brightness_only_fade_unchanged(
-        self, mock_hass: MagicMock, cancel_event: asyncio.Event, mock_state_on: MagicMock
+        self,
+        mock_hass: MagicMock,
+        coordinator: FadeCoordinator,
+        cancel_event: asyncio.Event,
+        mock_state_on: MagicMock,
     ) -> None:
         """Test that brightness-only fade still works (regression test)."""
         mock_hass.states.get = MagicMock(return_value=mock_state_on)
@@ -154,14 +167,12 @@ class TestExecuteFadeWithColors:
             transition_ms=500,
         )
 
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                params,
-                100,  # min_step_delay_ms
-                cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            params,
+            100,  # min_step_delay_ms
+            cancel_event,
+        )
 
         calls = mock_hass.services.async_call.call_args_list
         assert len(calls) > 0

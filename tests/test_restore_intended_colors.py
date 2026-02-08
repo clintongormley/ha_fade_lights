@@ -8,29 +8,37 @@ from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COL
 from homeassistant.components.light import ATTR_HS_COLOR as HA_ATTR_HS_COLOR
 from homeassistant.const import STATE_ON
 
-from custom_components.fado import (
-    DOMAIN,
-    INTENDED_STATE_QUEUE,
-    _restore_intended_state,
-)
+from custom_components.fado.const import DOMAIN
+from custom_components.fado.coordinator import FadeCoordinator
 
 
 @pytest.fixture
 def mock_hass():
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
-    hass.data = {DOMAIN: {"data": {}, "store": MagicMock()}}
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
     hass.states = MagicMock()
     return hass
 
 
+@pytest.fixture
+def coordinator(mock_hass):
+    """Create a FadeCoordinator with mock hass."""
+    coord = FadeCoordinator(
+        hass=mock_hass,
+        store=MagicMock(async_save=AsyncMock()),
+        min_step_delay_ms=100,
+    )
+    mock_hass.data = {DOMAIN: coord}
+    return coord
+
+
 class TestRestoreIntendedColors:
     """Test _restore_intended_state with color support."""
 
     @pytest.mark.asyncio
-    async def test_restore_includes_hs_color(self, mock_hass):
+    async def test_restore_includes_hs_color(self, mock_hass, coordinator):
         """Test restoration includes HS color from manual intervention."""
         entity_id = "light.test"
 
@@ -52,33 +60,22 @@ class TestRestoreIntendedColors:
         mock_hass.states.get.return_value = current_state
 
         # Set up intended state queue: [old_state, intended_state]
-        INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+        entity = coordinator.get_or_create_entity(entity_id)
+        entity.intended_queue = [old_state, new_state]
 
-        try:
-            with (
-                patch(
-                    "custom_components.fado._cancel_and_wait_for_fade",
-                    new_callable=AsyncMock,
-                ),
-                patch(
-                    "custom_components.fado._wait_until_stale_events_flushed",
-                    new_callable=AsyncMock,
-                ),
-            ):
-                await _restore_intended_state(mock_hass, entity_id)
+        with patch.object(entity, "cancel_and_wait", new_callable=AsyncMock):
+            await coordinator._restore_intended_state(entity_id)
 
-            # Verify service call includes HS color
-            mock_hass.services.async_call.assert_called()
-            call_args = mock_hass.services.async_call.call_args
-            service_data = call_args[0][2]  # Third positional arg is the data dict
+        # Verify service call includes HS color
+        mock_hass.services.async_call.assert_called()
+        call_args = mock_hass.services.async_call.call_args
+        service_data = call_args[0][2]  # Third positional arg is the data dict
 
-            assert service_data.get(ATTR_BRIGHTNESS) == 150
-            assert service_data.get(HA_ATTR_HS_COLOR) == (200.0, 60.0)
-        finally:
-            INTENDED_STATE_QUEUE.pop(entity_id, None)
+        assert service_data.get(ATTR_BRIGHTNESS) == 150
+        assert service_data.get(HA_ATTR_HS_COLOR) == (200.0, 60.0)
 
     @pytest.mark.asyncio
-    async def test_restore_includes_color_temp(self, mock_hass):
+    async def test_restore_includes_color_temp(self, mock_hass, coordinator):
         """Test restoration includes color temp from manual intervention."""
         entity_id = "light.test"
 
@@ -100,33 +97,22 @@ class TestRestoreIntendedColors:
         mock_hass.states.get.return_value = current_state
 
         # Set up intended state queue: [old_state, intended_state]
-        INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+        entity = coordinator.get_or_create_entity(entity_id)
+        entity.intended_queue = [old_state, new_state]
 
-        try:
-            with (
-                patch(
-                    "custom_components.fado._cancel_and_wait_for_fade",
-                    new_callable=AsyncMock,
-                ),
-                patch(
-                    "custom_components.fado._wait_until_stale_events_flushed",
-                    new_callable=AsyncMock,
-                ),
-            ):
-                await _restore_intended_state(mock_hass, entity_id)
+        with patch.object(entity, "cancel_and_wait", new_callable=AsyncMock):
+            await coordinator._restore_intended_state(entity_id)
 
-            # Verify service call includes color temp in kelvin
-            mock_hass.services.async_call.assert_called()
-            call_args = mock_hass.services.async_call.call_args
-            service_data = call_args[0][2]
+        # Verify service call includes color temp in kelvin
+        mock_hass.services.async_call.assert_called()
+        call_args = mock_hass.services.async_call.call_args
+        service_data = call_args[0][2]
 
-            assert service_data.get(ATTR_BRIGHTNESS) == 150
-            assert service_data.get(HA_ATTR_COLOR_TEMP_KELVIN) == 2500
-        finally:
-            INTENDED_STATE_QUEUE.pop(entity_id, None)
+        assert service_data.get(ATTR_BRIGHTNESS) == 150
+        assert service_data.get(HA_ATTR_COLOR_TEMP_KELVIN) == 2500
 
     @pytest.mark.asyncio
-    async def test_no_restore_when_current_matches_intended(self, mock_hass):
+    async def test_no_restore_when_current_matches_intended(self, mock_hass, coordinator):
         """Test no service call when current state matches intended."""
         entity_id = "light.test"
 
@@ -146,22 +132,11 @@ class TestRestoreIntendedColors:
         mock_hass.states.get.return_value = current_state
 
         # Set up intended state queue: [old_state, intended_state]
-        INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+        entity = coordinator.get_or_create_entity(entity_id)
+        entity.intended_queue = [old_state, new_state]
 
-        try:
-            with (
-                patch(
-                    "custom_components.fado._cancel_and_wait_for_fade",
-                    new_callable=AsyncMock,
-                ),
-                patch(
-                    "custom_components.fado._wait_until_stale_events_flushed",
-                    new_callable=AsyncMock,
-                ),
-            ):
-                await _restore_intended_state(mock_hass, entity_id)
+        with patch.object(entity, "cancel_and_wait", new_callable=AsyncMock):
+            await coordinator._restore_intended_state(entity_id)
 
-            # No restoration needed
-            mock_hass.services.async_call.assert_not_called()
-        finally:
-            INTENDED_STATE_QUEUE.pop(entity_id, None)
+        # No restoration needed
+        mock_hass.services.async_call.assert_not_called()

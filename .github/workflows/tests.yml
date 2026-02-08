@@ -29,7 +29,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest tests/ \
-            --cov=custom_components.fade_lights \
+            --cov=custom_components.fado \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=90 \

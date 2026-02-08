@@ -16,21 +16,14 @@ from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.fado import (
-    ACTIVE_FADES,
-    FADE_CANCEL_EVENTS,
-    FADE_EXPECTED_STATE,
-    INTENDED_STATE_QUEUE,
-    RESTORE_TASKS,
-    ExpectedState,
-)
 from custom_components.fado.const import (
     ATTR_BRIGHTNESS_PCT,
     ATTR_TRANSITION,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
-from custom_components.fado.expected_state import ExpectedValues
+from custom_components.fado.coordinator import FadeCoordinator
+from custom_components.fado.expected_state import ExpectedState, ExpectedValues
 
 
 @pytest.fixture
@@ -102,7 +95,7 @@ async def test_manual_brightness_change_cancels_fade(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 20,  # Fade down to 51 brightness
                 ATTR_TRANSITION: 5,  # Long transition so we can interrupt
@@ -116,7 +109,9 @@ async def test_manual_brightness_change_cancels_fade(
     await asyncio.sleep(0.2)
 
     # Verify fade is active
-    assert entity_id in ACTIVE_FADES
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_entity(entity_id)
+    assert entity is not None and entity.active_task is not None
 
     # Simulate a manual brightness change (external user sets brightness to 100)
     hass.states.async_set(
@@ -133,7 +128,8 @@ async def test_manual_brightness_change_cancels_fade(
     await asyncio.sleep(0.1)
 
     # Verify fade was cancelled
-    assert entity_id not in ACTIVE_FADES
+    entity = coordinator.get_entity(entity_id)
+    assert entity is None or entity.active_task is None
 
     # Cancel the task to clean up
     fade_task.cancel()
@@ -161,7 +157,7 @@ async def test_manual_turn_off_cancels_fade(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 50,
                 ATTR_TRANSITION: 5,
@@ -175,7 +171,9 @@ async def test_manual_turn_off_cancels_fade(
     await asyncio.sleep(0.2)
 
     # Verify fade is active
-    assert entity_id in ACTIVE_FADES
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_entity(entity_id)
+    assert entity is not None and entity.active_task is not None
 
     # Simulate turning off the light manually
     hass.states.async_set(
@@ -192,7 +190,8 @@ async def test_manual_turn_off_cancels_fade(
     await asyncio.sleep(0.1)
 
     # Verify fade was cancelled
-    assert entity_id not in ACTIVE_FADES
+    entity = coordinator.get_entity(entity_id)
+    assert entity is None or entity.active_task is None
 
     # Clean up
     fade_task.cancel()
@@ -221,7 +220,7 @@ async def test_manual_turn_off_preserves_orig_brightness(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 10,  # Fade to 10%
                 ATTR_TRANSITION: 5,
@@ -235,8 +234,10 @@ async def test_manual_turn_off_preserves_orig_brightness(
     await asyncio.sleep(0.3)
 
     # Verify fade is active and orig brightness was stored
-    assert entity_id in ACTIVE_FADES
-    storage_data = hass.data[DOMAIN]["data"]
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_entity(entity_id)
+    assert entity is not None and entity.active_task is not None
+    storage_data = coordinator.data
     assert entity_id in storage_data
     assert storage_data[entity_id]["orig_brightness"] == initial_brightness
 
@@ -253,7 +254,8 @@ async def test_manual_turn_off_preserves_orig_brightness(
     await asyncio.sleep(0.1)
 
     # Verify fade was cancelled
-    assert entity_id not in ACTIVE_FADES
+    entity = coordinator.get_entity(entity_id)
+    assert entity is None or entity.active_task is None
 
     # Original brightness should still be the pre-fade value
     assert storage_data[entity_id]["orig_brightness"] == initial_brightness
@@ -284,7 +286,7 @@ async def test_new_fade_cancels_previous(
     first_fade = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
@@ -298,13 +300,15 @@ async def test_new_fade_cancels_previous(
     await asyncio.sleep(0.2)
 
     # Verify first fade is active
-    assert entity_id in ACTIVE_FADES
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_entity(entity_id)
+    assert entity is not None and entity.active_task is not None
 
     # Start a second fade (to 80%)
     second_fade = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 80,
                 ATTR_TRANSITION: 0.5,
@@ -352,7 +356,7 @@ async def test_manual_change_during_fade_updates_orig(
     fade_task = hass.async_create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 ATTR_BRIGHTNESS_PCT: 20,
                 ATTR_TRANSITION: 5,
@@ -366,7 +370,8 @@ async def test_manual_change_during_fade_updates_orig(
     await asyncio.sleep(0.2)
 
     # Verify orig brightness was stored at fade start
-    storage_data = hass.data[DOMAIN]["data"]
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    storage_data = coordinator.data
     assert entity_id in storage_data
     assert storage_data[entity_id]["orig_brightness"] == 200
 
@@ -423,7 +428,8 @@ async def test_manual_change_without_fade_stores_new_orig(
     await hass.async_block_till_done()
 
     # Check that the new brightness was stored as original (since no fade was active)
-    storage_data = hass.data[DOMAIN]["data"]
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    storage_data = coordinator.data
     assert entity_id in storage_data
     assert storage_data[entity_id]["orig_brightness"] == 150
 
@@ -466,8 +472,8 @@ async def test_group_changes_ignored(
     # (Groups are detected by having entity_id attribute and are ignored)
 
     # First, set up storage data for the regular light (nested format)
-    hass.data[DOMAIN]["data"][regular_light] = {"orig_brightness": 200}
-    original_value = hass.data[DOMAIN]["data"][regular_light]["orig_brightness"]
+    hass.data[DOMAIN].data[regular_light] = {"orig_brightness": 200}
+    original_value = hass.data[DOMAIN].data[regular_light]["orig_brightness"]
 
     # Now simulate a brightness change on the group light
     hass.states.async_set(
@@ -482,10 +488,10 @@ async def test_group_changes_ignored(
     await hass.async_block_till_done()
 
     # The group's state change should not have stored any brightness for the group
-    assert group_light not in hass.data[DOMAIN]["data"]
+    assert group_light not in hass.data[DOMAIN].data
 
     # The regular light's stored brightness should be unchanged
-    assert hass.data[DOMAIN]["data"][regular_light]["orig_brightness"] == original_value
+    assert hass.data[DOMAIN].data[regular_light]["orig_brightness"] == original_value
 
 
 async def test_brightness_tolerance_allows_rounding(
@@ -508,17 +514,21 @@ async def test_brightness_tolerance_allows_rounding(
         },
     )
 
-    # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    # Set up coordinator entity state to simulate an active fade
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_or_create_entity(entity_id)
+
+    # Simulate that we're expecting brightness 100
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
-    ACTIVE_FADES[entity_id] = fake_task  # type: ignore[assignment]
+    entity.active_task = fake_task  # type: ignore[assignment]
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     try:
         # Simulate a state update with brightness within tolerance
@@ -537,7 +547,7 @@ async def test_brightness_tolerance_allows_rounding(
         assert not cancel_event.is_set(), "Cancel should not be set for within-tolerance"
 
         # Re-add expected brightness since the previous match removed it from tracking
-        FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity.expected_state = ExpectedState(
             entity_id=entity_id,
             values=[(ExpectedValues(brightness=100), time.monotonic())],
         )
@@ -558,9 +568,9 @@ async def test_brightness_tolerance_allows_rounding(
 
     finally:
         # Clean up
-        FADE_EXPECTED_STATE.pop(entity_id, None)
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        entity.expected_state = None
+        entity.active_task = None
+        entity.cancel_event = None
         if not fake_task.done():
             fake_task.cancel()
 
@@ -585,8 +595,12 @@ async def test_brightness_outside_tolerance_cancels_fade(
         },
     )
 
-    # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    # Set up coordinator entity state to simulate an active fade
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_or_create_entity(entity_id)
+
+    # Simulate that we're expecting brightness 100
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
@@ -598,9 +612,9 @@ async def test_brightness_outside_tolerance_cancels_fade(
         await stop_fake_fade.wait()
 
     fake_task = hass.async_create_task(fake_fade())
-    ACTIVE_FADES[entity_id] = fake_task
+    entity.active_task = fake_task
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     try:
         # Simulate a state update with brightness way outside tolerance
@@ -621,9 +635,9 @@ async def test_brightness_outside_tolerance_cancels_fade(
     finally:
         # Clean up - signal the fake task to stop
         stop_fake_fade.set()
-        FADE_EXPECTED_STATE.pop(entity_id, None)
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        entity.expected_state = None
+        entity.active_task = None
+        entity.cancel_event = None
         with contextlib.suppress(asyncio.CancelledError):
             await fake_task
 
@@ -648,17 +662,21 @@ async def test_expected_brightness_changes_ignored(
         },
     )
 
-    # Simulate that we're expecting brightness 100 (list of (ExpectedValues, timestamp) tuples)
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    # Set up coordinator entity state to simulate an active fade
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_or_create_entity(entity_id)
+
+    # Simulate that we're expecting brightness 100
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
 
     # Create a simple mock task that we can track
     fake_task = asyncio.get_event_loop().create_future()
-    ACTIVE_FADES[entity_id] = fake_task  # type: ignore[assignment]
+    entity.active_task = fake_task  # type: ignore[assignment]
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     try:
         # Simulate a state update with exact expected brightness
@@ -676,7 +694,7 @@ async def test_expected_brightness_changes_ignored(
         assert not cancel_event.is_set(), "Cancel event should not be set for expected brightness"
 
         # Re-add expected brightness since the previous match removed it from tracking
-        FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+        entity.expected_state = ExpectedState(
             entity_id=entity_id,
             values=[(ExpectedValues(brightness=100), time.monotonic())],
         )
@@ -697,9 +715,9 @@ async def test_expected_brightness_changes_ignored(
 
     finally:
         # Clean up
-        FADE_EXPECTED_STATE.pop(entity_id, None)
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        entity.expected_state = None
+        entity.active_task = None
+        entity.cancel_event = None
         if not fake_task.done():
             fake_task.cancel()
 
@@ -717,8 +735,6 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
-
     entity_id = "light.test_restore_off"
 
     # Set up the light as currently ON (simulating late fade event turned it back on)
@@ -731,8 +747,10 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
         },
     )
 
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+
     # Store original brightness (nested format)
-    hass.data[DOMAIN]["data"][entity_id] = {"orig_brightness": 200}
+    coordinator.data[entity_id] = {"orig_brightness": 200}
 
     # Create mock old_state (was ON) and new_state (user turned OFF)
     old_state = MagicMock()
@@ -744,12 +762,13 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
     new_state.attributes = {ATTR_BRIGHTNESS: None}
 
     # Set up intended state queue: [old_state, intended_state]
-    INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.intended_queue = [old_state, new_state]
 
     try:
         # Call _restore_intended_state directly
         # intended will be 0 (OFF), current will be 150 (ON) - should trigger turn_off
-        await _restore_intended_state(hass, entity_id)
+        await coordinator._restore_intended_state(entity_id)
         await hass.async_block_till_done()
         await asyncio.sleep(0.2)
         await hass.async_block_till_done()
@@ -758,7 +777,7 @@ async def test_restore_intended_state_turn_off_when_current_is_on(
         turn_off_calls = [c for c in service_calls if c.service == "turn_off"]
         assert len(turn_off_calls) >= 1, "Light should be turned off to match intended state"
     finally:
-        INTENDED_STATE_QUEUE.pop(entity_id, None)
+        entity.intended_queue = []
 
 
 async def test_restore_intended_state_turn_on_when_brightness_differs(
@@ -784,11 +803,16 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
         },
     )
 
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+
     # Store original brightness (nested format)
-    hass.data[DOMAIN]["data"][entity_id] = {"orig_brightness": initial_brightness}
+    coordinator.data[entity_id] = {"orig_brightness": initial_brightness}
+
+    # Set up coordinator entity state to simulate an active fade
+    entity = coordinator.get_or_create_entity(entity_id)
 
     # Simulate that we're expecting brightness 100 (mid-fade) but user set 150
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=100), time.monotonic())],
     )
@@ -800,9 +824,9 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
         await stop_fake_fade.wait()
 
     fake_task = hass.async_create_task(fake_fade())
-    ACTIVE_FADES[entity_id] = fake_task
+    entity.active_task = fake_task
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     try:
         # Simulate manual brightness change during fade (user sets brightness to 150)
@@ -825,13 +849,13 @@ async def test_restore_intended_state_turn_on_when_brightness_differs(
         await hass.async_block_till_done()
 
         # The original brightness should be updated to the user's intended brightness
-        assert hass.data[DOMAIN]["data"][entity_id]["orig_brightness"] == intended_brightness
+        assert coordinator.data[entity_id]["orig_brightness"] == intended_brightness
 
     finally:
         # Clean up
-        FADE_EXPECTED_STATE.pop(entity_id, None)
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        entity.expected_state = None
+        entity.active_task = None
+        entity.cancel_event = None
         if not fake_task.done():
             fake_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -861,11 +885,16 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
         },
     )
 
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+
     # Store original brightness (from before the fade started, nested format)
-    hass.data[DOMAIN]["data"][entity_id] = {"orig_brightness": original_brightness}
+    coordinator.data[entity_id] = {"orig_brightness": original_brightness}
+
+    # Set up coordinator entity state to simulate an active fade
+    entity = coordinator.get_or_create_entity(entity_id)
 
     # Simulate that we're expecting brightness 50 (near end of fade to 0%)
-    FADE_EXPECTED_STATE[entity_id] = ExpectedState(
+    entity.expected_state = ExpectedState(
         entity_id=entity_id,
         values=[(ExpectedValues(brightness=50), time.monotonic())],
     )
@@ -877,9 +906,9 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
         await stop_fake_fade.wait()
 
     fake_task = hass.async_create_task(fake_fade())
-    ACTIVE_FADES[entity_id] = fake_task
+    entity.active_task = fake_task
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     try:
         # Simulate user turning the light ON from OFF during fade
@@ -903,29 +932,25 @@ async def test_restore_intended_state_off_to_on_uses_original_brightness(
         await hass.async_block_till_done()
 
         # The original brightness should be preserved
-        assert hass.data[DOMAIN]["data"][entity_id]["orig_brightness"] == original_brightness
+        assert coordinator.data[entity_id]["orig_brightness"] == original_brightness
 
     finally:
         # Clean up
-        FADE_EXPECTED_STATE.pop(entity_id, None)
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        entity.expected_state = None
+        entity.active_task = None
+        entity.cancel_event = None
         if not fake_task.done():
             fake_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await fake_task
 
 
-async def test_cancel_and_wait_for_fade_task_already_done(
+async def test_cancel_and_wait_task_already_done(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _cancel_and_wait_for_fade handles task that is already done.
-
-    This tests line 628 where task.done() is True.
-    """
-    from custom_components.fado import _cancel_and_wait_for_fade
-
+    """Test cancel_and_wait handles task that is already done."""
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
     entity_id = "light.test_already_done"
 
     # Create a task that is already completed
@@ -935,21 +960,22 @@ async def test_cancel_and_wait_for_fade_task_already_done(
     task = hass.async_create_task(completed_task())
     await task  # Wait for it to complete
 
-    ACTIVE_FADES[entity_id] = task
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.active_task = task
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     try:
-        # Call _cancel_and_wait_for_fade with already-done task
-        await _cancel_and_wait_for_fade(entity_id)
+        # Call cancel_and_wait with already-done task
+        await entity.cancel_and_wait()
 
         # Should complete without error
-        # The task was already done, so it should just log and return
+        # The task was already done, so it should just return
 
     finally:
         # Clean up
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
+        entity.active_task = None
+        entity.cancel_event = None
 
 
 async def test_state_change_with_none_new_state_ignored(
@@ -984,12 +1010,16 @@ async def test_get_intended_brightness_returns_none_when_integration_unloaded(
 
     This tests line 673 where DOMAIN not in hass.data.
     """
-    from unittest.mock import MagicMock
+    from unittest.mock import AsyncMock, MagicMock
 
-    from custom_components.fado import _get_intended_brightness
-
-    # Ensure DOMAIN is not in hass.data (simulating unloaded integration)
-    hass.data.pop(DOMAIN, None)
+    # Create a coordinator with a separate hass that doesn't have DOMAIN set
+    mock_hass = MagicMock()
+    mock_hass.data = {}  # DOMAIN not in hass.data
+    coordinator = FadeCoordinator(
+        hass=mock_hass,
+        store=MagicMock(async_save=AsyncMock()),
+        min_step_delay_ms=100,
+    )
 
     entity_id = "light.test_entity"
     old_state = MagicMock()
@@ -999,25 +1029,18 @@ async def test_get_intended_brightness_returns_none_when_integration_unloaded(
     new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
     # Should return None when integration is unloaded
-    result = _get_intended_brightness(hass, entity_id, old_state, new_state)
+    result = coordinator._get_intended_brightness(entity_id, old_state, new_state)
     assert result is None
 
 
-async def test_cancel_and_wait_for_fade_timeout(
+async def test_cancel_and_wait_timeout(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
 ) -> None:
-    """Test _cancel_and_wait_for_fade handles timeout waiting for cleanup.
-
-    This tests lines 768-769 where TimeoutError is caught.
-    """
+    """Test cancel_and_wait handles timeout waiting for cleanup."""
     from unittest.mock import patch
 
-    from custom_components.fado import (
-        FADE_COMPLETE_CONDITIONS,
-        _cancel_and_wait_for_fade,
-    )
-
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
     entity_id = "light.test_timeout"
 
     # Create a task that will never complete naturally
@@ -1028,28 +1051,29 @@ async def test_cancel_and_wait_for_fade_timeout(
 
     task = hass.async_create_task(hanging_task())
 
-    ACTIVE_FADES[entity_id] = task
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.active_task = task
     cancel_event = asyncio.Event()
-    FADE_CANCEL_EVENTS[entity_id] = cancel_event
+    entity.cancel_event = cancel_event
 
     # Create condition but make wait_for always time out
     condition = asyncio.Condition()
-    FADE_COMPLETE_CONDITIONS[entity_id] = condition
+    entity.complete_condition = condition
 
     try:
         # Patch the FADE_CANCEL_TIMEOUT_S to be very short for the test
-        with patch("custom_components.fado.FADE_CANCEL_TIMEOUT_S", 0.05):
+        with patch("custom_components.fado.entity_fade_state.FADE_CANCEL_TIMEOUT_S", 0.05):
             # Call should timeout but not raise
-            await _cancel_and_wait_for_fade(entity_id)
+            await entity.cancel_and_wait()
 
-        # Should complete without raising - timeout is caught and logged
+        # Should complete without raising - timeout is suppressed
 
     finally:
         # Clean up
         task_completed.set()
-        ACTIVE_FADES.pop(entity_id, None)
-        FADE_CANCEL_EVENTS.pop(entity_id, None)
-        FADE_COMPLETE_CONDITIONS.pop(entity_id, None)
+        entity.active_task = None
+        entity.cancel_event = None
+        entity.complete_condition = None
         with contextlib.suppress(asyncio.CancelledError):
             await task
 
@@ -1061,25 +1085,31 @@ async def test_restore_intended_state_when_domain_not_in_hass(
 
     This tests line 823 where DOMAIN not in hass.data.
     """
-    from unittest.mock import MagicMock
+    from unittest.mock import AsyncMock, MagicMock
 
-    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
-
-    # Ensure DOMAIN is not in hass.data
-    hass.data.pop(DOMAIN, None)
+    # Create a coordinator with a separate hass that doesn't have DOMAIN set
+    mock_hass = MagicMock()
+    mock_hass.data = {}  # DOMAIN not in hass.data
+    mock_hass.states = MagicMock()
+    coordinator = FadeCoordinator(
+        hass=mock_hass,
+        store=MagicMock(async_save=AsyncMock()),
+        min_step_delay_ms=100,
+    )
 
     entity_id = "light.test_entity"
     old_state = MagicMock()
+    old_state.state = STATE_ON
     new_state = MagicMock()
+    new_state.state = STATE_ON
+    new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
-    # Set up intended state queue
-    INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+    # Set up intended state queue on the coordinator
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.intended_queue = [old_state, new_state]
 
-    try:
-        # Should return early without raising
-        await _restore_intended_state(hass, entity_id)
-    finally:
-        INTENDED_STATE_QUEUE.pop(entity_id, None)
+    # Should return early without raising (DOMAIN not in hass.data)
+    await coordinator._restore_intended_state(entity_id)
 
 
 async def test_restore_intended_state_when_intended_is_none(
@@ -1092,8 +1122,7 @@ async def test_restore_intended_state_when_intended_is_none(
     """
     from unittest.mock import MagicMock, patch
 
-    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
-
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
     entity_id = "light.test_entity"
 
     # Set up the light
@@ -1112,16 +1141,17 @@ async def test_restore_intended_state_when_intended_is_none(
     new_state.state = STATE_ON
     new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
-    # Set up intended state queue
-    INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+    # Set up intended state queue on the coordinator
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.intended_queue = [old_state, new_state]
 
     try:
         # Make _get_intended_brightness return None
-        with patch("custom_components.fado._get_intended_brightness", return_value=None):
+        with patch.object(coordinator, "_get_intended_brightness", return_value=None):
             # Should return early without raising
-            await _restore_intended_state(hass, entity_id)
+            await coordinator._restore_intended_state(entity_id)
     finally:
-        INTENDED_STATE_QUEUE.pop(entity_id, None)
+        entity.intended_queue = []
 
 
 async def test_restore_intended_state_when_entity_removed(
@@ -1135,8 +1165,7 @@ async def test_restore_intended_state_when_entity_removed(
     """
     from unittest.mock import MagicMock
 
-    from custom_components.fado import INTENDED_STATE_QUEUE, _restore_intended_state
-
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
     entity_id = "light.test_removed"
 
     # Set up then remove the entity
@@ -1152,7 +1181,7 @@ async def test_restore_intended_state_when_entity_removed(
     await hass.async_block_till_done()
 
     # Store original brightness (nested format)
-    hass.data[DOMAIN]["data"][entity_id] = {"orig_brightness": 200}
+    coordinator.data[entity_id] = {"orig_brightness": 200}
 
     old_state = MagicMock()
     old_state.state = STATE_ON
@@ -1162,12 +1191,13 @@ async def test_restore_intended_state_when_entity_removed(
     new_state.state = STATE_ON
     new_state.attributes = {ATTR_BRIGHTNESS: 150}
 
-    # Set up intended state queue
-    INTENDED_STATE_QUEUE[entity_id] = [old_state, new_state]
+    # Set up intended state queue on the coordinator
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.intended_queue = [old_state, new_state]
 
     try:
         # Should return early when current_state is None (entity was removed)
-        await _restore_intended_state(hass, entity_id)
+        await coordinator._restore_intended_state(entity_id)
 
         # No service calls should have been made
         turn_on_calls = [c for c in service_calls if c.service == "turn_on"]
@@ -1175,7 +1205,7 @@ async def test_restore_intended_state_when_entity_removed(
         assert len(turn_on_calls) == 0
         assert len(turn_off_calls) == 0
     finally:
-        INTENDED_STATE_QUEUE.pop(entity_id, None)
+        entity.intended_queue = []
 
 
 async def test_second_manual_event_during_restore_appends_to_queue(
@@ -1184,15 +1214,16 @@ async def test_second_manual_event_during_restore_appends_to_queue(
 ) -> None:
     """Test that a second manual event during restore wait appends to the queue.
 
-    This tests the queue-based approach where we also check RESTORE_TASKS in the
-    event handler to append to INTENDED_STATE_QUEUE even after the fade is cancelled.
+    This tests the queue-based approach where we also check restore_task in the
+    event handler to append to intended_queue even after the fade is cancelled.
 
-    When a restore task is running (entity_id in RESTORE_TASKS), any new state
-    change should append to INTENDED_STATE_QUEUE so the restore uses the latest
+    When a restore task is running (entity has restore_task), any new state
+    change should append to intended_queue so the restore uses the latest
     user intent rather than a stale first event.
     """
     from unittest.mock import MagicMock
 
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
     entity_id = "light.test_second_manual"
 
     # Set up the light as OFF (simulating after first manual OFF event)
@@ -1207,28 +1238,29 @@ async def test_second_manual_event_during_restore_appends_to_queue(
     await hass.async_block_till_done()
 
     # Store original brightness (nested format)
-    hass.data[DOMAIN]["data"][entity_id] = {"orig_brightness": 200}
+    coordinator.data[entity_id] = {"orig_brightness": 200}
 
     # Create a mock task to simulate a running restore task
     # Using MagicMock avoids async timing issues
     mock_task = MagicMock()
 
-    # Manually set up RESTORE_TASKS to simulate a running restore
-    RESTORE_TASKS[entity_id] = mock_task
+    # Set up coordinator entity state to simulate a running restore task
+    entity = coordinator.get_or_create_entity(entity_id)
+    entity.restore_task = mock_task
 
     # Set an initial intended state queue (simulating the first OFF event)
     initial_off_state = hass.states.get(entity_id)
     # Queue format: [old_state, intended_state]
     # Simulating after first event was processed - queue has just the OFF state
-    INTENDED_STATE_QUEUE[entity_id] = [initial_off_state]
+    entity.intended_queue = [initial_off_state]
 
     try:
         # Verify initial queue
-        assert len(INTENDED_STATE_QUEUE[entity_id]) == 1
-        assert INTENDED_STATE_QUEUE[entity_id][0].state == STATE_OFF
+        assert len(entity.intended_queue) == 1
+        assert entity.intended_queue[0].state == STATE_OFF
 
         # Second manual event - user turns light ON while restore task is "running"
-        # This should append to INTENDED_STATE_QUEUE because entity_id in RESTORE_TASKS
+        # This should append to intended_queue because entity has a restore_task
         hass.states.async_set(
             entity_id,
             STATE_ON,
@@ -1239,9 +1271,8 @@ async def test_second_manual_event_during_restore_appends_to_queue(
         )
         await hass.async_block_till_done()
 
-        # The key assertion: INTENDED_STATE_QUEUE should have the second event appended
-        assert entity_id in INTENDED_STATE_QUEUE
-        queue = INTENDED_STATE_QUEUE[entity_id]
+        # The key assertion: intended_queue should have the second event appended
+        queue = entity.intended_queue
         assert len(queue) == 2, "Queue should have 2 entries after second event"
         assert queue[-1].state == STATE_ON, "Latest state should be ON (second event)"
         assert queue[-1].attributes.get(ATTR_BRIGHTNESS) == 180, (
@@ -1250,8 +1281,8 @@ async def test_second_manual_event_during_restore_appends_to_queue(
 
     finally:
         # Clean up
-        RESTORE_TASKS.pop(entity_id, None)
-        INTENDED_STATE_QUEUE.pop(entity_id, None)
+        entity.restore_task = None
+        entity.intended_queue = []
 
 
 async def test_native_transition_no_false_intervention(
@@ -1277,7 +1308,7 @@ async def test_native_transition_no_false_intervention(
     )
 
     # Configure light with native_transitions
-    hass.data[DOMAIN]["data"][entity_id] = {
+    hass.data[DOMAIN].data[entity_id] = {
         "native_transitions": True,
         "min_delay_ms": 150,
     }
@@ -1286,8 +1317,7 @@ async def test_native_transition_no_false_intervention(
     turn_on_count = 0
 
     # Intercept light.turn_on to simulate intermediate brightness reports
-    original_turn_on = None
-    for call in service_calls:
+    for _call in service_calls:
         pass  # Just to reference the fixture
 
     async def mock_turn_on_with_intermediates(call: ServiceCall) -> None:
@@ -1302,7 +1332,9 @@ async def test_native_transition_no_false_intervention(
 
             # Get current brightness
             current_state = hass.states.get(entity_id)
-            current_brightness = current_state.attributes.get(ATTR_BRIGHTNESS, 1) if current_state else 1
+            current_brightness = (
+                current_state.attributes.get(ATTR_BRIGHTNESS, 1) if current_state else 1
+            )
 
             # Inject intermediate values only after first step (when range tracking is active)
             # First step doesn't have prev_step, so uses point matching
@@ -1343,7 +1375,7 @@ async def test_native_transition_no_false_intervention(
     fade_task = asyncio.create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 "brightness_pct": 100,
@@ -1357,8 +1389,12 @@ async def test_native_transition_no_false_intervention(
     await fade_task
 
     # Verify no manual intervention was detected (fade completed normally)
-    # Check that entity is not in INTENDED_STATE_QUEUE
-    assert entity_id not in INTENDED_STATE_QUEUE, "Intermediate values should not trigger manual intervention"
+    # Check that entity has no intended queue entries
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_entity(entity_id)
+    assert entity is None or not entity.intended_queue, (
+        "Intermediate values should not trigger manual intervention"
+    )
 
 
 async def test_native_transition_detects_real_intervention(
@@ -1380,7 +1416,7 @@ async def test_native_transition_detects_real_intervention(
     )
 
     # Configure light with native_transitions
-    hass.data[DOMAIN]["data"][entity_id] = {
+    hass.data[DOMAIN].data[entity_id] = {
         "native_transitions": True,
         "min_delay_ms": 150,
     }
@@ -1389,7 +1425,7 @@ async def test_native_transition_detects_real_intervention(
     fade_task = asyncio.create_task(
         hass.services.async_call(
             DOMAIN,
-            SERVICE_FADO,
+            SERVICE_FADE_LIGHTS,
             {
                 "entity_id": entity_id,
                 "brightness_pct": 100,
@@ -1403,8 +1439,11 @@ async def test_native_transition_detects_real_intervention(
     await asyncio.sleep(0.2)
 
     # Verify fade is active before intervention
-    from custom_components.fado import ACTIVE_FADES
-    assert entity_id in ACTIVE_FADES, "Fade should be active before intervention"
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    entity = coordinator.get_entity(entity_id)
+    assert entity is not None and entity.active_task is not None, (
+        "Fade should be active before intervention"
+    )
 
     # Manual intervention: jump to 1 (way outside current range - going backwards)
     # After first step, we're fading upward, so jumping back to 1 is clearly manual
@@ -1416,10 +1455,13 @@ async def test_native_transition_detects_real_intervention(
     await asyncio.sleep(0.05)
 
     # Verify fade was cancelled due to manual intervention
-    assert entity_id not in ACTIVE_FADES, "Fade should be cancelled after manual intervention"
+    entity = coordinator.get_entity(entity_id)
+    assert entity is None or entity.active_task is None, (
+        "Fade should be cancelled after manual intervention"
+    )
 
     # Verify the manual change was stored as new original brightness
-    assert hass.data[DOMAIN]["data"][entity_id]["orig_brightness"] == 1
+    assert coordinator.data[entity_id]["orig_brightness"] == 1
 
     # Cancel fade task
     fade_task.cancel()

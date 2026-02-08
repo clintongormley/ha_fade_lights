@@ -220,9 +220,7 @@ class FadeParams:
         """
         if ATTR_BRIGHTNESS_PCT in data and ATTR_BRIGHTNESS in data:
             ctx = f" {context}" if context else ""
-            raise ServiceValidationError(
-                f"Cannot specify both brightness_pct and brightness{ctx}"
-            )
+            raise ServiceValidationError(f"Cannot specify both brightness_pct and brightness{ctx}")
 
     @classmethod
     def _validate_color_ranges(cls, data: dict) -> None:

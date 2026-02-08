@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_SUPPORTED_COLOR_MODES
 from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN
@@ -435,8 +436,8 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
 
     # Hybrid transition tracking (private)
     # "hs_to_mireds" | "mireds_to_hs" | None
-    _hybrid_direction: str | None = field(default=None, repr=False)
-    _crossover_step: int | None = field(default=None, repr=False)
+    hybrid_direction: str | None = field(default=None, repr=False)
+    crossover_step: int | None = field(default=None, repr=False)
     _crossover_hs: tuple[float, float] | None = field(default=None, repr=False)
     _crossover_mireds: int | None = field(default=None, repr=False)
 
@@ -446,7 +447,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
 
     # Easing function for brightness interpolation (private)
     _easing_func: Callable[[float], float] = field(default=linear, repr=False)
-    _easing_name: str = field(default="linear", repr=False)
+    easing_name: str = field(default="linear", repr=False)
 
     # Track last emitted step to skip duplicates caused by easing (private)
     _last_emitted_step: FadeStep | None = field(default=None, repr=False)
@@ -576,7 +577,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         # Auto-turn-on: when fading color from off state without explicit brightness,
         # automatically fade brightness from min_brightness to stored value (or full brightness)
         # Note: start_brightness is clamped to min_brightness, so check if it equals min_brightness
-        # and the light was off (no brightness in state) or state brightness was below min_brightness
+        # and the light was off (no brightness in state) or brightness was below min
         state_brightness = state_attributes.get(ATTR_BRIGHTNESS)
         light_was_off_or_dim = state_brightness is None or state_brightness < min_brightness
         if (
@@ -673,11 +674,11 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             end_mireds=end_mireds if (mireds_changing or hybrid_direction) else None,
             transition_ms=params.transition_ms,
             min_step_delay_ms=min_step_delay_ms,
-            _hybrid_direction=hybrid_direction,
+            hybrid_direction=hybrid_direction,
             _crossover_hs=crossover_hs,
             _crossover_mireds=crossover_mireds,
             _easing_func=easing_func,
-            _easing_name=easing_name,
+            easing_name=easing_name,
         )
 
         # Calculate crossover step if hybrid
@@ -688,7 +689,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             else:  # mireds_to_hs
                 crossover_step = int(total_steps * (1 - HYBRID_HS_PHASE_RATIO))
             # Update the crossover step (need to set directly since it's a private field)
-            fade._crossover_step = crossover_step  # noqa: SLF001
+            fade.crossover_step = crossover_step
 
         return fade
 
@@ -715,7 +716,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
                 ideal_steps.append(brightness_change // MIN_BRIGHTNESS_DELTA)
 
         # HS color change (for non-hybrid or hybrid HS phases)
-        if self._hybrid_direction == "hs_to_mireds":
+        if self.hybrid_direction == "hs_to_mireds":
             # HS phase: from start_hs to crossover_hs
             if self.start_hs is not None and self._crossover_hs is not None:
                 self._add_hs_steps(ideal_steps, self.start_hs, self._crossover_hs)
@@ -724,7 +725,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
                 mireds_change = abs(self.end_mireds - self._crossover_mireds)
                 if mireds_change > 0:
                     ideal_steps.append(mireds_change // MIN_MIREDS_DELTA)
-        elif self._hybrid_direction == "mireds_to_hs":
+        elif self.hybrid_direction == "mireds_to_hs":
             # Mireds phase: from start_mireds to crossover_mireds
             if self.start_mireds is not None and self._crossover_mireds is not None:
                 mireds_change = abs(self._crossover_mireds - self.start_mireds)
@@ -811,7 +812,7 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             t = self._current_step / count
 
             # Generate the step
-            if self._hybrid_direction is not None:
+            if self.hybrid_direction is not None:
                 step = self._interpolate_hybrid_step(t)
             else:
                 step = FadeStep(
@@ -824,15 +825,18 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
             is_last_step = self._current_step >= count
 
             # Skip if identical to last emitted step (unless it's the last step)
-            if not is_last_step and self._last_emitted_step is not None:
-                if self._steps_equal(step, self._last_emitted_step):
-                    _LOGGER.debug(
-                        "Skipping duplicate step %d/%d: %s",
-                        self._current_step,
-                        count,
-                        step,
-                    )
-                    continue
+            if (
+                not is_last_step
+                and self._last_emitted_step is not None
+                and self._steps_equal(step, self._last_emitted_step)
+            ):
+                _LOGGER.debug(
+                    "Skipping duplicate step %d/%d: %s",
+                    self._current_step,
+                    count,
+                    step,
+                )
+                continue
 
             self._last_emitted_step = step
             return step
@@ -856,13 +860,13 @@ class FadeChange:  # pylint: disable=too-many-instance-attributes
         Returns:
             FadeStep with appropriate color attribute based on phase
         """
-        crossover_step = self._crossover_step or 0
+        crossover_step = self.crossover_step or 0
         count = self.step_count()
 
         # Calculate crossover_t (the t value at crossover)
         crossover_t = crossover_step / count if count > 0 else 0.5
 
-        if self._hybrid_direction == "hs_to_mireds":
+        if self.hybrid_direction == "hs_to_mireds":
             # Before/at crossover: emit hs_color
             if self._current_step <= crossover_step:
                 # Map t to [0, crossover_t] -> [0, 1] for HS interpolation

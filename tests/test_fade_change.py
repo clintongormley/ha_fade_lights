@@ -556,7 +556,7 @@ class TestFadeChangeEasing:
         # First diff: steps[0].brightness - 0 (start)
         # Since brightness 1 is skipped to 2, first step is at eased position
         first_step_brightness = brightnesses[0]
-        last_diff = brightnesses[-1] - brightnesses[-2]
+        brightnesses[-1] - brightnesses[-2]
 
         # ease_out_quad at t=0.2 gives 0.36, so first step ~36 brightness
         # Linear would give 20. So ease_out should have larger first step.
@@ -994,7 +994,9 @@ class TestFadeChangeResolveMinBrightness:
         while fade.has_next():
             step = fade.next_step()
             assert step.brightness is not None
-            assert step.brightness >= 10, f"Step brightness {step.brightness} is below min_brightness"
+            assert step.brightness >= 10, (
+                f"Step brightness {step.brightness} is below min_brightness"
+            )
 
     def test_default_min_brightness_is_1(self) -> None:
         """Test that default min_brightness is 1 (backward compatibility)."""

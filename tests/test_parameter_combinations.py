@@ -212,8 +212,8 @@ class TestFromOnHsState:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction == "hs_to_mireds"
-        assert change._crossover_step is not None
+        assert change.hybrid_direction == "hs_to_mireds"
+        assert change.crossover_step is not None
 
     def test_hs_to_brightness_and_color_temp_hybrid(self) -> None:
         """#13: b:50,hs:[10,10] → b:100,ct:4000 - brightness + hybrid."""
@@ -235,7 +235,7 @@ class TestFromOnHsState:
         assert change.start_brightness == 127
         assert change.end_brightness == 255
         # Hybrid transition
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
 
     def test_hs_to_off(self) -> None:
         """#16: b:50,hs:[10,10] → b:0 - fade to off."""
@@ -291,7 +291,7 @@ class TestFromOnHsState:
         assert change is not None
         assert change.start_brightness == 127
         assert change.end_brightness == 0
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
 
 
 class TestFromOnColorTempState:
@@ -371,8 +371,8 @@ class TestFromOnColorTempState:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction == "mireds_to_hs"
-        assert change._crossover_step is not None
+        assert change.hybrid_direction == "mireds_to_hs"
+        assert change.crossover_step is not None
 
     def test_ct_to_brightness_and_hs_hybrid(self) -> None:
         """#15: b:50,ct:3000 → b:100,hs:[10,10] - brightness + hybrid."""
@@ -393,7 +393,7 @@ class TestFromOnColorTempState:
         assert change is not None
         assert change.start_brightness == 127
         assert change.end_brightness == 255
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
 
     def test_ct_to_off(self) -> None:
         """#17: b:50,ct:3000 → b:0 - fade to off."""
@@ -452,7 +452,7 @@ class TestFromOnColorTempState:
         assert change is not None
         assert change.start_brightness == 127
         assert change.end_brightness == 0
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
 
 
 class TestFromParamOverrides:
@@ -477,7 +477,7 @@ class TestFromParamOverrides:
 
         assert change is not None
         # Should be hybrid because from: specifies HS
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
         assert change.start_hs == (240.0, 100.0)
 
     def test_from_ct_to_hs_hybrid(self) -> None:
@@ -499,7 +499,7 @@ class TestFromParamOverrides:
 
         assert change is not None
         # Should be hybrid because from: specifies CT
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
         assert change.start_mireds == 333  # 3000K
 
     def test_from_brightness_override(self) -> None:
@@ -576,7 +576,7 @@ class TestStepGeneration:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction == "hs_to_mireds"
+        assert change.hybrid_direction == "hs_to_mireds"
 
         hs_steps = 0
         ct_steps = 0
@@ -603,7 +603,7 @@ class TestStepGeneration:
         change = FadeChange.resolve(params, state, min_step_delay_ms=100)
 
         assert change is not None
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
 
         hs_steps = 0
         ct_steps = 0

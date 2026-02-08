@@ -255,9 +255,10 @@ class ExpectedState:
             return "exact"
 
         # Phase 2: Range match (only if transitioning)
-        if expected.from_hs_color is not None:
-            if self._hs_range_match(expected.from_hs_color, expected.hs_color, actual.hs_color):
-                return "range"
+        if expected.from_hs_color is not None and self._hs_range_match(
+            expected.from_hs_color, expected.hs_color, actual.hs_color
+        ):
+            return "range"
 
         return None
 
@@ -295,7 +296,7 @@ class ExpectedState:
         # Check saturation (simple range)
         min_sat = min(from_sat, to_sat)
         max_sat = max(from_sat, to_sat)
-        if not (min_sat <= actual_sat <= max_sat):
+        if not min_sat <= actual_sat <= max_sat:
             return False
 
         # Check hue (handle wraparound)

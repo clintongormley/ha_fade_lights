@@ -1,14 +1,14 @@
 """Integration tests for color-temp-to-HS hybrid fade transitions."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN as HA_ATTR_COLOR_TEMP_KELVIN
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import STATE_ON
 
-from custom_components.fado import _execute_fade
+from custom_components.fado.coordinator import FadeCoordinator
 from custom_components.fado.fade_change import FadeChange
 from custom_components.fado.fade_params import FadeParams
 
@@ -22,14 +22,17 @@ def mock_hass():
     hass = MagicMock()
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
-    hass.data = {
-        "fado": {
-            "data": {},
-            "store": MagicMock(),
-            "min_step_delay_ms": 100,
-        }
-    }
     return hass
+
+
+@pytest.fixture
+def coordinator(mock_hass):
+    """Create a FadeCoordinator with mock hass."""
+    return FadeCoordinator(
+        hass=mock_hass,
+        store=MagicMock(async_save=AsyncMock()),
+        min_step_delay_ms=100,
+    )
 
 
 @pytest.fixture
@@ -50,7 +53,9 @@ class TestColorTempToHsFade:
     """Integration tests for color-temp-to-HS transitions."""
 
     @pytest.mark.asyncio
-    async def test_color_temp_to_hs_uses_hybrid_fade(self, mock_hass, color_temp_light_state):
+    async def test_color_temp_to_hs_uses_hybrid_fade(
+        self, mock_hass, coordinator, color_temp_light_state
+    ):
         """Test that COLOR_TEMP mode light fading to HS uses hybrid transition.
 
         Uses _resolve_fade which returns a single FadeChange with hybrid support.
@@ -65,36 +70,34 @@ class TestColorTempToHsFade:
             transition_ms=3000,
         )
 
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            # Use _resolve_fade to verify it returns hybrid FadeChange
-            change = _resolve_fade(
-                fade_params,
-                color_temp_light_state.attributes,
-                min_step_delay_ms=100,
-            )
+        # Use _resolve_fade to verify it returns hybrid FadeChange
+        change = _resolve_fade(
+            fade_params,
+            color_temp_light_state.attributes,
+            min_step_delay_ms=100,
+        )
 
-            # Verify we get a hybrid FadeChange
-            assert change is not None
-            assert change._hybrid_direction == "mireds_to_hs"
-            assert change._crossover_step is not None
+        # Verify we get a hybrid FadeChange
+        assert change is not None
+        assert change.hybrid_direction == "mireds_to_hs"
+        assert change.crossover_step is not None
 
-            # Verify start mireds comes from state
-            assert change.start_mireds == 333  # 3003K -> 333 mireds
+        # Verify start mireds comes from state
+        assert change.start_mireds == 333  # 3003K -> 333 mireds
 
-            # Verify end HS is the target
-            assert change.end_hs == (0.0, 100.0)
+        # Verify end HS is the target
+        assert change.end_hs == (0.0, 100.0)
 
-            # Also run _execute_fade to ensure it executes without error
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                fade_params,
-                min_step_delay_ms=100,
-                cancel_event=cancel_event,
-            )
+        # Also run _execute_fade to ensure it executes without error
+        await coordinator._execute_fade(
+            "light.test",
+            fade_params,
+            min_step_delay_ms=100,
+            cancel_event=cancel_event,
+        )
 
     @pytest.mark.asyncio
-    async def test_hs_mode_light_does_not_use_hybrid(self, mock_hass):
+    async def test_hs_mode_light_does_not_use_hybrid(self, mock_hass, coordinator):
         """Test that HS mode light uses standard fade, not hybrid."""
         hs_state = MagicMock()
         hs_state.state = STATE_ON
@@ -114,31 +117,29 @@ class TestColorTempToHsFade:
             transition_ms=3000,
         )
 
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            # Use _resolve_fade to verify it returns non-hybrid FadeChange
-            change = _resolve_fade(
-                fade_params,
-                hs_state.attributes,
-                min_step_delay_ms=100,
-            )
+        # Use _resolve_fade to verify it returns non-hybrid FadeChange
+        change = _resolve_fade(
+            fade_params,
+            hs_state.attributes,
+            min_step_delay_ms=100,
+        )
 
-            # Should be simple HS-to-HS fade (NOT hybrid)
-            assert change is not None
-            assert change._hybrid_direction is None
-            assert change.start_hs == (200.0, 50.0)
-            assert change.end_hs == (0.0, 100.0)
+        # Should be simple HS-to-HS fade (NOT hybrid)
+        assert change is not None
+        assert change.hybrid_direction is None
+        assert change.start_hs == (200.0, 50.0)
+        assert change.end_hs == (0.0, 100.0)
 
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                fade_params,
-                min_step_delay_ms=100,
-                cancel_event=cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            fade_params,
+            min_step_delay_ms=100,
+            cancel_event=cancel_event,
+        )
 
     @pytest.mark.asyncio
     async def test_color_temp_to_color_temp_uses_standard_fade(
-        self, mock_hass, color_temp_light_state
+        self, mock_hass, coordinator, color_temp_light_state
     ):
         """Test that COLOR_TEMP to color temp uses standard fade (no mode switch needed)."""
         mock_hass.states.get = MagicMock(return_value=color_temp_light_state)
@@ -151,30 +152,30 @@ class TestColorTempToHsFade:
             transition_ms=3000,
         )
 
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            # Use _resolve_fade to verify it returns non-hybrid FadeChange
-            change = _resolve_fade(
-                fade_params,
-                color_temp_light_state.attributes,
-                min_step_delay_ms=100,
-            )
+        # Use _resolve_fade to verify it returns non-hybrid FadeChange
+        change = _resolve_fade(
+            fade_params,
+            color_temp_light_state.attributes,
+            min_step_delay_ms=100,
+        )
 
-            # Should be simple mireds fade (NOT hybrid)
-            assert change is not None
-            assert change._hybrid_direction is None
-            assert change.start_mireds == 333  # 3003K -> 333 mireds
-            assert change.end_mireds == 200  # 5000K -> 200 mireds
+        # Should be simple mireds fade (NOT hybrid)
+        assert change is not None
+        assert change.hybrid_direction is None
+        assert change.start_mireds == 333  # 3003K -> 333 mireds
+        assert change.end_mireds == 200  # 5000K -> 200 mireds
 
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                fade_params,
-                min_step_delay_ms=100,
-                cancel_event=cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            fade_params,
+            min_step_delay_ms=100,
+            cancel_event=cancel_event,
+        )
 
     @pytest.mark.asyncio
-    async def test_hybrid_fade_generates_both_color_types(self, mock_hass, color_temp_light_state):
+    async def test_hybrid_fade_generates_both_color_types(
+        self, mock_hass, coordinator, color_temp_light_state
+    ):
         """Test that hybrid fade generates both color_temp and hs_color steps."""
         mock_hass.states.get = MagicMock(return_value=color_temp_light_state)
 
@@ -191,7 +192,7 @@ class TestColorTempToHsFade:
         )
 
         assert change is not None
-        assert change._hybrid_direction == "mireds_to_hs"
+        assert change.hybrid_direction == "mireds_to_hs"
 
         # Iterate through all steps and verify we get both color types
         steps_with_color_temp = 0
@@ -213,7 +214,7 @@ class TestHsToColorTempFade:
     """Integration tests for HS-to-color-temp transitions."""
 
     @pytest.mark.asyncio
-    async def test_hs_to_color_temp_uses_hybrid_fade(self, mock_hass):
+    async def test_hs_to_color_temp_uses_hybrid_fade(self, mock_hass, coordinator):
         """Test that HS mode light fading to color temp uses hybrid transition."""
         hs_state = MagicMock()
         hs_state.state = STATE_ON
@@ -233,30 +234,28 @@ class TestHsToColorTempFade:
             transition_ms=3000,
         )
 
-        with patch("custom_components.fado._save_storage", new_callable=AsyncMock):
-            change = _resolve_fade(
-                fade_params,
-                hs_state.attributes,
-                min_step_delay_ms=100,
-            )
+        change = _resolve_fade(
+            fade_params,
+            hs_state.attributes,
+            min_step_delay_ms=100,
+        )
 
-            # Should be hybrid HS->mireds transition
-            assert change is not None
-            assert change._hybrid_direction == "hs_to_mireds"
-            assert change._crossover_step is not None
-            assert change.start_hs == (120.0, 100.0)
-            assert change.end_mireds == 250  # 4000K = 250 mireds
+        # Should be hybrid HS->mireds transition
+        assert change is not None
+        assert change.hybrid_direction == "hs_to_mireds"
+        assert change.crossover_step is not None
+        assert change.start_hs == (120.0, 100.0)
+        assert change.end_mireds == 250  # 4000K = 250 mireds
 
-            await _execute_fade(
-                mock_hass,
-                "light.test",
-                fade_params,
-                min_step_delay_ms=100,
-                cancel_event=cancel_event,
-            )
+        await coordinator._execute_fade(
+            "light.test",
+            fade_params,
+            min_step_delay_ms=100,
+            cancel_event=cancel_event,
+        )
 
     @pytest.mark.asyncio
-    async def test_hs_on_locus_to_color_temp_not_hybrid(self, mock_hass):
+    async def test_hs_on_locus_to_color_temp_not_hybrid(self, mock_hass, coordinator):
         """Test that HS on Planckian locus fading to color temp is NOT hybrid."""
         hs_state = MagicMock()
         hs_state.state = STATE_ON
@@ -282,4 +281,4 @@ class TestHsToColorTempFade:
 
         # Should NOT be hybrid (on locus can go directly to mireds)
         assert change is not None
-        assert change._hybrid_direction is None
+        assert change.hybrid_direction is None

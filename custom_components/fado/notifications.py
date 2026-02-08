@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from homeassistant.components import persistent_notification
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.light.const import DOMAIN as LIGHT_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN, NOTIFICATION_ID, REQUIRED_CONFIG_FIELDS
+from .coordinator import FadeCoordinator
 
 
 def _get_unconfigured_lights(hass: HomeAssistant) -> set[str]:
@@ -18,11 +19,12 @@ def _get_unconfigured_lights(hass: HomeAssistant) -> set[str]:
     - It is NOT excluded (exclude: true in storage)
     - It is missing any required config field (currently just min_delay_ms)
     """
-    if DOMAIN not in hass.data:
+    coordinator: FadeCoordinator | None = hass.data.get(DOMAIN)
+    if coordinator is None:
         return set()
 
     entity_registry = er.async_get(hass)
-    storage_data = hass.data[DOMAIN].get("data", {})
+    storage_data = coordinator.data
 
     unconfigured = set()
     for entry in entity_registry.entities.values():

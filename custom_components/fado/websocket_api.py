@@ -32,6 +32,7 @@ from .const import (
     OPTION_LOG_LEVEL,
     OPTION_MIN_STEP_DELAY_MS,
 )
+from .coordinator import FadeCoordinator
 from .notifications import _notify_unconfigured_lights
 
 
@@ -51,7 +52,8 @@ async def async_get_lights(hass: HomeAssistant) -> dict[str, Any]:
     device_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
 
-    storage_data = hass.data.get(DOMAIN, {}).get("data", {})
+    coordinator: FadeCoordinator | None = hass.data.get(DOMAIN)
+    storage_data = coordinator.data if coordinator else {}
 
     # Build area -> lights structure
     areas_dict: dict[str | None, dict] = {}
@@ -169,7 +171,8 @@ async def async_save_light_config(
     Returns:
         Dict with success status
     """
-    data = hass.data.get(DOMAIN, {}).get("data", {})
+    coordinator: FadeCoordinator = hass.data[DOMAIN]
+    data = coordinator.data
 
     if entity_id not in data:
         data[entity_id] = {}
@@ -194,8 +197,7 @@ async def async_save_light_config(
         data[entity_id].pop("min_brightness", None)
 
     # Save to disk
-    store = hass.data[DOMAIN]["store"]
-    await store.async_save(data)
+    await coordinator.save_storage()
 
     # Check if notification should be updated/dismissed
     await _notify_unconfigured_lights(hass)
@@ -289,7 +291,10 @@ def _get_light_config(hass: HomeAssistant, entity_id: str) -> dict[str, Any]:
     Returns:
         Config dict for the light, or empty dict if not configured
     """
-    return hass.data.get(DOMAIN, {}).get("data", {}).get(entity_id, {})
+    coordinator: FadeCoordinator | None = hass.data.get(DOMAIN)
+    if coordinator is None:
+        return {}
+    return coordinator.get_light_config(entity_id)
 
 
 @websocket_api.websocket_command(
@@ -340,9 +345,6 @@ async def ws_autoconfigure(
     # Create semaphore to limit parallel testing
     semaphore = asyncio.Semaphore(AUTOCONFIGURE_MAX_PARALLEL)
 
-    # Get testing_lights set for exclusion during autoconfigure
-    testing_lights: set[str] = hass.data.get(DOMAIN, {}).get("testing_lights", set())
-
     async def test_light(entity_id: str) -> None:
         """Test a single light and send events."""
         # Check if cancelled before waiting for semaphore
@@ -355,8 +357,6 @@ async def ws_autoconfigure(
             if cancel_event.is_set():
                 return
 
-            # Add to testing set to exclude from fades during test
-            testing_lights.add(entity_id)
             try:
                 # Send started event after acquiring semaphore (actual testing begins)
                 connection.send_message(
@@ -367,6 +367,7 @@ async def ws_autoconfigure(
                 )
 
                 # Run full autoconfigure (delay + native transitions, with state restoration)
+                # Note: autoconfigure sets exclude=True on the light config during testing
                 result = await async_autoconfigure_light(hass, entity_id)
 
                 # Check if cancelled before sending result
@@ -414,9 +415,6 @@ async def ws_autoconfigure(
                         },
                     )
                 )
-            finally:
-                # Always remove from testing set when done
-                testing_lights.discard(entity_id)
 
     # Spawn tasks for all lights
     tasks = [test_light(entity_id) for entity_id in filtered_entities]
@@ -518,8 +516,9 @@ async def ws_save_settings(
     if "default_min_delay_ms" in msg:
         new_options[OPTION_MIN_STEP_DELAY_MS] = msg["default_min_delay_ms"]
         # Update runtime data
-        if DOMAIN in hass.data and "min_step_delay_ms" in hass.data[DOMAIN]:
-            hass.data[DOMAIN]["min_step_delay_ms"] = msg["default_min_delay_ms"]
+        coordinator_obj: FadeCoordinator | None = hass.data.get(DOMAIN)
+        if coordinator_obj is not None:
+            coordinator_obj.min_step_delay_ms = msg["default_min_delay_ms"]
 
     if "log_level" in msg:
         new_options[OPTION_LOG_LEVEL] = msg["log_level"]

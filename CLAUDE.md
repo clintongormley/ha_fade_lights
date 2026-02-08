@@ -24,7 +24,7 @@ rm -Rf /workspaces/homeassistant-core/config/custom_components/fado && cp -r /tm
 
 - After making changes, always copy the integration to the HA config directory for testing:
   ```
-  rm -Rf /workspaces/homeassistant-core/config/custom_components/fado && cp -r /tmp/ha-fado/custom_components/fado /workspaces/homeassistant-core/config/custom_components/
+  rm -Rf /workspaces/homeassistant-core/config/custom_components/fado && cp -r /workspaces/ha-fado/custom_components/fado /workspaces/homeassistant-core/config/custom_components/
   ```
 - This is a **custom component**, NOT a core integration - never copy to `homeassistant/components/`
 - Run the copy command automatically without asking for permission
@@ -33,7 +33,7 @@ rm -Rf /workspaces/homeassistant-core/config/custom_components/fado && cp -r /tm
 
 - `cp to ha` - Remove existing and copy the integration to `/workspaces/homeassistant-core/config/custom_components/fado/` for testing:
   ```
-  rm -Rf /workspaces/homeassistant-core/config/custom_components/fado && cp -r /tmp/ha-fado/custom_components/fado /workspaces/homeassistant-core/config/custom_components/
+  rm -Rf /workspaces/homeassistant-core/config/custom_components/fado && cp -r /workspaces/ha-fado/custom_components/fado /workspaces/homeassistant-core/config/custom_components/
   ```
 - `pr` - Commit any changes in separate commits if that makes sense, and create a PR (do not merge)
 - `merge` - Merge the current PR (only after explicit user approval)

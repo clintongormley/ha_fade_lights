@@ -18,7 +18,7 @@ from custom_components.fado.const import (
     ATTR_RGBWW_COLOR,
     ATTR_XY_COLOR,
     DOMAIN,
-    SERVICE_FADO,
+    SERVICE_FADE_LIGHTS,
 )
 from custom_components.fado.expected_state import ExpectedValues
 from custom_components.fado.fade_change import FadeChange
@@ -36,13 +36,13 @@ class TestNoFadeParameters:
     ) -> None:
         """Test service returns early when no fade parameters specified."""
         with patch(
-            "custom_components.fado._fade_light",
+            "custom_components.fado.coordinator.FadeCoordinator._fade_light",
             new_callable=AsyncMock,
         ) as mock_fade_light:
             # Call with only target, no brightness, colors, or from params
             await hass.services.async_call(
                 DOMAIN,
-                SERVICE_FADO,
+                SERVICE_FADE_LIGHTS,
                 {
                     # No brightness_pct, no color params, no from params
                 },
